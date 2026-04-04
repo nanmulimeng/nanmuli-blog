@@ -2,13 +2,15 @@
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getArticleBySlug } from '@/api/article'
-import { formatDate, fromNow } from '@/utils/format'
+import { formatDateCN, formatDateTimeCN } from '@/utils/format'
 import type { Article } from '@/types/article'
 
 const route = useRoute()
 const router = useRouter()
-const loading = ref(false)
+
 const article = ref<Article | null>(null)
+const loading = ref(false)
+const toc = ref<Array<{ id: string; text: string; level: number }>>([])
 
 async function fetchArticle(): Promise<void> {
   const slug = route.params.slug as string
@@ -19,7 +21,9 @@ async function fetchArticle(): Promise<void> {
 
   loading.value = true
   try {
-    article.value = await getArticleBySlug(slug)
+    const res = await getArticleBySlug(slug)
+    article.value = res
+    generateToc(res.content)
   } catch {
     router.push('/404')
   } finally {
@@ -27,62 +31,141 @@ async function fetchArticle(): Promise<void> {
   }
 }
 
+function generateToc(content: string): void {
+  const headings = content.match(/^#{1,3}\s+(.+)$/gm) || []
+  toc.value = headings.map((heading, index) => {
+    const level = heading.match(/^#+/)?.[0].length || 1
+    const text = heading.replace(/^#+\s+/, '')
+    return { id: `heading-${index}`, text, level }
+  })
+}
+
+function scrollToHeading(index: number): void {
+  const element = document.getElementById(`heading-${index}`)
+  if (element) {
+    element.scrollIntoView({ behavior: 'smooth' })
+  }
+}
+
 onMounted(fetchArticle)
 </script>
 
 <template>
-  <div class="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
-    <div v-if="loading" class="space-y-4">
-      <el-skeleton :rows="5" animated />
+  <div class="article-detail-page">
+    <!-- Loading State -->
+    <div v-if="loading" class="flex items-center justify-center min-h-[60vh]">
+      <div class="w-full max-w-2xl px-4">
+        <el-skeleton :rows="10" animated />
+      </div>
     </div>
 
-    <article v-else-if="article" class="rounded-xl border bg-white p-8">
-      <header class="mb-8 border-b pb-8">
-        <div class="mb-4 flex items-center gap-2">
-          <span
-            v-if="article.isTop"
-            class="rounded bg-primary-100 px-2 py-1 text-xs font-medium text-primary-700"
-          >
-            置顶
-          </span>
-          <span class="text-sm text-primary-600">{{ article.categoryName }}</span>
-        </div>
-
-        <h1 class="mb-4 text-3xl font-bold text-gray-900">{{ article.title }}</h1>
-
-        <div class="flex flex-wrap items-center gap-4 text-sm text-gray-500">
-          <span>{{ formatDate(article.publishTime) }}</span>
-          <span>阅读 {{ article.viewCount }}</span>
-          <span>{{ article.wordCount }} 字</span>
-          <span>约 {{ article.readingTime }} 分钟</span>
-        </div>
-
-        <div v-if="article.tags?.length" class="mt-4 flex flex-wrap gap-2">
-          <span
-            v-for="tag in article.tags"
-            :key="tag.id"
-            class="rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600"
-          >
-            {{ tag.name }}
-          </span>
-        </div>
-      </header>
-
-      <div class="markdown-body" v-html="article.contentHtml" />
-
-      <footer class="mt-8 border-t pt-8">
-        <div class="flex items-center justify-between">
-          <div class="text-sm text-gray-500">
-            最后更新于 {{ fromNow(article.updateTime) }}
+    <template v-else-if="article">
+      <!-- Article Header -->
+      <section class="pt-24 pb-12 bg-gradient-to-b from-primary-50/50 to-white">
+        <div class="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
+          <!-- Category -->
+          <div class="mb-6">
+            <router-link
+              :to="`/article?category=${article.categoryId}`"
+              class="inline-flex items-center px-3 py-1 rounded-full bg-primary-50 text-primary-600 text-sm font-medium hover:bg-primary-100 transition-colors"
+            >
+              {{ article.categoryName }}
+            </router-link>
           </div>
-          <div class="flex gap-4">
-            <button class="flex items-center gap-1 text-gray-600 hover:text-primary-600">
-              <el-icon><Share /></el-icon>
-              <span>分享</span>
-            </button>
+
+          <!-- Title -->
+          <h1 class="text-3xl md:text-4xl font-bold text-gray-900 leading-tight">
+            {{ article.title }}
+          </h1>
+
+          <!-- Meta -->
+          <div class="mt-6 flex flex-wrap items-center gap-4 text-sm text-gray-500">
+            <span class="flex items-center gap-1">
+              <el-icon><Calendar /></el-icon>
+              {{ formatDateCN(article.publishTime) }}
+            </span>
+            <span class="flex items-center gap-1">
+              <el-icon><View /></el-icon>
+              阅读 {{ article.viewCount }}
+            </span>
+            <span class="flex items-center gap-1">
+              <el-icon><Clock /></el-icon>
+              {{ article.readingTime }}分钟
+            </span>
+            <span class="flex items-center gap-1">
+              <el-icon><Document /></el-icon>
+              {{ article.wordCount }}字
+            </span>
+          </div>
+
+          <!-- Tags -->
+          <div v-if="article.tags?.length" class="mt-6 flex flex-wrap gap-2">
+            <router-link
+              v-for="tag in article.tags"
+              :key="tag.id"
+              :to="`/tag/${tag.slug}`"
+              class="px-3 py-1 rounded-full bg-gray-100 text-gray-600 text-sm hover:bg-primary-50 hover:text-primary-600 transition-colors"
+            >
+              {{ tag.name }}
+            </router-link>
           </div>
         </div>
-      </footer>
-    </article>
+      </section>
+
+      <!-- Article Content -->
+      <section class="py-12">
+        <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-12">
+            <!-- Main Content -->
+            <div class="lg:col-span-8">
+              <article
+                class="markdown-body bg-white rounded-xl p-8 md:p-10 shadow-sm border border-gray-100 prose prose-gray max-w-none"
+                v-html="article.contentHtml"
+              />
+
+              <!-- Article Footer -->
+              <div class="mt-8 bg-white rounded-xl p-6 border border-gray-100">
+                <div class="flex items-center justify-between">
+                  <div class="text-sm text-gray-500">
+                    最后更新于 {{ formatDateTimeCN(article.updateTime) }}
+                  </div>
+                  <div class="flex gap-4">
+                    <button class="flex items-center gap-1 text-gray-600 hover:text-primary-600 transition-colors">
+                      <el-icon><Share /></el-icon>
+                      <span>分享</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Sidebar TOC -->
+            <div class="hidden lg:block lg:col-span-4">
+              <div class="sticky top-24">
+                <div class="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+                  <h3 class="text-sm font-semibold text-gray-900 mb-4">目录</h3>
+                  <nav class="space-y-2">
+                    <a
+                      v-for="(item, index) in toc"
+                      :key="index"
+                      :href="`#heading-${index}`"
+                      class="block text-sm transition-colors hover:text-primary-600"
+                      :class="[
+                        item.level === 1 ? 'text-gray-700 font-medium' : 'text-gray-500',
+                        item.level === 2 ? 'pl-3' : '',
+                        item.level === 3 ? 'pl-6' : ''
+                      ]"
+                      @click.prevent="scrollToHeading(index)"
+                    >
+                      {{ item.text }}
+                    </a>
+                  </nav>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </template>
   </div>
 </template>

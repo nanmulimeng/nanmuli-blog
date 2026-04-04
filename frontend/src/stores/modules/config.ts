@@ -10,8 +10,10 @@ export const useConfigStore = defineStore('config', () => {
   const siteFooter = ref('© 2025 Nanmuli Blog')
   const siteAbout = ref('')
   const siteAvatar = ref('')
+  const siteAuthor = ref('')
   const siteEmail = ref('')
   const siteGithub = ref('')
+  const siteIcp = ref('')
 
   async function loadConfig(): Promise<void> {
     try {
@@ -23,8 +25,10 @@ export const useConfigStore = defineStore('config', () => {
       siteFooter.value = config['site.footer'] || siteFooter.value
       siteAbout.value = config['site.about'] || siteAbout.value
       siteAvatar.value = config['site.avatar'] || siteAvatar.value
+      siteAuthor.value = config['site.author'] || siteAuthor.value
       siteEmail.value = config['site.email'] || siteEmail.value
       siteGithub.value = config['site.github'] || siteGithub.value
+      siteIcp.value = config['site.icp'] || siteIcp.value
     } catch {
       // 使用默认值
     }
@@ -38,8 +42,10 @@ export const useConfigStore = defineStore('config', () => {
     siteFooter,
     siteAbout,
     siteAvatar,
+    siteAuthor,
     siteEmail,
     siteGithub,
+    siteIcp,
     loadConfig,
   }
 })

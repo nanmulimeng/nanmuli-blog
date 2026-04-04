@@ -2,7 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getDailyLogById } from '@/api/dailyLog'
-import { formatDate, fromNow } from '@/utils/format'
+import { formatDateCN, formatDateTimeCN } from '@/utils/format'
 import type { DailyLog } from '@/types/dailyLog'
 
 const route = useRoute()
@@ -10,11 +10,11 @@ const router = useRouter()
 const loading = ref(false)
 const log = ref<DailyLog | null>(null)
 
-const moodMap: Record<string, { emoji: string; label: string; color: string }> = {
-  happy: { emoji: '😊', label: '开心', color: '#f59e0b' },
-  excited: { emoji: '🤩', label: '兴奋', color: '#ef4444' },
-  normal: { emoji: '😐', label: '平静', color: '#6b7280' },
-  tired: { emoji: '😴', label: '疲惫', color: '#8b5cf6' },
+const moodMap: Record<string, { icon: string; label: string; color: string }> = {
+  happy: { icon: 'Sunny', label: '开心', color: '#f59e0b' },
+  excited: { icon: 'Star', label: '兴奋', color: '#ef4444' },
+  normal: { icon: 'Minus', label: '平静', color: '#6b7280' },
+  tired: { icon: 'Moon', label: '疲惫', color: '#6366f1' },
 }
 
 async function fetchLog(): Promise<void> {
@@ -38,44 +38,85 @@ onMounted(fetchLog)
 </script>
 
 <template>
-  <div class="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
-    <div v-if="loading" class="space-y-4">
-      <el-skeleton :rows="5" animated />
+  <div class="daily-log-detail-page">
+    <!-- Loading State -->
+    <div v-if="loading" class="flex items-center justify-center min-h-[60vh]">
+      <div class="w-full max-w-2xl px-4">
+        <el-skeleton :rows="8" animated />
+      </div>
     </div>
 
-    <article v-else-if="log" class="rounded-xl border bg-white p-8">
-      <header class="mb-8 border-b pb-8">
-        <div class="mb-4 flex items-center gap-4">
-          <span class="text-4xl">{{ moodMap[log.mood]?.emoji || '😐' }}</span>
-          <div>
-            <div class="text-lg font-medium" :style="{ color: moodMap[log.mood]?.color }">
-              {{ moodMap[log.mood]?.label || '未知' }}
+    <template v-else-if="log">
+      <!-- Header -->
+      <section class="pt-24 pb-8 bg-gradient-to-b from-primary-50/50 to-white">
+        <div class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
+          <div class="flex items-center gap-4 mb-6">
+            <div
+              class="w-14 h-14 rounded-2xl flex items-center justify-center"
+              :style="{ backgroundColor: moodMap[log.mood]?.color + '15' || '#e5e7eb' }"
+            >
+              <el-icon
+                :size="28"
+                :style="{ color: moodMap[log.mood]?.color || '#6b7280' }"
+              >
+                <component :is="moodMap[log.mood]?.icon || 'Minus'" />
+              </el-icon>
             </div>
-            <div class="text-sm text-gray-500">{{ formatDate(log.logDate) }}</div>
+            <div>
+              <div class="text-sm text-gray-500">{{ formatDateCN(log.logDate) }}</div>
+              <div
+                class="text-lg font-semibold"
+                :style="{ color: moodMap[log.mood]?.color || '#6b7280' }"
+              >
+                {{ moodMap[log.mood]?.label || '平静' }}
+              </div>
+            </div>
+          </div>
+
+          <div v-if="log.weather" class="flex items-center gap-2 text-sm text-gray-500">
+            <el-icon><PartlyCloudy /></el-icon>
+            <span>{{ log.weather }}</span>
           </div>
         </div>
+      </section>
 
-        <div v-if="log.weather" class="flex items-center gap-2 text-sm text-gray-500">
-          <el-icon><Sunny /></el-icon>
-          <span>{{ log.weather }}</span>
+      <!-- Content -->
+      <section class="py-8">
+        <div class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
+          <article class="bg-white rounded-xl p-8 shadow-sm border border-gray-100">
+            <div class="prose prose-gray max-w-none" v-html="log.contentHtml" />
+
+            <!-- Tags -->
+            <div v-if="log.tags?.length" class="mt-8 pt-6 border-t border-gray-100">
+              <div class="flex flex-wrap gap-2">
+                <span
+                  v-for="tag in log.tags"
+                  :key="tag"
+                  class="px-3 py-1 rounded-full bg-gray-100 text-sm text-gray-600"
+                >
+                  #{{ tag }}
+                </span>
+              </div>
+            </div>
+          </article>
+
+          <!-- Footer -->
+          <div class="mt-8 text-center text-sm text-gray-400">
+            发布于 {{ formatDateTimeCN(log.createTime) }}
+          </div>
+
+          <!-- Back Button -->
+          <div class="mt-8 flex justify-center">
+            <button
+              class="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
+              @click="router.push('/daily-log')"
+            >
+              <el-icon><ArrowLeft /></el-icon>
+              返回日志列表
+            </button>
+          </div>
         </div>
-      </header>
-
-      <div class="markdown-body" v-html="log.contentHtml" />
-
-      <div v-if="log.tags?.length" class="mt-8 flex flex-wrap gap-2">
-        <span
-          v-for="tag in log.tags"
-          :key="tag"
-          class="rounded-full bg-gray-100 px-3 py-1 text-sm text-gray-600"
-        >
-          #{{ tag }}
-        </span>
-      </div>
-
-      <footer class="mt-8 border-t pt-8">
-        <div class="text-sm text-gray-500">发布于 {{ fromNow(log.createTime) }}</div>
-      </footer>
-    </article>
+      </section>
+    </template>
   </div>
 </template>
