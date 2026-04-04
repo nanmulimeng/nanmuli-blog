@@ -1,14 +1,26 @@
 @echo off
 :: ============================================
 :: 数据库初始化脚本
-:: 删除旧数据并重新初始化
+:: 注意：此脚本会重置数据库数据，请谨慎使用！
 :: ============================================
 
 echo [Database Initialization]
+echo ============================================
+echo WARNING: This will RESET all database data!
+echo ============================================
 echo.
+
+:: 确认提示
+set /p confirm="Are you sure? Type 'yes' to continue: "
+if /I not "%confirm%"=="yes" (
+    echo Cancelled.
+    pause
+    exit /b 1
+)
 
 cd /d "%~dp0"
 
+echo.
 echo Stopping existing containers...
 docker-compose down >nul 2>&1
 
