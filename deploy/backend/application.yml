@@ -1,0 +1,48 @@
+spring:
+  application:
+    name: nanmuli-blog
+  profiles:
+    active: dev
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 50MB
+
+server:
+  port: 8080
+  compression:
+    enabled: true
+
+# Sa-Token 配置
+sa-token:
+  token-name: Authorization
+  timeout: 2592000
+  active-timeout: -1
+  is-concurrent: true
+  is-share: false
+  token-style: uuid
+  is-log: false
+
+# MyBatis-Plus
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      logic-delete-field: deleted
+      logic-delete-value: true
+      logic-not-delete-value: false
+      id-type: assign_id
+  mapper-locations: classpath*:/mapper/**/*.xml
+
+# 博客业务配置
+blog:
+  file:
+    upload-path: ./uploads
+    access-url: /uploads/
+  ai:
+    enabled: false
+    model: qwen-turbo
+    auto-tags: true
+    auto-summary: true
