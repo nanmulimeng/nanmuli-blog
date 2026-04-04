@@ -14,5 +14,7 @@ public interface DailyLogRepository {
 
     IPage<DailyLog> findPage(IPage<DailyLog> page);
 
+    Long count();
+
     void deleteById(Long id);
 }

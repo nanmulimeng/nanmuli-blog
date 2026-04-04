@@ -1,5 +1,5 @@
 import { get, post, put, del } from '@/utils/request'
-import type { Article, ArticleListResult, ArticleQuery } from '@/types/article'
+import type { Article, ArticleQuery, ArticleArchive } from '@/types/article'
 import type { PageResult } from '@/types/api'
 
 export function getArticleList(params: ArticleQuery): Promise<PageResult<Article>> {
@@ -28,4 +28,12 @@ export function updateArticle(id: number, data: Partial<Article>): Promise<void>
 
 export function deleteArticle(id: number): Promise<void> {
   return del<void>(`/admin/article/${id}`)
+}
+
+export function getArticleArchive(): Promise<ArticleArchive[]> {
+  return get<ArticleArchive[]>('/article/archive')
+}
+
+export function recordArticleView(slug: string): Promise<void> {
+  return post<void>(`/article/${slug}/view`)
 }

@@ -42,3 +42,17 @@ export interface Tag {
   slug: string
   color: string
 }
+
+export interface ArticleArchive {
+  year: string
+  month: string
+  count: number
+  articles?: ArticleSimple[]
+}
+
+export interface ArticleSimple {
+  id: number
+  title: string
+  slug: string
+  publishTime: string
+}

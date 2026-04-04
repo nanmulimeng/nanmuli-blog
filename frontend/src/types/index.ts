@@ -24,3 +24,6 @@ export * from './skill'
 
 // 配置类型
 export * from './config'
+
+// 首页聚合类型
+export * from './home'

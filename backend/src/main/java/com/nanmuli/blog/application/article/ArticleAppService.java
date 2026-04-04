@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.nanmuli.blog.application.article.command.CreateArticleCommand;
 import com.nanmuli.blog.application.article.command.UpdateArticleCommand;
+import com.nanmuli.blog.application.article.dto.ArticleArchiveDTO;
 import com.nanmuli.blog.application.article.dto.ArticleDTO;
 import com.nanmuli.blog.application.article.query.ArticlePageQuery;
 import com.nanmuli.blog.domain.article.Article;
@@ -21,10 +22,16 @@ import org.springframework.cache.annotation.CacheConfig;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -103,6 +110,35 @@ public class ArticleAppService {
     @CacheEvict(allEntries = true)
     public void delete(Long id) {
         articleRepository.deleteById(new ArticleId(id));
+    }
+
+    @Async
+    @Transactional
+    public void incrementViewCount(String slug) {
+        articleRepository.findBySlug(slug).ifPresent(article -> {
+            articleRepository.increaseViewCount(new ArticleId(article.getId()));
+        });
+    }
+
+    @Transactional(readOnly = true)
+    public List<ArticleArchiveDTO> getArchive() {
+        List<java.util.Map<String, Object>> rawData = articleRepository.findArchiveByYearMonth();
+        List<ArticleArchiveDTO> result = new ArrayList<>();
+
+        for (java.util.Map<String, Object> row : rawData) {
+            ArticleArchiveDTO dto = new ArticleArchiveDTO();
+            dto.setYear((String) row.get("year"));
+            dto.setMonth((String) row.get("month"));
+            dto.setCount(((Number) row.get("count")).longValue());
+            result.add(dto);
+        }
+
+        return result;
+    }
+
+    @Transactional(readOnly = true)
+    public Long countPublished() {
+        return articleRepository.countPublished();
     }
 
     private ArticleDTO toDTO(Article article) {

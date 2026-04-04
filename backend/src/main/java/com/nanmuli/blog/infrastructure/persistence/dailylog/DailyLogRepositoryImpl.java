@@ -50,4 +50,10 @@ public class DailyLogRepositoryImpl implements DailyLogRepository {
     public void deleteById(Long id) {
         dailyLogMapper.deleteById(id);
     }
+
+    @Override
+    public Long count() {
+        LambdaQueryWrapper<DailyLog> wrapper = Wrappers.lambdaQuery();
+        return dailyLogMapper.selectCount(wrapper);
+    }
 }

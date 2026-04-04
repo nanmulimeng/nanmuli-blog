@@ -3,10 +3,12 @@ package com.nanmuli.blog.interfaces.rest;
 import com.nanmuli.blog.application.article.ArticleAppService;
 import com.nanmuli.blog.application.article.command.CreateArticleCommand;
 import com.nanmuli.blog.application.article.command.UpdateArticleCommand;
+import com.nanmuli.blog.application.article.dto.ArticleArchiveDTO;
 import com.nanmuli.blog.application.article.dto.ArticleDTO;
 import com.nanmuli.blog.application.article.query.ArticlePageQuery;
 import com.nanmuli.blog.shared.result.PageResult;
 import com.nanmuli.blog.shared.result.Result;
+import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +34,11 @@ public class ArticleController {
         return Result.success(articleAppService.getBySlug(slug));
     }
 
+    @GetMapping("/admin/article/{id}")
+    public Result<ArticleDTO> getByIdForAdmin(@PathVariable Long id) {
+        return Result.success(articleAppService.getById(id));
+    }
+
     @GetMapping("/article/top")
     public Result<List<ArticleDTO>> top(@RequestParam(defaultValue = "5") int limit) {
         return Result.success(articleAppService.listTop(limit));
@@ -52,6 +59,17 @@ public class ArticleController {
     @DeleteMapping("/admin/article/{id}")
     public Result<Void> delete(@PathVariable Long id) {
         articleAppService.delete(id);
+        return Result.success();
+    }
+
+    @GetMapping("/article/archive")
+    public Result<List<ArticleArchiveDTO>> archive() {
+        return Result.success(articleAppService.getArchive());
+    }
+
+    @PostMapping("/article/{slug}/view")
+    public Result<Void> incrementViewCount(@PathVariable String slug) {
+        articleAppService.incrementViewCount(slug);
         return Result.success();
     }
 }

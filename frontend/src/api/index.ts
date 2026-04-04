@@ -24,3 +24,6 @@ export * from './config'
 
 // 文件相关 API
 export * from './file'
+
+// 首页聚合 API
+export * from './home'

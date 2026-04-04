@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Repository
@@ -76,5 +77,36 @@ public class ArticleRepositoryImpl implements ArticleRepository {
     @Override
     public void increaseViewCount(ArticleId id) {
         articleMapper.increaseViewCount(id.getValue());
+    }
+
+    @Override
+    public List<Article> findLatestArticles(int limit) {
+        LambdaQueryWrapper<Article> wrapper = Wrappers.lambdaQuery();
+        wrapper.eq(Article::getStatus, 1)
+                .orderByDesc(Article::getPublishTime)
+                .last("LIMIT " + limit);
+        return articleMapper.selectList(wrapper);
+    }
+
+    @Override
+    public List<Article> findHotArticles(int limit) {
+        LambdaQueryWrapper<Article> wrapper = Wrappers.lambdaQuery();
+        wrapper.eq(Article::getStatus, 1)
+                .orderByDesc(Article::getViewCount)
+                .orderByDesc(Article::getPublishTime)
+                .last("LIMIT " + limit);
+        return articleMapper.selectList(wrapper);
+    }
+
+    @Override
+    public List<Map<String, Object>> findArchiveByYearMonth() {
+        return articleMapper.selectArchiveByYearMonth();
+    }
+
+    @Override
+    public Long countPublished() {
+        LambdaQueryWrapper<Article> wrapper = Wrappers.lambdaQuery();
+        wrapper.eq(Article::getStatus, 1);
+        return articleMapper.selectCount(wrapper);
     }
 }
