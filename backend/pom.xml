@@ -84,12 +84,12 @@
             <artifactId>lombok</artifactId>
             <optional>true</optional>
         </dependency>
-        <!-- Spring AI - 阿里云DashScope -->
-        <dependency>
+        <!-- Spring AI - 阿里云DashScope (暂时禁用，等待M6发布) -->
+        <!-- <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-dashscope-spring-boot-starter</artifactId>
             <version>1.0.0-M6</version>
-        </dependency>
+        </dependency> -->
     </dependencies>
     <repositories>
         <repository>

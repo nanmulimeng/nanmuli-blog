@@ -25,3 +25,6 @@ uploads/
 # Node.js
 frontend/node_modules/
 frontend/package-lock.json
+
+# Backup files
+*.bak

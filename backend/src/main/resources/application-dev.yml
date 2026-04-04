@@ -1,8 +1,8 @@
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5432/nanmuli_blog
+    url: jdbc:postgresql://localhost:5433/nanmuli_blog
     username: postgres
-    password: postgres
+    password: nanmuli_blog_2024
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 10
@@ -13,7 +13,7 @@ spring:
   data:
     redis:
       host: localhost
-      port: 6379
+      port: 6380
       database: 0
       timeout: 3000ms
       lettuce:
