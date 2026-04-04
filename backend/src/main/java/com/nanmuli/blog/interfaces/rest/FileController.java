@@ -1,6 +1,7 @@
 package com.nanmuli.blog.interfaces.rest;
 
 import com.nanmuli.blog.application.file.FileAppService;
+import com.nanmuli.blog.application.file.command.UploadFileCommand;
 import com.nanmuli.blog.domain.file.BlogFile;
 import com.nanmuli.blog.shared.result.Result;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -18,7 +19,16 @@ public class FileController {
 
     @PostMapping("/admin/file/upload")
     public Result<BlogFile> upload(@RequestParam("file") MultipartFile file) {
-        return Result.success(fileAppService.upload(file));
+        UploadFileCommand command = new UploadFileCommand();
+        command.setOriginalName(file.getOriginalFilename());
+        command.setContentType(file.getContentType());
+        command.setFileSize(file.getSize());
+        try {
+            command.setContent(file.getBytes());
+        } catch (Exception e) {
+            return Result.error(400, "文件读取失败");
+        }
+        return Result.success(fileAppService.upload(command));
     }
 
     @GetMapping("/file/{id}")

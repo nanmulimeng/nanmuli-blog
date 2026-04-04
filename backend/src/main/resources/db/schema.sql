@@ -241,11 +241,13 @@ CREATE TABLE IF NOT EXISTS sys_config (
     group_name VARCHAR(50),
     is_public BOOLEAN DEFAULT FALSE,
     create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 CREATE INDEX IF NOT EXISTS idx_config_key ON sys_config(config_key);
 CREATE INDEX IF NOT EXISTS idx_config_group ON sys_config(group_name);
+CREATE INDEX IF NOT EXISTS idx_config_deleted ON sys_config(deleted);
 
 CREATE TABLE IF NOT EXISTS friend_link (
     id BIGSERIAL PRIMARY KEY,
@@ -257,11 +259,13 @@ CREATE TABLE IF NOT EXISTS friend_link (
     sort INT NOT NULL DEFAULT 0,
     status INT NOT NULL DEFAULT 1,
     create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 CREATE INDEX IF NOT EXISTS idx_fl_status ON friend_link(status);
 CREATE INDEX IF NOT EXISTS idx_fl_sort ON friend_link(sort);
+CREATE INDEX IF NOT EXISTS idx_fl_deleted ON friend_link(deleted);
 
 CREATE TABLE IF NOT EXISTS sys_operation_log (
     id BIGSERIAL PRIMARY KEY,
