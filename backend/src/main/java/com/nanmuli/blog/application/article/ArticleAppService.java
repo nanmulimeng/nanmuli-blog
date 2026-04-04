@@ -9,12 +9,18 @@ import com.nanmuli.blog.application.article.query.ArticlePageQuery;
 import com.nanmuli.blog.domain.article.Article;
 import com.nanmuli.blog.domain.article.ArticleId;
 import com.nanmuli.blog.domain.article.ArticleRepository;
+import com.nanmuli.blog.domain.article.event.ArticleCreatedEvent;
+import com.nanmuli.blog.domain.article.event.ArticlePublishedEvent;
 import com.nanmuli.blog.domain.category.CategoryRepository;
 import com.nanmuli.blog.domain.tag.TagRepository;
 import com.nanmuli.blog.shared.exception.BusinessException;
 import com.nanmuli.blog.shared.result.PageResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
+import org.springframework.cache.annotation.CacheConfig;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,23 +28,39 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
+@CacheConfig(cacheNames = "article")
 public class ArticleAppService {
 
     private final ArticleRepository articleRepository;
     private final CategoryRepository categoryRepository;
     private final TagRepository tagRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
+    @CacheEvict(cacheNames = "article:list", allEntries = true)
     public Long create(CreateArticleCommand command) {
         Article article = new Article();
         BeanUtils.copyProperties(command, article);
         article.calculateWordCount();
         article.publish();
         articleRepository.save(article);
+
+        // 发布文章创建事件
+        eventPublisher.publishEvent(new ArticleCreatedEvent(article.getId(), article.getTitle()));
+        // 发布文章发布事件（触发AI生成）
+        eventPublisher.publishEvent(new ArticlePublishedEvent(
+                article.getId(),
+                article.getTitle(),
+                article.getSlug(),
+                article.getContent(),
+                article.getCategoryId()
+        ));
+
         return article.getId();
     }
 
     @Transactional
+    @CacheEvict(allEntries = true)
     public void update(UpdateArticleCommand command) {
         Article article = articleRepository.findById(new ArticleId(command.getArticleId()))
                 .orElseThrow(() -> new BusinessException("文章不存在"));
@@ -48,6 +70,7 @@ public class ArticleAppService {
     }
 
     @Transactional(readOnly = true)
+    @Cacheable(key = "#slug")
     public ArticleDTO getBySlug(String slug) {
         Article article = articleRepository.findBySlug(slug)
                 .orElseThrow(() -> new BusinessException("文章不存在"));
@@ -62,6 +85,7 @@ public class ArticleAppService {
     }
 
     @Transactional(readOnly = true)
+    @Cacheable(cacheNames = "article:list", key = "#query.current + '-' + #query.size")
     public PageResult<ArticleDTO> listPublished(ArticlePageQuery query) {
         IPage<Article> page = new Page<>(query.getCurrent(), query.getSize());
         IPage<Article> result = articleRepository.findPublishedPage(page);
@@ -70,11 +94,13 @@ public class ArticleAppService {
     }
 
     @Transactional(readOnly = true)
+    @Cacheable(cacheNames = "article", key = "'top-' + #limit")
     public List<ArticleDTO> listTop(int limit) {
         return articleRepository.findTopArticles(limit).stream().map(this::toDTO).toList();
     }
 
     @Transactional
+    @CacheEvict(allEntries = true)
     public void delete(Long id) {
         articleRepository.deleteById(new ArticleId(id));
     }
