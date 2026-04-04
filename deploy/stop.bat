@@ -1,10 +1,10 @@
 @echo off
 chcp 936 >nul 2>&1
 :: ============================================
-:: 停止服务脚本（保留数据）
+:: 停止Docker数据库服务（保留数据）
 :: ============================================
 
-echo [Stopping Services]
+echo [Stopping Docker Database Services]
 echo.
 
 cd /d "%~dp0"

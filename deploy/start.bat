@@ -1,10 +1,10 @@
 @echo off
 chcp 936 >nul 2>&1
 :: ============================================
-:: 启动服务脚本（保留数据）
+:: 启动Docker数据库服务（PostgreSQL + Redis）
 :: ============================================
 
-echo [Starting Services]
+echo [Starting Docker Database Services]
 echo.
 
 cd /d "%~dp0"
@@ -17,19 +17,19 @@ if %ERRORLEVEL% EQU 0 (
     set COMPOSE_CMD=docker-compose
 )
 
-echo Checking container status...
-%COMPOSE_CMD% ps 2>nul | findstr "nanmuli-postgres" >nul 2>&1
+:: 检查容器状态
+%COMPOSE_CMD% ps | findstr "nanmuli-postgres" >nul 2>&1
 if %ERRORLEVEL% EQU 0 (
-    echo PostgreSQL is already running.
+    echo [Info] PostgreSQL container already running.
 ) else (
-    echo Starting PostgreSQL...
+    echo [Info] Starting PostgreSQL container...
 )
 
-%COMPOSE_CMD% ps 2>nul | findstr "nanmuli-redis" >nul 2>&1
+%COMPOSE_CMD% ps | findstr "nanmuli-redis" >nul 2>&1
 if %ERRORLEVEL% EQU 0 (
-    echo Redis is already running.
+    echo [Info] Redis container already running.
 ) else (
-    echo Starting Redis...
+    echo [Info] Starting Redis container...
 )
 
 echo.
@@ -47,16 +47,15 @@ echo.
 echo Waiting for services to be ready...
 timeout /t 3 /nobreak >nul
 
-:: 健康检查
 echo.
-echo Checking service health...
 %COMPOSE_CMD% ps
 
 echo.
-echo [OK] Services started successfully!
+echo ============================================
+echo [OK] Database services started!
+echo ============================================
 echo.
 echo PostgreSQL: localhost:5433
 echo Redis:      localhost:6380
 echo.
-echo Tip: Use stop.bat to stop services (data will be preserved)
 pause

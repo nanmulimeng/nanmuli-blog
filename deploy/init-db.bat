@@ -12,7 +12,7 @@ echo ============================================
 echo.
 
 :: 确认提示
-set /p confirm="Are you sure? Type 'yes' to continue: "
+set /p confirm=Are you sure? Type 'yes' to continue:
 if /I not "%confirm%"=="yes" (
     echo Cancelled.
     pause

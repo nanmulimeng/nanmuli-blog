@@ -1,10 +1,10 @@
 @echo off
 chcp 936 >nul 2>&1
 :: ============================================
-:: 重启服务脚本（保留数据）
+:: 重启Docker数据库服务（保留数据）
 :: ============================================
 
-echo [Restarting Services]
+echo [Restarting Docker Database Services]
 echo.
 
 cd /d "%~dp0"
@@ -27,7 +27,6 @@ echo Starting containers...
 if %ERRORLEVEL% NEQ 0 (
     echo.
     echo [Error] Failed to restart services!
-    echo Please check if Docker is running.
     pause
     exit /b 1
 )
