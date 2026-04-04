@@ -1,4 +1,4 @@
-package com.nanmuli.blog.infrastructure.config;
+package com.nanmuli.blog.infrastructure.config.ai;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;

@@ -1,4 +1,4 @@
-package com.nanmuli.blog.infrastructure.config;
+package com.nanmuli.blog.infrastructure.config.web;
 
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.info.Contact;

@@ -1,4 +1,4 @@
-package com.nanmuli.blog.infrastructure.config;
+package com.nanmuli.blog.infrastructure.config.security;
 
 import cn.dev33.satoken.interceptor.SaInterceptor;
 import cn.dev33.satoken.stp.StpUtil;

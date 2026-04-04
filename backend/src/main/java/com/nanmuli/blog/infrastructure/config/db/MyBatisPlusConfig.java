@@ -1,4 +1,4 @@
-package com.nanmuli.blog.infrastructure.config;
+package com.nanmuli.blog.infrastructure.config.db;
 
 import com.baomidou.mybatisplus.annotation.DbType;
 import com.baomidou.mybatisplus.core.handlers.MetaObjectHandler;

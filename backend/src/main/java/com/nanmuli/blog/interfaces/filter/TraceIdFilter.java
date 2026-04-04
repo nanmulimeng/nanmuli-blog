@@ -1,4 +1,4 @@
-package com.nanmuli.blog.interfaces.interceptor;
+package com.nanmuli.blog.interfaces.filter;
 
 import jakarta.servlet.*;
 import jakarta.servlet.http.HttpServletRequest;

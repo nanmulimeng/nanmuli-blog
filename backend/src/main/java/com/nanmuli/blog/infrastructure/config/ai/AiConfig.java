@@ -1,4 +1,4 @@
-package com.nanmuli.blog.infrastructure.config;
+package com.nanmuli.blog.infrastructure.config.ai;
 
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.embedding.EmbeddingClient;

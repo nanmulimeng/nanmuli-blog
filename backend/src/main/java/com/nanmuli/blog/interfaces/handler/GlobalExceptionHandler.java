@@ -1,4 +1,4 @@
-package com.nanmuli.blog.infrastructure.config;
+package com.nanmuli.blog.interfaces.handler;
 
 import com.nanmuli.blog.shared.exception.BusinessException;
 import com.nanmuli.blog.shared.result.Result;
