@@ -1,7 +1,8 @@
 @echo off
-chcp 936 >nul 2>&1
+chcp 65001 >nul 2>&1
+
 :: ============================================
-:: 重启前后端开发服务
+:: Restart Dev Servers
 :: ============================================
 
 echo [Restarting Development Servers]
@@ -13,9 +14,14 @@ echo Step 1: Stopping services...
 call "%~dp0stop.bat"
 
 echo.
-echo Step 2: Waiting for cleanup...
-timeout /t 2 /nobreak >nul
+echo Step 2: Waiting...
+timeout /t 3 /nobreak >nul
 
 echo.
 echo Step 3: Starting services...
-start.bat
+call "%~dp0start.bat" --no-pause --rebuild
+
+echo.
+echo [OK] Restart completed!
+echo.
+pause
