@@ -1,15 +1,13 @@
 package com.nanmuli.blog.application.event;
 
 import com.nanmuli.blog.domain.ai.AiService;
+import com.nanmuli.blog.domain.article.ArticleRepository;
 import com.nanmuli.blog.domain.article.event.ArticlePublishedEvent;
-import com.nanmuli.blog.infrastructure.persistence.ai.AiGenerationMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
-
-import java.util.List;
 
 /**
  * 文章领域事件处理器
@@ -21,7 +19,7 @@ import java.util.List;
 public class ArticleEventHandler {
 
     private final AiService aiService;
-    private final AiGenerationMapper aiGenerationMapper;
+    private final ArticleRepository articleRepository;
 
     /**
      * 处理文章发布事件

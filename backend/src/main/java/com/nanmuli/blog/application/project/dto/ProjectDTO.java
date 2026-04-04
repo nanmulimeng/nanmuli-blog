@@ -20,5 +20,5 @@ public class ProjectDTO {
     private Integer sort;
     private LocalDate startDate;
     private LocalDate endDate;
-    private LocalDateTime createTime;
+    private LocalDateTime createdAt;
 }

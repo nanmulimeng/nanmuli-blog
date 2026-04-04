@@ -16,5 +16,5 @@ public class UserDTO {
     private Integer status;
     private String loginIp;
     private LocalDateTime loginTime;
-    private LocalDateTime createTime;
+    private LocalDateTime createdAt;
 }

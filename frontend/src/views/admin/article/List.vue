@@ -3,7 +3,9 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getArticleList, deleteArticle } from '@/api/article'
 import { formatDate } from '@/utils/format'
+import { ArticleStatusMap } from '@/constants'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Plus, Edit, Delete } from '@element-plus/icons-vue'
 import type { Article } from '@/types/article'
 
 const router = useRouter()
@@ -12,12 +14,6 @@ const articles = ref<Article[]>([])
 const total = ref(0)
 const currentPage = ref(1)
 const pageSize = ref(10)
-
-const statusMap: Record<number, { label: string; type: string }> = {
-  1: { label: '已发布', type: 'success' },
-  2: { label: '草稿', type: 'warning' },
-  3: { label: '回收站', type: 'danger' },
-}
 
 async function fetchData(): Promise<void> {
   loading.value = true
@@ -77,8 +73,8 @@ onMounted(fetchData)
       <el-table-column prop="categoryName" label="分类" width="120" />
       <el-table-column label="状态" width="100">
         <template #default="{ row }">
-          <el-tag :type="statusMap[row.status]?.type || 'info'" size="small">
-            {{ statusMap[row.status]?.label || '未知' }}
+          <el-tag :type="ArticleStatusMap[row.status]?.type || 'info'" size="small">
+            {{ ArticleStatusMap[row.status]?.label || '未知' }}
           </el-tag>
         </template>
       </el-table-column>

@@ -1,13 +1,29 @@
 <script setup lang="ts">
 import { ref, onMounted, nextTick } from 'vue'
 
+// Pagefind 类型定义
+interface PagefindResult {
+  data(): Promise<{
+    meta: { title: string }
+    excerpt: string
+    url: string
+  }>
+}
+
+interface PagefindInstance {
+  init(): Promise<void>
+  search(query: string): Promise<{
+    results: PagefindResult[]
+  }>
+}
+
 const searchQuery = ref('')
 const searchResults = ref<Array<{ title: string; excerpt: string; url: string }>>([])
 const isSearching = ref(false)
 const showResults = ref(false)
 
 // Pagefind 实例
-let pagefind: any = null
+let pagefind: PagefindInstance | null = null
 
 async function initPagefind(): Promise<void> {
   try {
@@ -30,7 +46,7 @@ async function handleSearch(): Promise<void> {
   try {
     const results = await pagefind.search(searchQuery.value)
     searchResults.value = await Promise.all(
-      results.results.slice(0, 10).map(async (result: any) => {
+      results.results.slice(0, 10).map(async (result: PagefindResult) => {
         const data = await result.data()
         return {
           title: data.meta.title || '无标题',

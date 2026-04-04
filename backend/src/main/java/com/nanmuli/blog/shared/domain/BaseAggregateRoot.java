@@ -18,14 +18,14 @@ public abstract class BaseAggregateRoot<ID extends Serializable> implements Seri
     protected ID id;
 
     @TableField(fill = FieldFill.INSERT)
-    protected LocalDateTime createTime;
+    protected LocalDateTime createdAt;
 
     @TableField(fill = FieldFill.INSERT_UPDATE)
-    protected LocalDateTime updateTime;
+    protected LocalDateTime updatedAt;
 
     @TableLogic
     @TableField(fill = FieldFill.INSERT)
-    protected Boolean deleted;
+    protected Boolean isDeleted;
 
     public void setId(ID id) {
         this.id = id;

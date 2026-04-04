@@ -2,7 +2,7 @@ package com.nanmuli.blog.interfaces.rest;
 
 import com.nanmuli.blog.application.file.FileAppService;
 import com.nanmuli.blog.application.file.command.UploadFileCommand;
-import com.nanmuli.blog.domain.file.BlogFile;
+import com.nanmuli.blog.application.file.dto.FileDTO;
 import com.nanmuli.blog.shared.result.Result;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -18,7 +18,7 @@ public class FileController {
     private final FileAppService fileAppService;
 
     @PostMapping("/admin/file/upload")
-    public Result<BlogFile> upload(@RequestParam("file") MultipartFile file) {
+    public Result<FileDTO> upload(@RequestParam("file") MultipartFile file) {
         UploadFileCommand command = new UploadFileCommand();
         command.setOriginalName(file.getOriginalFilename());
         command.setContentType(file.getContentType());
@@ -32,7 +32,7 @@ public class FileController {
     }
 
     @GetMapping("/file/{id}")
-    public Result<BlogFile> getById(@PathVariable Long id) {
+    public Result<FileDTO> getById(@PathVariable Long id) {
         return Result.success(fileAppService.getById(id));
     }
 }

@@ -382,6 +382,27 @@ public class ArticleRepositoryImpl implements ArticleRepository {
 
 ### 5.2 MyBatis Plus 使用规范
 
+#### 全局配置
+
+```yaml
+mybatis-plus:
+  global-config:
+    db-config:
+      # 逻辑删除字段名（与实体类属性名一致，自动映射为数据库下划线命名）
+      logic-delete-field: isDeleted
+      logic-delete-value: true
+      logic-not-delete-value: false
+      # ID生成策略
+      id-type: assign_id
+  configuration:
+    # 开启驼峰命名自动转换
+    map-underscore-to-camel-case: true
+    # 日志实现
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+```
+
+#### Mapper接口
+
 ```java
 @Mapper
 public interface ArticleMapper extends BaseMapper<Article> {

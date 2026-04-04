@@ -11,17 +11,23 @@ export const DEFAULT_PAGE_SIZE = 10
 export const MAX_PAGE_SIZE = 100
 export const PAGE_SIZE_OPTIONS = [10, 20, 50, 100]
 
-// 文章状态
+// 文章状态 (与后端一致)
 export enum ArticleStatus {
-  DRAFT = 0,
   PUBLISHED = 1,
-  RECYCLED = 2,
+  DRAFT = 2,
+  RECYCLED = 3,
 }
 
 export const ArticleStatusText: Record<number, string> = {
-  [ArticleStatus.DRAFT]: '草稿',
   [ArticleStatus.PUBLISHED]: '已发布',
+  [ArticleStatus.DRAFT]: '草稿',
   [ArticleStatus.RECYCLED]: '回收站',
+}
+
+export const ArticleStatusMap: Record<number, { label: string; type: 'success' | 'warning' | 'danger' | 'info' }> = {
+  [ArticleStatus.PUBLISHED]: { label: '已发布', type: 'success' },
+  [ArticleStatus.DRAFT]: { label: '草稿', type: 'warning' },
+  [ArticleStatus.RECYCLED]: { label: '回收站', type: 'danger' },
 }
 
 // 技能分类

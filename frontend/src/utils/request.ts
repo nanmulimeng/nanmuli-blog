@@ -39,7 +39,7 @@ request.interceptors.response.use(
 
     return data.data
   },
-  (error: AxiosError) => {
+  (error: AxiosError<{ message?: string }>) => {
     const message = error.response?.data?.message || error.message || '网络错误'
     ElMessage.error(message)
     return Promise.reject(error)

@@ -2,7 +2,7 @@
 import { reactive, ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { getArticleList, updateArticle } from '@/api/article'
+import { getArticleById, updateArticle } from '@/api/article'
 import type { FormInstance, FormRules } from 'element-plus'
 import type { Article } from '@/types/article'
 
@@ -32,12 +32,8 @@ const rules: FormRules = {
 
 async function fetchArticle(): Promise<void> {
   try {
-    // TODO: 通过ID获取文章详情
-    const res = await getArticleList({ current: 1, size: 1 })
-    const article = res.records.find(a => a.id === articleId)
-    if (article) {
-      Object.assign(form, article)
-    }
+    const article = await getArticleById(articleId)
+    Object.assign(form, article)
   } catch {
     ElMessage.error('加载文章失败')
   }

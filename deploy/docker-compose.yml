@@ -1,9 +1,9 @@
 version: '3.8'
 
 services:
-  # PostgreSQL 数据库
+  # PostgreSQL 数据库 (含pgvector扩展)
   postgres:
-    image: postgres:15-alpine
+    image: ankane/pgvector:latest
     container_name: nanmuli-postgres
     restart: always
     environment:

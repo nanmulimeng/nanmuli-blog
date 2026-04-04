@@ -12,5 +12,5 @@ public class TagDTO {
     private String color;
     private String icon;
     private Integer articleCount;
-    private LocalDateTime createTime;
+    private LocalDateTime createdAt;
 }

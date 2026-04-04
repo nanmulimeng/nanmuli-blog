@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { Plus, Edit, Delete } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getSkillList, createSkill, updateSkill, deleteSkill } from '@/api/skill'
 import type { Skill } from '@/types/skill'

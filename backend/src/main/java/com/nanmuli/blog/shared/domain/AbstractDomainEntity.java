@@ -18,9 +18,9 @@ public abstract class AbstractDomainEntity<ID extends Serializable> implements S
     private static final long serialVersionUID = 1L;
 
     protected ID id;
-    protected LocalDateTime createTime;
-    protected LocalDateTime updateTime;
-    protected Boolean deleted;
+    protected LocalDateTime createdAt;
+    protected LocalDateTime updatedAt;
+    protected Boolean isDeleted;
 
     /**
      * 判断是否为新建实体
@@ -33,7 +33,7 @@ public abstract class AbstractDomainEntity<ID extends Serializable> implements S
      * 标记为已删除（软删除）
      */
     public void markDeleted() {
-        this.deleted = true;
+        this.isDeleted = true;
     }
 
     /**

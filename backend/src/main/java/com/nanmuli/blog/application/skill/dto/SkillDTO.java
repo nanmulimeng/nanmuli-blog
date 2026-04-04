@@ -14,5 +14,5 @@ public class SkillDTO {
     private String color;
     private String description;
     private Integer sort;
-    private LocalDateTime createTime;
+    private LocalDateTime createdAt;
 }

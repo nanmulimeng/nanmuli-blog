@@ -15,6 +15,6 @@ public class DailyLogDTO {
     private String tags;
     private Integer wordCount;
     private LocalDate logDate;
-    private LocalDateTime createTime;
-    private LocalDateTime updateTime;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
 }

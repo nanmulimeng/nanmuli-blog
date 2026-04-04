@@ -14,5 +14,5 @@ public class CategoryDTO {
     private String color;
     private Integer sort;
     private Integer articleCount;
-    private LocalDateTime createTime;
+    private LocalDateTime createdAt;
 }

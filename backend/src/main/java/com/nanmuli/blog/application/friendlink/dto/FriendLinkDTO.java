@@ -13,5 +13,5 @@ public class FriendLinkDTO {
     private String description;
     private String email;
     private Integer sort;
-    private LocalDateTime createTime;
+    private LocalDateTime createdAt;
 }

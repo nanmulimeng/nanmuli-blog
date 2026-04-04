@@ -27,6 +27,6 @@ public class ArticleDTO {
     private Boolean isOriginal;
     private String originalUrl;
     private LocalDateTime publishTime;
-    private LocalDateTime createTime;
-    private LocalDateTime updateTime;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
 }

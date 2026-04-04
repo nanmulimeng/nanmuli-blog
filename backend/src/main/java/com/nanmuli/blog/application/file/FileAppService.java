@@ -2,6 +2,7 @@ package com.nanmuli.blog.application.file;
 
 import org.springframework.util.DigestUtils;
 import com.nanmuli.blog.application.file.command.UploadFileCommand;
+import com.nanmuli.blog.application.file.dto.FileDTO;
 import com.nanmuli.blog.domain.file.BlogFile;
 import com.nanmuli.blog.domain.file.FileRepository;
 import com.nanmuli.blog.shared.exception.BusinessException;
@@ -43,7 +44,7 @@ public class FileAppService {
     private String uploadPath;
 
     @Transactional
-    public BlogFile upload(UploadFileCommand command) {
+    public FileDTO upload(UploadFileCommand command) {
         String originalName = command.getOriginalName();
         if (!StringUtils.hasText(originalName)) {
             throw new BusinessException("文件名不能为空");
@@ -63,7 +64,7 @@ public class FileAppService {
 
         Optional<BlogFile> existing = fileRepository.findByMd5(md5);
         if (existing.isPresent()) {
-            return existing.get();
+            return convertToDTO(existing.get());
         }
 
         String fileName = UUID.randomUUID().toString().replace("-", "") + "." + extension;
@@ -93,13 +94,26 @@ public class FileAppService {
         fileRepository.save(blogFile);
 
         log.info("文件上传成功, fileName={}, md5={}, size={}", fileName, md5, command.getFileSize());
-        return blogFile;
+        return convertToDTO(blogFile);
     }
 
     @Transactional(readOnly = true)
-    public BlogFile getById(Long id) {
+    public FileDTO getById(Long id) {
         return fileRepository.findById(id)
+                .map(this::convertToDTO)
                 .orElseThrow(() -> new BusinessException("文件不存在"));
+    }
+
+    private FileDTO convertToDTO(BlogFile blogFile) {
+        FileDTO dto = new FileDTO();
+        dto.setId(blogFile.getId());
+        dto.setOriginalName(blogFile.getOriginalName());
+        dto.setFileUrl(blogFile.getFileUrl());
+        dto.setFileSize(blogFile.getFileSize());
+        dto.setMimeType(blogFile.getMimeType());
+        dto.setStorageType(blogFile.getStorageType());
+        dto.setCreatedAt(blogFile.getCreatedAt());
+        return dto;
     }
 
     private String getExtension(String filename) {

@@ -10,6 +10,10 @@ export function getArticleBySlug(slug: string): Promise<Article> {
   return get<Article>(`/article/${slug}`)
 }
 
+export function getArticleById(id: number): Promise<Article> {
+  return get<Article>(`/admin/article/${id}`)
+}
+
 export function getTopArticles(limit = 5): Promise<Article[]> {
   return get<Article[]>('/article/top', { params: { limit } })
 }
