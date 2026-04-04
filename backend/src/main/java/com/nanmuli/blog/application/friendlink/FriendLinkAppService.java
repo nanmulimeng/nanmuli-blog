@@ -54,6 +54,7 @@ public class FriendLinkAppService {
     private FriendLinkDTO toDTO(FriendLink friendLink) {
         FriendLinkDTO dto = new FriendLinkDTO();
         BeanUtils.copyProperties(friendLink, dto);
+        dto.setId(friendLink.getId());
         return dto;
     }
 }

@@ -7,6 +7,8 @@ public class ArticlePageQuery {
     private Integer current = 1;
     private Integer size = 10;
     private Long categoryId;
+    private Long tagId;
     private Integer status;
     private String keyword;
+    private String sort;
 }

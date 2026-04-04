@@ -61,6 +61,7 @@ public class DailyLogAppService {
     private DailyLogDTO toDTO(DailyLog dailyLog) {
         DailyLogDTO dto = new DailyLogDTO();
         BeanUtils.copyProperties(dailyLog, dto);
+        dto.setId(dailyLog.getId());
         return dto;
     }
 }

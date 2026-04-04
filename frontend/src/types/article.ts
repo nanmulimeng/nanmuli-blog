@@ -29,6 +29,7 @@ export interface ArticleQuery extends PageQuery {
   categoryId?: number
   tagId?: number
   keyword?: string
+  sort?: string
 }
 
 export interface ArticleListResult {

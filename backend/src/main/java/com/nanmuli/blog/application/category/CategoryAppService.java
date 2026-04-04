@@ -54,6 +54,7 @@ public class CategoryAppService {
     private CategoryDTO toDTO(Category category) {
         CategoryDTO dto = new CategoryDTO();
         BeanUtils.copyProperties(category, dto);
+        dto.setId(category.getId());
         return dto;
     }
 }

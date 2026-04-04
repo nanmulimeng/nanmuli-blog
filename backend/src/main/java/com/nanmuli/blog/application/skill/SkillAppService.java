@@ -54,6 +54,7 @@ public class SkillAppService {
     private SkillDTO toDTO(Skill skill) {
         SkillDTO dto = new SkillDTO();
         BeanUtils.copyProperties(skill, dto);
+        dto.setId(skill.getId());
         return dto;
     }
 }

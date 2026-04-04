@@ -1,5 +1,6 @@
 package com.nanmuli.blog.domain.user;
 
+import com.baomidou.mybatisplus.annotation.TableName;
 import com.nanmuli.blog.shared.domain.BaseAggregateRoot;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
@@ -10,6 +11,7 @@ import java.time.LocalDateTime;
 @Getter
 @Setter
 @EqualsAndHashCode(callSuper = false)
+@TableName("sys_user")
 public class User extends BaseAggregateRoot<Long> {
     private static final long serialVersionUID = 1L;
 

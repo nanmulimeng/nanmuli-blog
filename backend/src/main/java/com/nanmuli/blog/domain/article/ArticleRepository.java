@@ -15,7 +15,11 @@ public interface ArticleRepository {
 
     IPage<Article> findPublishedPage(IPage<Article> page);
 
+    IPage<Article> findPublishedPage(IPage<Article> page, String sort);
+
     IPage<Article> findByCategoryId(Long categoryId, IPage<Article> page);
+
+    IPage<Article> findByTagId(Long tagId, IPage<Article> page);
 
     List<Article> findTopArticles(int limit);
 

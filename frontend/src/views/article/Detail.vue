@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getArticleBySlug } from '@/api/article'
+import { getArticleBySlug, recordArticleView } from '@/api/article'
 import { formatDateCN, formatDateTimeCN } from '@/utils/format'
 import type { Article } from '@/types/article'
 
@@ -47,7 +47,16 @@ function scrollToHeading(index: number): void {
   }
 }
 
-onMounted(fetchArticle)
+onMounted(() => {
+  fetchArticle()
+  // 延迟5秒记录浏览量，避免快速刷量
+  setTimeout(() => {
+    const slug = route.params.slug as string
+    if (slug) {
+      recordArticleView(slug)
+    }
+  }, 5000)
+})
 </script>
 
 <template>

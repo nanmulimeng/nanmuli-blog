@@ -43,10 +43,25 @@ public class ArticleRepositoryImpl implements ArticleRepository {
 
     @Override
     public IPage<Article> findPublishedPage(IPage<Article> page) {
+        return findPublishedPage(page, null);
+    }
+
+    @Override
+    public IPage<Article> findPublishedPage(IPage<Article> page, String sort) {
         LambdaQueryWrapper<Article> wrapper = Wrappers.lambdaQuery();
-        wrapper.eq(Article::getStatus, 1)
-                .orderByDesc(Article::getIsTop)
-                .orderByDesc(Article::getPublishTime);
+        wrapper.eq(Article::getStatus, 1);
+
+        // 根据排序参数设置排序方式
+        if ("oldest".equals(sort)) {
+            wrapper.orderByAsc(Article::getPublishTime);
+        } else if ("popular".equals(sort)) {
+            wrapper.orderByDesc(Article::getViewCount);
+        } else {
+            // 默认：最新发布
+            wrapper.orderByDesc(Article::getIsTop)
+                    .orderByDesc(Article::getPublishTime);
+        }
+
         return articleMapper.selectPage(page, wrapper);
     }
 
@@ -108,5 +123,10 @@ public class ArticleRepositoryImpl implements ArticleRepository {
         LambdaQueryWrapper<Article> wrapper = Wrappers.lambdaQuery();
         wrapper.eq(Article::getStatus, 1);
         return articleMapper.selectCount(wrapper);
+    }
+
+    @Override
+    public IPage<Article> findByTagId(Long tagId, IPage<Article> page) {
+        return articleMapper.selectByTagId(page, tagId);
     }
 }

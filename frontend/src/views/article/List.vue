@@ -32,7 +32,8 @@ async function fetchArticles(): Promise<void> {
     const res = await getArticleList({
       current: currentPage.value,
       size: pageSize.value,
-      categoryId: selectedCategory.value
+      categoryId: selectedCategory.value,
+      sort: sortBy.value
     })
     articles.value = res.records
     total.value = res.total

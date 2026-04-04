@@ -54,6 +54,7 @@ public class ProjectAppService {
     private ProjectDTO toDTO(Project project) {
         ProjectDTO dto = new ProjectDTO();
         BeanUtils.copyProperties(project, dto);
+        dto.setId(project.getId());
         return dto;
     }
 }

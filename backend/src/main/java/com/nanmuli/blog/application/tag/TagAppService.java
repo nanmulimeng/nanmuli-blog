@@ -54,6 +54,7 @@ public class TagAppService {
     private TagDTO toDTO(Tag tag) {
         TagDTO dto = new TagDTO();
         BeanUtils.copyProperties(tag, dto);
+        dto.setId(tag.getId());
         return dto;
     }
 }
