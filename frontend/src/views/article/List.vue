@@ -19,7 +19,7 @@ const searchKeyword = ref('')
 
 const currentPage = ref(1)
 const pageSize = ref(12)
-const selectedCategory = ref<number | undefined>(undefined)
+const selectedCategory = ref<string | undefined>(undefined)
 const sortBy = ref('newest')
 
 const sortOptions = [
@@ -31,7 +31,7 @@ const sortOptions = [
 // 从URL参数初始化
 watch(() => route.query, (query) => {
   if (query.categoryId) {
-    selectedCategory.value = Number(query.categoryId)
+    selectedCategory.value = String(query.categoryId)
   }
   if (query.keyword) {
     searchKeyword.value = String(query.keyword)
@@ -85,7 +85,7 @@ async function fetchCategories(): Promise<void> {
   leafCategories.value = await getLeafCategoryList()
 }
 
-function handleCategoryChange(categoryId: number | undefined): void {
+function handleCategoryChange(categoryId: string | undefined): void {
   selectedCategory.value = categoryId
   currentPage.value = 1
   fetchArticles()

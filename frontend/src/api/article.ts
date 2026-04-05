@@ -16,7 +16,7 @@ export function getArticleBySlug(slug: string): Promise<Article> {
   return get<Article>(`/article/${slug}`)
 }
 
-export function getArticleById(id: number): Promise<Article> {
+export function getArticleById(id: string): Promise<Article> {
   return get<Article>(`/admin/article/${id}`)
 }
 
@@ -24,15 +24,15 @@ export function getTopArticles(limit = 5): Promise<Article[]> {
   return get<Article[]>('/article/top', { params: { limit } })
 }
 
-export function createArticle(data: Partial<Article>): Promise<number> {
-  return post<number>('/admin/article', data)
+export function createArticle(data: Partial<Article>): Promise<string> {
+  return post<string>('/admin/article', data)
 }
 
-export function updateArticle(id: number, data: Partial<Article>): Promise<void> {
+export function updateArticle(id: string, data: Partial<Article>): Promise<void> {
   return put<void>(`/admin/article/${id}`, data)
 }
 
-export function deleteArticle(id: number): Promise<void> {
+export function deleteArticle(id: string): Promise<void> {
   return del<void>(`/admin/article/${id}`)
 }
 

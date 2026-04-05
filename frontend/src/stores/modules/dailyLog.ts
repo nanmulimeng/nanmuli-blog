@@ -65,7 +65,7 @@ export const useDailyLogStore = defineStore(
       }
     }
 
-    async function fetchLogById(id: number): Promise<void> {
+    async function fetchLogById(id: string): Promise<void> {
       loading.value = true
       try {
         currentLog.value = await getDailyLogById(id)
@@ -87,7 +87,7 @@ export const useDailyLogStore = defineStore(
       }
     }
 
-    async function removeLog(id: number): Promise<void> {
+    async function removeLog(id: string): Promise<void> {
       await deleteDailyLog(id)
       logs.value = logs.value.filter((l) => l.id !== id)
     }

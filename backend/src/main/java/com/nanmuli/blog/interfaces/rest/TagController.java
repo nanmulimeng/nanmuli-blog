@@ -1,6 +1,5 @@
 package com.nanmuli.blog.interfaces.rest;
 
-import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.nanmuli.blog.application.tag.TagAppService;
 import com.nanmuli.blog.application.tag.dto.TagDTO;
 import com.nanmuli.blog.shared.result.Result;
@@ -29,26 +28,22 @@ public class TagController {
         return Result.success(tagAppService.listAllActive());
     }
 
-    @SaCheckPermission("tag:list")
     @GetMapping("/admin/tag/list")
     public Result<List<TagDTO>> adminList() {
         return Result.success(tagAppService.listAll());
     }
 
-    @SaCheckPermission("tag:create")
     @PostMapping("/admin/tag")
     public Result<Long> create(@Valid @RequestBody TagDTO dto) {
         return Result.success(tagAppService.create(dto));
     }
 
-    @SaCheckPermission("tag:update")
     @PutMapping("/admin/tag/{id}")
     public Result<Void> update(@PathVariable Long id, @Valid @RequestBody TagDTO dto) {
         tagAppService.update(id, dto);
         return Result.success();
     }
 
-    @SaCheckPermission("tag:delete")
     @DeleteMapping("/admin/tag/{id}")
     public Result<Void> delete(@PathVariable Long id) {
         tagAppService.delete(id);

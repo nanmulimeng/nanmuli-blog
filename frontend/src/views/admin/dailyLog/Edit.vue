@@ -33,10 +33,10 @@ const rules = {
 }
 
 const formRef = ref()
-const logId = ref<number>(0)
+const logId = ref<string>('')
 
 async function fetchLog(): Promise<void> {
-  const id = Number(route.params.id)
+  const id = route.params.id as string
   if (!id) {
     router.push('/admin/daily-log')
     return

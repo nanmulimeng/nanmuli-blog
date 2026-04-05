@@ -100,6 +100,12 @@
             <artifactId>flexmark-all</artifactId>
             <version>${flexmark.version}</version>
         </dependency>
+        <!-- 拼音库 - Hutool PinyinUtil 需要 -->
+        <dependency>
+            <groupId>io.github.biezhi</groupId>
+            <artifactId>TinyPinyin</artifactId>
+            <version>2.0.3.RELEASE</version>
+        </dependency>
         <!-- Spring AI - 阿里云DashScope (暂时禁用，等待M6发布) -->
         <!-- <dependency>
             <groupId>org.springframework.ai</groupId>

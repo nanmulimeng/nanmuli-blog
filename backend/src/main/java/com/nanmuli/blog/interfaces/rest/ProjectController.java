@@ -1,6 +1,5 @@
 package com.nanmuli.blog.interfaces.rest;
 
-import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.nanmuli.blog.application.project.ProjectAppService;
 import com.nanmuli.blog.application.project.dto.ProjectDTO;
 import com.nanmuli.blog.shared.result.Result;
@@ -29,20 +28,17 @@ public class ProjectController {
         return Result.success(projectAppService.getById(id));
     }
 
-    @SaCheckPermission("project:create")
     @PostMapping("/admin/project")
     public Result<Long> create(@Valid @RequestBody ProjectDTO dto) {
         return Result.success(projectAppService.create(dto));
     }
 
-    @SaCheckPermission("project:update")
     @PutMapping("/admin/project/{id}")
     public Result<Void> update(@PathVariable Long id, @Valid @RequestBody ProjectDTO dto) {
         projectAppService.update(id, dto);
         return Result.success();
     }
 
-    @SaCheckPermission("project:delete")
     @DeleteMapping("/admin/project/{id}")
     public Result<Void> delete(@PathVariable Long id) {
         projectAppService.delete(id);

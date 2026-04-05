@@ -1,5 +1,7 @@
 package com.nanmuli.blog.application.article.dto;
 
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 import lombok.Data;
 
 import java.util.List;
@@ -16,6 +18,8 @@ public class ArticleArchiveDTO {
 
     @Data
     public static class ArticleSimpleDTO {
+
+        @JsonSerialize(using = ToStringSerializer.class)
         private Long id;
         private String title;
         private String slug;

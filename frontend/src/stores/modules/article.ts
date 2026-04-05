@@ -62,7 +62,7 @@ export const useArticleStore = defineStore(
       topArticles.value = await getTopArticles(limit)
     }
 
-    async function saveArticle(data: Partial<Article>): Promise<number> {
+    async function saveArticle(data: Partial<Article>): Promise<string> {
       if (data.id) {
         await updateArticle(data.id, data)
         return data.id
@@ -70,7 +70,7 @@ export const useArticleStore = defineStore(
       return await createArticle(data)
     }
 
-    async function removeArticle(id: number): Promise<void> {
+    async function removeArticle(id: string): Promise<void> {
       await deleteArticle(id)
       articles.value = articles.value.filter((a) => a.id !== id)
     }

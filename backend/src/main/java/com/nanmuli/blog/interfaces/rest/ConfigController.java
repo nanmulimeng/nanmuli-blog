@@ -1,6 +1,5 @@
 package com.nanmuli.blog.interfaces.rest;
 
-import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.nanmuli.blog.application.config.ConfigAppService;
 import com.nanmuli.blog.application.config.command.UpdateConfigCommand;
 import com.nanmuli.blog.application.config.dto.ConfigDTO;
@@ -31,19 +30,16 @@ public class ConfigController {
         return Result.success(configAppService.getPublicConfigsForList());
     }
 
-    @SaCheckPermission("config:list")
     @GetMapping("/admin/config/list")
     public Result<List<ConfigDTO>> listAllConfigs() {
         return Result.success(configAppService.getAllConfigsForAdmin());
     }
 
-    @SaCheckPermission("config:list")
     @GetMapping("/admin/config/{key}")
     public Result<ConfigDTO> getByKey(@PathVariable String key) {
         return Result.success(configAppService.getByKey(key));
     }
 
-    @SaCheckPermission("config:update")
     @PutMapping("/admin/config/{key}")
     public Result<Void> update(@PathVariable String key,
                                @Valid @RequestBody UpdateConfigCommand command) {

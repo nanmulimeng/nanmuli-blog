@@ -1,12 +1,13 @@
+// 注意：ID 使用 string 类型，因为 JavaScript number 无法精确表示 64 位整数
 export interface Category {
-  id: number
+  id: string
   name: string
   slug: string
   description: string
   icon: string
   color: string
   sort: number
-  parentId: number | null
+  parentId: string | null
   articleCount: number
   status: number
   isLeaf: boolean
@@ -19,7 +20,7 @@ export interface Category {
 export interface CategoryPageQuery {
   current?: number
   size?: number
-  parentId?: number | null
+  parentId?: string | null
   isLeaf?: boolean | null
   status?: number | null
   keyword?: string

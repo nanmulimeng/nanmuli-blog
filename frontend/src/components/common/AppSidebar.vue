@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
+import { Setting, HomeFilled } from '@element-plus/icons-vue'
 
 defineProps<{
   collapsed: boolean

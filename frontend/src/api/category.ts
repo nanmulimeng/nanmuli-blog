@@ -22,23 +22,23 @@ export function getCategoryPage(query: CategoryPageQuery): Promise<CategoryPageR
 }
 
 // 获取分类详情
-export function getCategoryById(id: number): Promise<Category> {
+export function getCategoryById(id: string): Promise<Category> {
   return get<Category>(`/admin/category/${id}`)
 }
 
 // 获取分类路径
-export function getCategoryPath(id: number): Promise<Category[]> {
+export function getCategoryPath(id: string): Promise<Category[]> {
   return get<Category[]>(`/admin/category/${id}/path`)
 }
 
-export function createCategory(data: Partial<Category>): Promise<number> {
-  return post<number>('/admin/category', data)
+export function createCategory(data: Partial<Category>): Promise<string> {
+  return post<string>('/admin/category', data)
 }
 
-export function updateCategory(id: number, data: Partial<Category>): Promise<void> {
+export function updateCategory(id: string, data: Partial<Category>): Promise<void> {
   return put<void>(`/admin/category/${id}`, data)
 }
 
-export function deleteCategory(id: number): Promise<void> {
+export function deleteCategory(id: string): Promise<void> {
   return del<void>(`/admin/category/${id}`)
 }

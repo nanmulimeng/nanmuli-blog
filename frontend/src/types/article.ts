@@ -1,15 +1,17 @@
 import type { PageQuery } from './api'
 import type { Category } from './category'
 
+// 注意：ID 使用 string 类型，因为 JavaScript number 无法精确表示 64 位整数（Long）
+// 后端使用雪花算法生成 ID，超过 2^53-1，前端必须用 string 保持精度
 export interface Article {
-  id: number
+  id: string
   title: string
   slug: string
   content: string
   contentHtml: string
   summary: string
   cover: string
-  categoryId: number
+  categoryId: string
   categoryName?: string  // 从category中提取
   category?: Category    // 完整分类信息
   categoryPath?: Category[]  // 分类层级路径（如：后端开发 > Java）
@@ -28,7 +30,7 @@ export interface Article {
 }
 
 export interface ArticleQuery extends PageQuery {
-  categoryId?: number  // 按叶子分类筛选
+  categoryId?: string  // 按叶子分类筛选
   keyword?: string
   sort?: string
 }
@@ -40,7 +42,7 @@ export interface ArticleListResult {
 
 // Tag已废弃，使用多级分类替代
 export interface Tag {
-  id: number
+  id: string
   name: string
   slug: string
   color: string
@@ -54,7 +56,7 @@ export interface ArticleArchive {
 }
 
 export interface ArticleSimple {
-  id: number
+  id: string
   title: string
   slug: string
   publishTime: string

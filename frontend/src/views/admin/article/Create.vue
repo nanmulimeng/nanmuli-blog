@@ -19,7 +19,7 @@ const form = reactive({
   content: '',
   summary: '',
   cover: '',
-  categoryId: undefined as number | undefined,
+  categoryId: undefined as string | undefined,
   isTop: false,
   isOriginal: true,
   originalUrl: '',
@@ -127,8 +127,8 @@ onMounted(() => {
 
       <el-form-item label="发布状态">
         <el-radio-group v-model="form.status">
-          <el-radio :label="1">立即发布</el-radio>
-          <el-radio :label="2">保存为草稿</el-radio>
+          <el-radio :value="1">立即发布</el-radio>
+          <el-radio :value="2">保存为草稿</el-radio>
         </el-radio-group>
       </el-form-item>
 

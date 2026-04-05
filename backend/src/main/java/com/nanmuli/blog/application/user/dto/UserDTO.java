@@ -1,12 +1,16 @@
 package com.nanmuli.blog.application.user.dto;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 import lombok.Data;
 
 import java.time.LocalDateTime;
 
 @Data
 public class UserDTO {
+
+    @JsonSerialize(using = ToStringSerializer.class)
     private Long id;
     private String username;
     private String nickname;

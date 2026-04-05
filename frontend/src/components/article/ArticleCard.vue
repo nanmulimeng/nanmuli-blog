@@ -8,7 +8,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  click: [id: number]
+  click: [id: string]
 }>()
 
 const summary = computed(() => {

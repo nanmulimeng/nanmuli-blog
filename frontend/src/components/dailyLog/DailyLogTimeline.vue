@@ -8,10 +8,10 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{
-  click: [id: number]
+  click: [id: string]
 }>()
 
-function handleLogClick(id: number): void {
+function handleLogClick(id: string): void {
   emit('click', id)
 }
 </script>

@@ -40,7 +40,7 @@ async function fetchArticle(): Promise<void> {
   }
 }
 
-async function fetchRelatedArticles(categoryId: number, excludeId: number): Promise<void> {
+async function fetchRelatedArticles(categoryId: string, excludeId: string): Promise<void> {
   try {
     const res = await getArticleList({
       current: 1,

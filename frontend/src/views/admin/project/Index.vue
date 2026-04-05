@@ -68,8 +68,12 @@ async function handleDelete(row: Project): Promise<void> {
     await deleteProject(row.id)
     ElMessage.success('删除成功')
     fetchData()
-  } catch {
-    // 用户取消
+  } catch (error: any) {
+    // 用户取消对话框时会抛出 'cancel'，不需要提示
+    if (error === 'cancel' || error?.message === 'cancel') {
+      return
+    }
+    console.error('删除项目失败:', error)
   }
 }
 

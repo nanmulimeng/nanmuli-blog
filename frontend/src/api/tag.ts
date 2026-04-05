@@ -9,15 +9,15 @@ export function getTagCloud(): Promise<Tag[]> {
   return get<Tag[]>('/tag/cloud')
 }
 
-export function createTag(data: Partial<Tag>): Promise<number> {
-  return post<number>('/admin/tag', data)
+export function createTag(data: Partial<Tag>): Promise<string> {
+  return post<string>('/admin/tag', data)
 }
 
-export function updateTag(id: number, data: Partial<Tag>): Promise<void> {
+export function updateTag(id: string, data: Partial<Tag>): Promise<void> {
   return put<void>(`/admin/tag/${id}`, data)
 }
 
-export function deleteTag(id: number): Promise<void> {
+export function deleteTag(id: string): Promise<void> {
   return del<void>(`/admin/tag/${id}`)
 }
 

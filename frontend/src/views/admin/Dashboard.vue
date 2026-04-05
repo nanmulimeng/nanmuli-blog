@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { Document, Folder, Collection, View, EditPen, Notebook, FolderOpened, Setting } from '@element-plus/icons-vue'
 
 const stats = ref([
   { label: '文章数量', value: 0, icon: 'Document' },

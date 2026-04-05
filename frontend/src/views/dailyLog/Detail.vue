@@ -18,7 +18,7 @@ const moodMap: Record<string, { icon: string; label: string; color: string }> = 
 }
 
 async function fetchLog(): Promise<void> {
-  const id = Number(route.params.id)
+  const id = route.params.id as string
   if (!id) {
     router.push('/404')
     return

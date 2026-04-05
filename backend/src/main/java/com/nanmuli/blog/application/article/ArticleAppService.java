@@ -24,6 +24,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.util.StringUtils;
+import cn.hutool.extra.pinyin.PinyinUtil;
 import org.springframework.cache.annotation.CacheConfig;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
@@ -350,27 +351,54 @@ public class ArticleAppService {
 
     /**
      * 生成文章slug
-     * 将标题转换为小写，替换空格为连字符，移除特殊字符
+     * 将标题转换为URL友好的格式，支持中文转拼音
      */
     private String generateSlug(String title) {
         if (!StringUtils.hasText(title)) {
             return "untitled-" + System.currentTimeMillis();
         }
+
+        // 中文转拼音
+        String pinyin = PinyinUtil.getPinyin(title, "-");
+
         // 转换为小写，替换空格和特殊字符
-        String slug = title.toLowerCase()
+        String slug = pinyin.toLowerCase()
                 .replaceAll("[^\\w\\s-]", "")  // 移除非字母数字空格连字符
                 .replaceAll("\\s+", "-")        // 空格替换为连字符
                 .replaceAll("-+", "-")          // 多个连字符合并
                 .trim();
+
         // 限制长度
         if (slug.length() > 50) {
-            slug = slug.substring(0, 50);
+            slug = slug.substring(0, 50).replaceAll("-+$", "");
         }
+
         // 确保不以连字符开头或结尾
         slug = slug.replaceAll("^-+", "").replaceAll("-+$", "");
-        // 如果为空，使用时间戳
+
+        // 如果为空，使用拼音首字母
         if (!StringUtils.hasText(slug)) {
             slug = "article-" + System.currentTimeMillis();
+        }
+
+        // 确保唯一性
+        return ensureUniqueSlug(slug);
+    }
+
+    /**
+     * 确保slug唯一性，如果已存在则添加数字后缀
+     */
+    private String ensureUniqueSlug(String baseSlug) {
+        if (!articleRepository.existsBySlug(baseSlug)) {
+            return baseSlug;
+        }
+
+        // 如果已存在，添加数字后缀
+        int suffix = 1;
+        String slug = baseSlug + "-" + suffix;
+        while (articleRepository.existsBySlug(slug)) {
+            suffix++;
+            slug = baseSlug + "-" + suffix;
         }
         return slug;
     }

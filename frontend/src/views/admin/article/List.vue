@@ -45,8 +45,13 @@ async function handleDelete(row: Article): Promise<void> {
     await deleteArticle(row.id)
     ElMessage.success('删除成功')
     fetchData()
-  } catch {
-    // 用户取消
+  } catch (error: any) {
+    // 用户取消对话框时会抛出 'cancel'，不需要提示
+    if (error === 'cancel' || error?.message === 'cancel') {
+      return
+    }
+    // API 错误已由 request.ts 拦截器处理，这里不需要额外提示
+    console.error('删除文章失败:', error)
   }
 }
 
@@ -68,7 +73,14 @@ onMounted(fetchData)
     </div>
 
     <el-table v-loading="loading" :data="articles" border>
-      <el-table-column prop="id" label="ID" width="80" />
+      <el-table-column label="创建日期" width="120" align="center">
+        <template #default="{ row }">
+          <div class="text-xs text-content-secondary">
+            <div v-if="row.createTime">{{ row.createTime.slice(0, 10) }}</div>
+            <div v-else class="text-content-tertiary">-</div>
+          </div>
+        </template>
+      </el-table-column>
       <el-table-column prop="title" label="标题" min-width="200" />
       <el-table-column label="分类" width="120">
         <template #default="{ row }">

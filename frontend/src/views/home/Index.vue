@@ -15,7 +15,7 @@ const configStore = useConfigStore()
 const loading = ref(true)
 const articles = ref<Article[]>([])
 const aggregated = ref<HomeAggregated | null>(null)
-const activeCategory = ref<number | null>(null)
+const activeCategory = ref<string | null>(null)
 
 // 统计数据动画
 const animatedStats = ref({
@@ -84,7 +84,7 @@ function navigateToArticle(slug: string) {
 }
 
 // 导航到分类
-function navigateToCategory(categoryId: number) {
+function navigateToCategory(categoryId: string) {
   router.push(`/article?categoryId=${categoryId}`)
 }
 

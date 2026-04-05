@@ -6,18 +6,18 @@ export function getDailyLogList(params: DailyLogQuery): Promise<PageResult<Daily
   return get<PageResult<DailyLog>>('/daily-log/list', { params })
 }
 
-export function getDailyLogById(id: number): Promise<DailyLog> {
+export function getDailyLogById(id: string): Promise<DailyLog> {
   return get<DailyLog>(`/daily-log/${id}`)
 }
 
-export function createDailyLog(data: Partial<DailyLog>): Promise<number> {
-  return post<number>('/admin/daily-log', data)
+export function createDailyLog(data: Partial<DailyLog>): Promise<string> {
+  return post<string>('/admin/daily-log', data)
 }
 
-export function updateDailyLog(id: number, data: Partial<DailyLog>): Promise<void> {
+export function updateDailyLog(id: string, data: Partial<DailyLog>): Promise<void> {
   return put<void>(`/admin/daily-log/${id}`, data)
 }
 
-export function deleteDailyLog(id: number): Promise<void> {
+export function deleteDailyLog(id: string): Promise<void> {
   return del<void>(`/admin/daily-log/${id}`)
 }

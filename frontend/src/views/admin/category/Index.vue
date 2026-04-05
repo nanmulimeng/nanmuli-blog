@@ -62,7 +62,7 @@ async function fetchData() {
   }
 }
 
-function handleCreate(parentId?: number) {
+function handleCreate(parentId?: string) {
   isEdit.value = false
   form.value = {
     name: '',
@@ -252,8 +252,8 @@ onMounted(fetchData)
 
         <el-form-item label="类型">
           <el-radio-group v-model="form.isLeaf">
-            <el-radio :label="false">父分类（容器）</el-radio>
-            <el-radio :label="true">叶子分类（可关联文章）</el-radio>
+            <el-radio :value="false">父分类（容器）</el-radio>
+            <el-radio :value="true">叶子分类（可关联文章）</el-radio>
           </el-radio-group>
         </el-form-item>
 
@@ -280,8 +280,8 @@ onMounted(fetchData)
 
         <el-form-item label="状态">
           <el-radio-group v-model="form.status">
-            <el-radio :label="1">启用</el-radio>
-            <el-radio :label="0">禁用</el-radio>
+            <el-radio :value="1">启用</el-radio>
+            <el-radio :value="0">禁用</el-radio>
           </el-radio-group>
         </el-form-item>
       </el-form>

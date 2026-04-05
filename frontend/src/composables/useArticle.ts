@@ -44,7 +44,7 @@ export function useArticle() {
     return await getTopArticles(limit)
   }
 
-  async function saveArticle(data: Partial<Article>): Promise<number> {
+  async function saveArticle(data: Partial<Article>): Promise<string> {
     if (data.id) {
       await updateArticle(data.id, data)
       return data.id
@@ -52,7 +52,7 @@ export function useArticle() {
     return await createArticle(data)
   }
 
-  async function removeArticle(id: number): Promise<void> {
+  async function removeArticle(id: string): Promise<void> {
     await deleteArticle(id)
   }
 

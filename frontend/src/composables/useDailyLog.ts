@@ -30,7 +30,7 @@ export function useDailyLog() {
     }
   }
 
-  async function fetchLogById(id: number): Promise<void> {
+  async function fetchLogById(id: string): Promise<void> {
     loading.value = true
     try {
       currentLog.value = await getDailyLogById(id)
@@ -47,7 +47,7 @@ export function useDailyLog() {
     }
   }
 
-  async function removeLog(id: number): Promise<void> {
+  async function removeLog(id: string): Promise<void> {
     await deleteDailyLog(id)
   }
 

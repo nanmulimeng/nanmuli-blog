@@ -51,8 +51,12 @@ async function handleDelete(row: DailyLog): Promise<void> {
     await deleteDailyLog(row.id)
     ElMessage.success('删除成功')
     fetchData()
-  } catch {
-    // 用户取消
+  } catch (error: any) {
+    // 用户取消对话框时会抛出 'cancel'，不需要提示
+    if (error === 'cancel' || error?.message === 'cancel') {
+      return
+    }
+    console.error('删除日志失败:', error)
   }
 }
 

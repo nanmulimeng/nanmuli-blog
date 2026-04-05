@@ -62,9 +62,9 @@
   --theme-text-tertiary: #64748B;
   --theme-text-inverse: #0F172A;
 
-  --theme-border: rgba(59, 130, 246, 0.2);
-  --theme-border-light: rgba(148, 163, 184, 0.1);
-  --theme-divider: rgba(148, 163, 184, 0.15);
+  --theme-border: #334155;
+  --theme-border-light: #475569;
+  --theme-divider: #334155;
 
   --theme-glass: rgba(30, 41, 59, 0.9);
   --theme-glass-border: rgba(59, 130, 246, 0.2);
@@ -384,11 +384,21 @@ body {
 .dark .el-table {
   background-color: var(--theme-bg-secondary);
   color: var(--theme-text-primary);
+  border-color: #334155 !important;
+}
+
+/* 修复表格顶部白色线条 */
+.dark .el-table,
+.dark .el-table__header-wrapper,
+.dark .el-table__inner-wrapper {
+  border-top-color: #334155 !important;
+  border-bottom-color: #334155 !important;
 }
 
 .dark .el-table th.el-table__cell {
   background-color: var(--theme-bg-tertiary);
   color: var(--theme-text-primary);
+  border-bottom-color: #334155 !important;
 }
 
 .dark .el-table td.el-table__cell {
@@ -418,18 +428,18 @@ body {
 }
 
 .dark .el-table--border::before {
-  background-color: var(--theme-border);
+  background-color: #334155 !important;
 }
 
 .dark .el-table--border::after,
 .dark .el-table--group::after,
 .dark .el-table::before {
-  background-color: var(--theme-border);
+  background-color: #334155 !important;
 }
 
 /* el-table 表格底部边框 */
 .dark .el-table__inner-wrapper::before {
-  background-color: var(--theme-border);
+  background-color: #334155 !important;
 }
 
 /* el-table 修复所有单元格背景 - 防止白块 */
@@ -452,7 +462,7 @@ body {
 }
 
 .dark .el-table__fixed-right::before {
-  background-color: var(--theme-border);
+  background-color: #334155 !important;
 }
 
 .dark .el-table__fixed-right .el-table__fixed-body-wrapper,
@@ -908,6 +918,66 @@ html.dark body .el-table .el-table__fixed-right th.el-table__cell {
 .dark .el-table {
   --el-table-text-color: var(--theme-text-primary);
   --el-table-header-text-color: var(--theme-text-primary);
+  --el-table-header-bg-color: var(--theme-bg-tertiary);
+  --el-table-tr-bg-color: var(--theme-bg-secondary);
+  --el-table-row-hover-bg-color: var(--theme-bg-tertiary);
+}
+
+/* 修复表格头部背景 - 增强选择器 */
+.dark .el-table__header-wrapper,
+.dark .el-table__header,
+.dark .el-table__header thead,
+.dark .el-table__header tr,
+.dark .el-table__header th,
+.dark .el-table .el-table__header th.el-table__cell {
+  background-color: var(--theme-bg-tertiary) !important;
+}
+
+/* 修复表格主体背景 */
+.dark .el-table__body-wrapper,
+.dark .el-table__body,
+.dark .el-table__body tbody,
+.dark .el-table__body tr,
+.dark .el-table__body td,
+.dark .el-table .el-table__body td.el-table__cell {
+  background-color: var(--theme-bg-secondary) !important;
+}
+
+/* 修复空状态SVG图标颜色 - 使用CSS滤镜 */
+.dark .el-empty .el-empty__image svg path,
+.dark .el-empty .el-empty__image svg rect,
+.dark .el-empty .el-empty__image svg circle,
+.dark .el-empty .el-empty__image svg * {
+  fill: var(--theme-text-tertiary) !important;
+  stroke: var(--theme-text-tertiary) !important;
+}
+
+/* 另一种方式：直接给empty image添加样式 */
+.dark .el-empty__image {
+  opacity: 0.5;
+  filter: brightness(0.8) contrast(1.2);
+}
+
+/* el-table 边框颜色修复 */
+.dark .el-table,
+.dark .el-table--border,
+.dark .el-table--group {
+  border-color: var(--theme-border);
+}
+
+.dark .el-table th.is-leaf,
+.dark .el-table td {
+  border-bottom-color: var(--theme-border);
+}
+
+.dark .el-table--border th,
+.dark .el-table--border td {
+  border-right-color: var(--theme-border);
+}
+
+/* 确保表格在暗色模式下整体背景一致 */
+.dark .el-table__inner-wrapper {
+  background-color: var(--theme-bg-secondary);
 }
 
 .dark .el-table .cell {
@@ -1018,6 +1088,35 @@ html.dark body .el-table .el-table__fixed-right th.el-table__cell {
 .dark .el-pagination .el-pager li.is-active {
   background-color: var(--theme-primary);
   color: white;
+}
+
+/* 分页按钮暗色模式修复 */
+.dark .el-pagination .btn-prev,
+.dark .el-pagination .btn-next {
+  background-color: var(--theme-bg-tertiary);
+  color: var(--theme-text-secondary);
+}
+
+.dark .el-pagination .btn-prev:hover,
+.dark .el-pagination .btn-next:hover {
+  color: var(--theme-primary);
+}
+
+.dark .el-pagination .btn-prev:disabled,
+.dark .el-pagination .btn-next:disabled {
+  color: var(--theme-text-tertiary);
+  background-color: var(--theme-bg-tertiary);
+}
+
+.dark .el-pagination__total,
+.dark .el-pagination__jump {
+  color: var(--theme-text-secondary);
+}
+
+.dark .el-pagination__editor.el-input .el-input__inner {
+  background-color: var(--theme-bg-tertiary);
+  color: var(--theme-text-primary);
+  border-color: var(--theme-border);
 }
 
 .dark .el-select-dropdown {
@@ -1176,6 +1275,24 @@ html.dark body .el-table .el-table__fixed-right th.el-table__cell {
 }
 
 .dark .el-table__empty-text {
+  color: var(--theme-text-secondary);
+}
+
+/* el-empty 暗色模式 - 修复图标颜色 */
+.dark .el-empty {
+  --el-empty-fill-color-0: var(--theme-bg-tertiary);
+  --el-empty-fill-color-1: var(--theme-text-tertiary);
+  --el-empty-fill-color-2: var(--theme-bg-tertiary);
+  --el-empty-fill-color-3: var(--theme-text-secondary);
+  --el-empty-fill-color-4: var(--theme-bg-secondary);
+  --el-empty-fill-color-5: var(--theme-text-tertiary);
+  --el-empty-fill-color-6: var(--theme-bg-tertiary);
+  --el-empty-fill-color-7: var(--theme-text-secondary);
+  --el-empty-fill-color-8: var(--theme-bg-secondary);
+  --el-empty-fill-color-9: var(--theme-text-tertiary);
+}
+
+.dark .el-empty__description {
   color: var(--theme-text-secondary);
 }
 
@@ -1681,4 +1798,39 @@ html.dark body .el-table .el-table__fixed-right th.el-table__cell {
 .page-leave-to {
   opacity: 0;
   transform: translateY(-10px);
+}
+
+/* ============================================
+   修复暗夜模式表格顶部白色线条问题
+   ============================================ */
+
+/* 强制覆盖表格所有边框颜色 */
+.dark .el-table,
+.dark .el-table--border,
+.dark .el-table--group {
+  border: 1px solid #334155 !important;
+}
+
+/* 修复表格表头底部边框 */
+.dark .el-table__header-wrapper {
+  border-bottom: 1px solid #334155 !important;
+}
+
+/* 修复表格顶部伪元素 */
+.dark .el-table::before,
+.dark .el-table--border::before,
+.dark .el-table__inner-wrapper::before {
+  background: #334155 !important;
+  height: 1px !important;
+}
+
+/* 修复表格表头单元格顶部边框 */
+.dark .el-table thead th.el-table__cell {
+  border-top: none !important;
+  border-bottom: 1px solid #334155 !important;
+}
+
+/* 修复 el-table 所有可能的顶部白线来源 */
+.dark .el-table * {
+  border-top-color: #334155 !important;
 }

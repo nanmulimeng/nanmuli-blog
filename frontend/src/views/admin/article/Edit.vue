@@ -14,7 +14,7 @@ const router = useRouter()
 const formRef = ref<FormInstance>()
 const loading = ref(false)
 const categories = ref<Category[]>([])
-const articleId = Number(route.params.id)
+const articleId = route.params.id as string
 
 const form = reactive<Partial<Article>>({
   title: '',
@@ -43,7 +43,7 @@ async function fetchArticle(): Promise<void> {
     form.content = article.content || ''
     form.summary = article.summary || ''
     form.cover = article.cover || ''
-    form.categoryId = article.categoryId
+    form.categoryId = article.category?.id || undefined
     form.isTop = article.isTop ?? false
     form.isOriginal = article.isOriginal ?? true
     form.originalUrl = article.originalUrl || ''
@@ -55,8 +55,12 @@ async function fetchArticle(): Promise<void> {
 
 async function fetchCategories() {
   try {
-    categories.value = await getLeafCategoryList()
-  } catch {
+    console.log('开始加载分类列表...')
+    const res = await getLeafCategoryList()
+    console.log('分类列表加载成功:', res)
+    categories.value = res
+  } catch (error) {
+    console.error('加载分类失败:', error)
     ElMessage.error('加载分类失败')
   }
 }
@@ -84,9 +88,9 @@ function handleCancel(): void {
   router.back()
 }
 
-onMounted(() => {
-  fetchArticle()
-  fetchCategories()
+onMounted(async () => {
+  await fetchCategories()
+  await fetchArticle()
 })
 </script>
 
@@ -112,13 +116,20 @@ onMounted(() => {
       </el-form-item>
 
       <el-form-item label="分类">
-        <el-select v-model="form.categoryId" placeholder="选择分类" clearable class="w-full">
+              <el-select
+          v-model="form.categoryId"
+          placeholder="选择分类"
+          clearable
+          class="w-full"
+        >
           <el-option
             v-for="cat in categories"
             :key="cat.id"
             :label="cat.name"
             :value="cat.id"
-          />
+          >
+            {{ cat.name }}
+          </el-option>
         </el-select>
       </el-form-item>
 
@@ -150,8 +161,8 @@ onMounted(() => {
 
       <el-form-item label="发布状态">
         <el-radio-group v-model="form.status">
-          <el-radio :label="1">已发布</el-radio>
-          <el-radio :label="2">草稿</el-radio>
+          <el-radio :value="1">已发布</el-radio>
+          <el-radio :value="2">草稿</el-radio>
         </el-radio-group>
       </el-form-item>
 

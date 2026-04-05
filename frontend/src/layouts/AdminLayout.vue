@@ -6,6 +6,7 @@ import { getCurrentUser } from '@/api/auth'
 import { initTheme } from '@/styles/themes'
 import AppSidebar from '@/components/common/AppSidebar.vue'
 import ThemeSwitcher from '@/components/common/ThemeSwitcher.vue'
+import { Fold, Expand } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const userStore = useUserStore()
