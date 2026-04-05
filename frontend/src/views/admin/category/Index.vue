@@ -87,15 +87,19 @@ function handleEdit(row: Category) {
 async function handleDelete(row: Category) {
   try {
     await ElMessageBox.confirm(
-      `确定要删除分类 "${row.name}" 吗？${row.children?.length ? '该分类下有子分类，将一并删除！' : ''}`,
+      `确定要删除分类 "${row.name}" 吗？`,
       '警告',
       { type: 'warning' }
     )
     await deleteCategory(row.id)
     ElMessage.success('删除成功')
     fetchData()
-  } catch {
-    // 取消
+  } catch (error: any) {
+    // 如果后端返回错误，显示错误信息
+    if (error?.response?.data?.message) {
+      ElMessage.error(error.response.data.message)
+    }
+    // 取消删除不处理
   }
 }
 

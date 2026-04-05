@@ -1,5 +1,6 @@
 package com.nanmuli.blog.application.category.dto;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -18,6 +19,12 @@ public class CategoryDTO {
     private Integer articleCount;
     private Boolean isLeaf;
     private Integer status;
-    private LocalDateTime createdAt;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime createTime;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime updateTime;
+
     private List<CategoryDTO> children;
 }

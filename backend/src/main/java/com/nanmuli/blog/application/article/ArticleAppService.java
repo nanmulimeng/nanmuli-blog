@@ -1,5 +1,6 @@
 package com.nanmuli.blog.application.article;
 
+import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.nanmuli.blog.application.article.command.CreateArticleCommand;
@@ -19,6 +20,7 @@ import com.nanmuli.blog.shared.exception.BusinessException;
 import com.nanmuli.blog.shared.result.PageResult;
 import com.nanmuli.blog.shared.util.MarkdownUtil;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.cache.annotation.CacheConfig;
 import org.springframework.cache.annotation.CacheEvict;
@@ -34,6 +36,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @CacheConfig(cacheNames = "article")
@@ -53,6 +56,15 @@ public class ArticleAppService {
         Article article = new Article();
         BeanUtils.copyProperties(command, article);
         article.calculateWordCount();
+
+        // 设置当前登录用户
+        try {
+            Long userId = StpUtil.getLoginIdAsLong();
+            article.setUserId(userId);
+        } catch (Exception e) {
+            log.warn("无法获取当前登录用户，使用默认用户ID=1");
+            article.setUserId(1L); // 默认管理员ID
+        }
 
         // 生成HTML内容
         article.setContentHtml(markdownUtil.toHtml(command.getContent()));
@@ -228,14 +240,15 @@ public class ArticleAppService {
         ArticleDTO dto = new ArticleDTO();
         BeanUtils.copyProperties(article, dto);
         dto.setId(article.getId());
+        // 显式映射时间字段（字段名不一致）
+        dto.setCreateTime(article.getCreatedAt());
+        dto.setUpdateTime(article.getUpdatedAt());
 
         // 填充分类信息和分类路径
         if (article.getCategoryId() != null) {
             Category category = categoryRepository.findById(article.getCategoryId()).orElse(null);
             if (category != null) {
-                CategoryDTO categoryDTO = new CategoryDTO();
-                BeanUtils.copyProperties(category, categoryDTO);
-                dto.setCategory(categoryDTO);
+                dto.setCategory(toCategoryDTO(category));
 
                 // 构建分类层级路径
                 dto.setCategoryPath(buildCategoryPath(category));
@@ -249,15 +262,25 @@ public class ArticleAppService {
     }
 
     /**
+     * 将 Category 转换为 CategoryDTO
+     */
+    private CategoryDTO toCategoryDTO(Category category) {
+        CategoryDTO dto = new CategoryDTO();
+        BeanUtils.copyProperties(category, dto);
+        dto.setId(category.getId());
+        dto.setCreateTime(category.getCreatedAt());
+        dto.setUpdateTime(category.getUpdatedAt());
+        return dto;
+    }
+
+    /**
      * 构建分类层级路径（从根到当前分类）
      */
     private List<CategoryDTO> buildCategoryPath(Category category) {
         List<CategoryDTO> path = new ArrayList<>();
 
         // 添加当前分类
-        CategoryDTO currentDTO = new CategoryDTO();
-        BeanUtils.copyProperties(category, currentDTO);
-        path.add(currentDTO);
+        path.add(toCategoryDTO(category));
 
         // 递归添加上级分类
         Long parentId = category.getParentId();
@@ -266,9 +289,7 @@ public class ArticleAppService {
             if (parent == null) {
                 break;
             }
-            CategoryDTO parentDTO = new CategoryDTO();
-            BeanUtils.copyProperties(parent, parentDTO);
-            path.add(0, parentDTO);  // 插入到开头
+            path.add(0, toCategoryDTO(parent));  // 插入到开头
             parentId = parent.getParentId();
         }
 

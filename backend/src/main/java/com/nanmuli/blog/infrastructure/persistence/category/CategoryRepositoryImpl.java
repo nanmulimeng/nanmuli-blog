@@ -56,4 +56,11 @@ public class CategoryRepositoryImpl implements CategoryRepository {
     public void deleteById(Long id) {
         categoryMapper.deleteById(id);
     }
+
+    @Override
+    public boolean existsByParentId(Long parentId) {
+        LambdaQueryWrapper<Category> wrapper = Wrappers.lambdaQuery();
+        wrapper.eq(Category::getParentId, parentId);
+        return categoryMapper.selectCount(wrapper) > 0;
+    }
 }

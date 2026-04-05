@@ -2,7 +2,64 @@
 @tailwind components;
 @tailwind utilities;
 
-/* 基础样式 */
+/* ============================================
+   Aurora Glass Design System - Global Styles
+   ============================================ */
+
+/* 基础变量定义 */
+:root {
+  /* Light 主题变量 */
+  --bg-primary: #fafafa;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #f4f4f5;
+  --bg-glass: rgba(255, 255, 255, 0.7);
+
+  --text-primary: #18181b;
+  --text-secondary: #52525b;
+  --text-tertiary: #a1a1aa;
+  --text-muted: #d4d4d8;
+
+  --border-primary: rgba(0, 0, 0, 0.08);
+  --border-glass: rgba(255, 255, 255, 0.5);
+  --divider: rgba(0, 0, 0, 0.06);
+
+  /* 极光渐变色 */
+  --gradient-aurora: linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #f5576c 75%, #4facfe 100%);
+  --gradient-purple: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  --gradient-cyan: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  --gradient-pink: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+
+  /* 阴影 */
+  --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  --shadow-glow: 0 0 40px rgba(168, 85, 247, 0.3);
+  --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.08);
+  --shadow-card-hover: 0 20px 40px rgba(0, 0, 0, 0.15);
+}
+
+/* Dark 主题变量 */
+.dark {
+  --bg-primary: #0a0a0f;
+  --bg-secondary: #12121a;
+  --bg-tertiary: #1a1a25;
+  --bg-glass: rgba(18, 18, 26, 0.8);
+
+  --text-primary: #fafafa;
+  --text-secondary: #a1a1aa;
+  --text-tertiary: #71717a;
+  --text-muted: #52525b;
+
+  --border-primary: rgba(255, 255, 255, 0.08);
+  --border-glass: rgba(255, 255, 255, 0.1);
+  --divider: rgba(255, 255, 255, 0.06);
+
+  --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --shadow-glow: 0 0 60px rgba(168, 85, 247, 0.4);
+}
+
+/* ============================================
+   Base Styles
+   ============================================ */
+
 * {
   box-sizing: border-box;
 }
@@ -12,123 +69,430 @@ html {
 }
 
 body {
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  color: #1f2937;
-  background-color: #f9fafb;
+  color: var(--text-primary);
+  background-color: var(--bg-primary);
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-/* 自定义滚动条 */
+/* 选中文字样式 */
+::selection {
+  background: rgba(168, 85, 247, 0.3);
+  color: inherit;
+}
+
+/* ============================================
+   Custom Scrollbar
+   ============================================ */
+
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: var(--bg-tertiary);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
+  background: var(--text-tertiary);
   border-radius: 4px;
+  opacity: 0.5;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #a8a8a8;
+  background: var(--text-secondary);
 }
 
-/* 代码字体 */
+/* ============================================
+   Glassmorphism Components
+   ============================================ */
+
+@layer components {
+  /* 基础玻璃卡片 */
+  .glass {
+    background: var(--bg-glass);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--border-glass);
+    box-shadow: var(--shadow-glass);
+  }
+
+  /* 玻璃卡片 - 悬停效果 */
+  .glass-card {
+    @apply glass rounded-3xl transition-all duration-500 ease-smooth;
+  }
+
+  .glass-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-card-hover);
+  }
+
+  /* 渐变文字 */
+  .gradient-text {
+    background: var(--gradient-aurora);
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* 渐变边框 */
+  .gradient-border {
+    position: relative;
+    background: var(--bg-secondary);
+    border-radius: 24px;
+  }
+
+  .gradient-border::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: 26px;
+    background: var(--gradient-aurora);
+    z-index: -1;
+    opacity: 0.8;
+    transition: opacity 0.3s ease;
+  }
+
+  .gradient-border:hover::before {
+    opacity: 1;
+  }
+
+  /* 渐变按钮 */
+  .btn-gradient {
+    background: var(--gradient-purple);
+    color: white;
+    border-radius: 9999px;
+    padding: 12px 28px;
+    font-weight: 600;
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .btn-gradient::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+    transition: left 0.5s ease;
+  }
+
+  .btn-gradient:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.5);
+  }
+
+  .btn-gradient:hover::before {
+    left: 100%;
+  }
+
+  /* 次要按钮 - 玻璃样式 */
+  .btn-glass {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 9999px;
+    padding: 12px 28px;
+    font-weight: 500;
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .btn-glass:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: translateY(-2px);
+  }
+
+  /* 幽灵按钮 */
+  .btn-ghost {
+    background: transparent;
+    border-radius: 12px;
+    padding: 8px 16px;
+    transition: all 0.2s ease;
+  }
+
+  .btn-ghost:hover {
+    background: var(--bg-tertiary);
+  }
+
+  /* 标签 Pill */
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 14px;
+    border-radius: 9999px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: all 0.2s ease;
+  }
+
+  .pill-gradient {
+    background: var(--gradient-purple);
+    color: white;
+  }
+
+  .pill-glass {
+    background: var(--bg-glass);
+    border: 1px solid var(--border-glass);
+    color: var(--text-secondary);
+  }
+
+  .pill-glass:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+  }
+
+  /* 输入框 */
+  .input-glass {
+    background: var(--bg-glass);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border-glass);
+    border-radius: 16px;
+    padding: 14px 20px;
+    color: var(--text-primary);
+    transition: all 0.3s ease;
+    width: 100%;
+  }
+
+  .input-glass:focus {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(168, 85, 247, 0.5);
+    box-shadow: 0 0 0 4px rgba(168, 85, 247, 0.1);
+    outline: none;
+  }
+
+  .dark .input-glass:focus {
+    background: rgba(18, 18, 26, 0.9);
+  }
+}
+
+/* ============================================
+   Animation Utilities
+   ============================================ */
+
+@layer utilities {
+  .animation-delay-100 {
+    animation-delay: 100ms;
+  }
+  .animation-delay-200 {
+    animation-delay: 200ms;
+  }
+  .animation-delay-300 {
+    animation-delay: 300ms;
+  }
+  .animation-delay-400 {
+    animation-delay: 400ms;
+  }
+  .animation-delay-500 {
+    animation-delay: 500ms;
+  }
+  .animation-delay-700 {
+    animation-delay: 700ms;
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* ============================================
+   Gradient Backgrounds
+   ============================================ */
+
+.bg-gradient-aurora {
+  background: var(--gradient-aurora);
+  background-size: 400% 400%;
+  animation: gradientFlow 15s ease infinite;
+}
+
+.bg-gradient-purple {
+  background: var(--gradient-purple);
+}
+
+.bg-gradient-cyan {
+  background: var(--gradient-cyan);
+}
+
+.bg-grid-pattern {
+  background-image: url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%239C92AC' fill-opacity='0.05' fill-rule='evenodd'%3E%3Cpath d='M0 40L40 0H20L0 20M40 40V20L20 40'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+/* 动态渐变背景 */
+@keyframes gradientFlow {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+/* ============================================
+   Code Font
+   ============================================ */
+
 pre, code {
-  font-family: 'Fira Code', 'JetBrains Mono', monospace;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
 }
 
-/* Markdown 内容样式 */
+/* ============================================
+   Markdown Content Styles
+   ============================================ */
+
 .markdown-body {
   line-height: 1.8;
+  color: var(--text-primary);
+}
 
-  h1, h2, h3, h4, h5, h6 {
-    margin-top: 1.5em;
-    margin-bottom: 0.75em;
-    font-weight: 600;
-    color: #111827;
-  }
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  margin-top: 1.5em;
+  margin-bottom: 0.75em;
+  font-weight: 600;
+  color: var(--text-primary);
+}
 
-  h1 { font-size: 2em; }
-  h2 { font-size: 1.5em; }
-  h3 { font-size: 1.25em; }
+.markdown-body h1 { font-size: 2em; }
+.markdown-body h2 { font-size: 1.5em; }
+.markdown-body h3 { font-size: 1.25em; }
 
-  p {
-    margin-bottom: 1em;
-  }
+.markdown-body p {
+  margin-bottom: 1em;
+}
 
-  pre {
-    background-color: #1e1e1e;
-    padding: 1em;
-    border-radius: 8px;
-    overflow-x: auto;
-    margin: 1em 0;
+.markdown-body pre {
+  background-color: #1e1e2e;
+  padding: 1.2em;
+  border-radius: 16px;
+  overflow-x: auto;
+  margin: 1.5em 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
 
-    code {
-      background: none;
-      padding: 0;
-      color: #d4d4d4;
-    }
-  }
+.markdown-body pre code {
+  background: none;
+  padding: 0;
+  color: #cdd6f4;
+  font-size: 0.9em;
+  line-height: 1.6;
+}
 
-  code {
-    background-color: #f3f4f6;
-    padding: 0.2em 0.4em;
-    border-radius: 4px;
-    font-size: 0.875em;
-    color: #ef4444;
-  }
+.markdown-body code {
+  background-color: var(--bg-tertiary);
+  padding: 0.2em 0.5em;
+  border-radius: 6px;
+  font-size: 0.875em;
+  color: var(--aurora-pink, #ec4899);
+}
 
-  blockquote {
-    border-left: 4px solid #e5e7eb;
-    padding-left: 1em;
-    margin: 1em 0;
-    color: #6b7280;
-  }
+.markdown-body blockquote {
+  border-left: 4px solid;
+  border-image: var(--gradient-purple) 1;
+  padding-left: 1em;
+  margin: 1.5em 0;
+  color: var(--text-secondary);
+  font-style: italic;
+}
 
-  ul, ol {
-    margin: 1em 0;
-    padding-left: 2em;
-  }
+.markdown-body ul,
+.markdown-body ol {
+  margin: 1em 0;
+  padding-left: 2em;
+}
 
-  li {
-    margin: 0.25em 0;
-  }
+.markdown-body li {
+  margin: 0.5em 0;
+}
 
-  a {
-    color: #0ea5e9;
-    text-decoration: none;
+.markdown-body a {
+  color: #a855f7;
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.2s ease;
+}
 
-    &:hover {
-      text-decoration: underline;
-    }
-  }
+.markdown-body a:hover {
+  color: #7c3aed;
+  text-decoration: underline;
+}
 
-  img {
-    max-width: 100%;
-    border-radius: 8px;
-  }
+.markdown-body img {
+  max-width: 100%;
+  border-radius: 16px;
+  margin: 1.5em 0;
+  box-shadow: var(--shadow-card);
+}
 
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    margin: 1em 0;
+.markdown-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.5em 0;
+  border-radius: 12px;
+  overflow: hidden;
+}
 
-    th, td {
-      border: 1px solid #e5e7eb;
-      padding: 0.5em;
-      text-align: left;
-    }
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid var(--divider);
+  padding: 0.75em 1em;
+  text-align: left;
+}
 
-    th {
-      background-color: #f9fafb;
-      font-weight: 600;
-    }
-  }
+.markdown-body th {
+  background: var(--bg-tertiary);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.markdown-body tr:nth-child(even) {
+  background: var(--bg-tertiary);
+}
+
+/* ============================================
+   Noise Texture Overlay
+   ============================================ */
+
+.noise-overlay {
+  position: relative;
+}
+
+.noise-overlay::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  opacity: 0.02;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ============================================
+   Page Transitions
+   ============================================ */
+
+.page-enter-active,
+.page-leave-active {
+  transition: all 0.3s ease;
+}
+
+.page-enter-from {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.page-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
 }

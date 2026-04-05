@@ -1,6 +1,7 @@
 package com.nanmuli.blog.application.article.dto;
 
 import com.nanmuli.blog.application.category.dto.CategoryDTO;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -27,7 +28,13 @@ public class ArticleDTO {
     private Boolean isTop;
     private Boolean isOriginal;
     private String originalUrl;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime publishTime;
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime createTime;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime updateTime;
 }

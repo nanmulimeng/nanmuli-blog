@@ -15,4 +15,9 @@ public interface CategoryRepository {
     List<Category> findAll();
 
     void deleteById(Long id);
+
+    /**
+     * 检查是否存在指定父分类的子分类
+     */
+    boolean existsByParentId(Long parentId);
 }

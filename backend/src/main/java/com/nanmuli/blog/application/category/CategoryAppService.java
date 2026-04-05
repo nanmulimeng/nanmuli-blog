@@ -119,8 +119,7 @@ public class CategoryAppService {
      * 是否有子分类
      */
     private boolean hasChildren(Long parentId) {
-        return categoryRepository.findAll().stream()
-                .anyMatch(c -> parentId.equals(c.getParentId()));
+        return categoryRepository.existsByParentId(parentId);
     }
 
     /**
@@ -132,15 +131,23 @@ public class CategoryAppService {
                 .map(this::toDTO)
                 .toList();
 
-        // 按parentId分组
+        // 按parentId分组，并对每个分组内的子节点按sort排序
         Map<Long, List<CategoryDTO>> parentMap = dtoList.stream()
                 .filter(dto -> dto.getParentId() != null)
-                .collect(Collectors.groupingBy(CategoryDTO::getParentId));
+                .collect(Collectors.groupingBy(
+                        CategoryDTO::getParentId,
+                        Collectors.collectingAndThen(
+                                Collectors.toList(),
+                                list -> list.stream()
+                                        .sorted(Comparator.comparing(CategoryDTO::getSort, Comparator.nullsLast(Integer::compareTo)))
+                                        .collect(Collectors.toList())
+                        )
+                ));
 
-        // 设置子节点
+        // 设置子节点（已排序）
         dtoList.forEach(dto -> dto.setChildren(parentMap.get(dto.getId())));
 
-        // 返回根节点（parentId为null的节点）
+        // 返回根节点（parentId为null的节点），按sort排序
         return dtoList.stream()
                 .filter(dto -> dto.getParentId() == null)
                 .sorted(Comparator.comparing(CategoryDTO::getSort, Comparator.nullsLast(Integer::compareTo)))
@@ -151,6 +158,9 @@ public class CategoryAppService {
         CategoryDTO dto = new CategoryDTO();
         BeanUtils.copyProperties(category, dto);
         dto.setId(category.getId());
+        // 显式映射时间字段（字段名不一致）
+        dto.setCreateTime(category.getCreatedAt());
+        dto.setUpdateTime(category.getUpdatedAt());
         return dto;
     }
 }

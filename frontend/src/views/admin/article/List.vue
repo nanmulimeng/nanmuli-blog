@@ -70,7 +70,11 @@ onMounted(fetchData)
     <el-table v-loading="loading" :data="articles" border>
       <el-table-column prop="id" label="ID" width="80" />
       <el-table-column prop="title" label="标题" min-width="200" />
-      <el-table-column prop="categoryName" label="分类" width="120" />
+      <el-table-column label="分类" width="120">
+        <template #default="{ row }">
+          {{ row.category?.name }}
+        </template>
+      </el-table-column>
       <el-table-column label="状态" width="100">
         <template #default="{ row }">
           <el-tag :type="ArticleStatusMap[row.status]?.type || 'info'" size="small">
