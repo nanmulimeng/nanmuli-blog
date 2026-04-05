@@ -6,7 +6,7 @@ import { getArticleList } from '@/api/article'
 import { getHomeAggregated } from '@/api/home'
 import { formatDateCN } from '@/utils/format'
 import type { Article } from '@/types/article'
-import type { HomeAggregatedDTO } from '@/types/home'
+import type { HomeAggregated } from '@/types/home'
 
 const router = useRouter()
 const configStore = useConfigStore()
@@ -14,7 +14,7 @@ const configStore = useConfigStore()
 // 数据状态
 const loading = ref(true)
 const articles = ref<Article[]>([])
-const aggregated = ref<HomeAggregatedDTO | null>(null)
+const aggregated = ref<HomeAggregated | null>(null)
 const activeCategory = ref<number | null>(null)
 
 // 统计数据动画
@@ -48,10 +48,10 @@ function animateStats() {
   if (!aggregated.value) return
 
   const targets = {
-    articleCount: aggregated.value.articleCount || 0,
-    categoryCount: aggregated.value.categoryCount || 0,
-    tagCount: aggregated.value.tagCount || 0,
-    dayCount: aggregated.value.runningDays || 0,
+    articleCount: aggregated.value.stats.articleCount || 0,
+    categoryCount: aggregated.value.stats.categoryCount || 0,
+    tagCount: aggregated.value.stats.tagCount || 0,
+    dayCount: aggregated.value.stats.dailyLogCount || 0,
   }
 
   const duration = 1500
@@ -102,7 +102,7 @@ const charIndex = ref(0)
 const isDeleting = ref(false)
 
 function typeWriter() {
-  const text = heroTexts[textIndex.value]
+  const text = heroTexts[textIndex.value] as string
 
   if (isDeleting.value) {
     currentText.value = text.substring(0, charIndex.value - 1)
@@ -137,14 +137,14 @@ onMounted(() => {
     <!-- Hero Section -->
     <section class="relative min-h-[90vh] overflow-hidden">
       <!-- 动态背景 -->
-      <div class="absolute inset-0 bg-gradient-to-br from-aurora-purple/20 via-aurora-pink/10 to-aurora-cyan/20">
+      <div class="absolute inset-0 bg-gradient-to-br from-blue-100/50 via-cyan-50/30 to-blue-50/40 dark:from-cyan-900/20 dark:via-blue-900/10 dark:to-cyan-800/20">
         <!-- 动画网格 -->
-        <div class="absolute inset-0 bg-grid-pattern opacity-50" />
+        <div class="absolute inset-0 bg-grid-pattern opacity-30 dark:opacity-20" />
 
-        <!-- 浮动光球 -->
-        <div class="absolute left-10 top-20 h-72 w-72 rounded-full bg-aurora-purple/30 blur-3xl animate-float" />
-        <div class="animation-delay-500 absolute right-20 top-40 h-96 w-96 rounded-full bg-aurora-pink/20 blur-3xl animate-float" />
-        <div class="animation-delay-700 absolute bottom-20 left-1/3 h-64 w-64 rounded-full bg-aurora-cyan/20 blur-3xl animate-float" />
+        <!-- 浮动光球 - 使用主题蓝色系 -->
+        <div class="absolute left-10 top-20 h-72 w-72 rounded-full bg-blue-400/20 blur-3xl animate-float dark:bg-cyan-500/15" />
+        <div class="animation-delay-500 absolute right-20 top-40 h-96 w-96 rounded-full bg-cyan-300/15 blur-3xl animate-float dark:bg-blue-500/10" />
+        <div class="animation-delay-700 absolute bottom-20 left-1/3 h-64 w-64 rounded-full bg-blue-300/20 blur-3xl animate-float dark:bg-cyan-400/15" />
       </div>
 
       <!-- Hero 内容 -->
@@ -153,26 +153,26 @@ onMounted(() => {
           <!-- 左侧：文字内容 -->
           <div class="space-y-8">
             <!-- 标签 -->
-            <div class="inline-flex items-center gap-2 rounded-full bg-white/80 px-4 py-2 shadow-sm backdrop-blur-sm dark:bg-dark-800/80">
-              <span class="flex h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-              <span class="text-sm font-medium text-gray-600 dark:text-gray-400">持续更新中</span>
+            <div class="inline-flex items-center gap-2 rounded-full bg-surface-secondary/80 px-4 py-2 shadow-sm backdrop-blur-sm">
+              <span class="flex h-2 w-2 rounded-full bg-success animate-pulse" />
+              <span class="text-sm font-medium text-content-secondary">持续更新中</span>
             </div>
 
             <!-- 主标题 -->
             <div class="space-y-4">
-              <h1 class="text-5xl font-bold leading-tight text-gray-900 dark:text-white sm:text-6xl lg:text-7xl">
+              <h1 class="text-5xl font-bold leading-tight text-content-primary sm:text-6xl lg:text-7xl">
                 <span class="block">欢迎来到</span>
                 <span class="gradient-text">{{ configStore.siteName || '我的博客' }}</span>
               </h1>
 
               <!-- 打字机效果副标题 -->
-              <p class="h-10 text-xl text-gray-600 dark:text-gray-400 sm:text-2xl">
+              <p class="h-10 text-xl text-content-secondary sm:text-2xl">
                 {{ currentText }}<span class="animate-pulse">|</span>
               </p>
             </div>
 
             <!-- 描述 -->
-            <p class="max-w-lg text-lg text-gray-600 dark:text-gray-400">
+            <p class="max-w-lg text-lg text-content-secondary">
               {{ configStore.siteDescription || '分享技术学习心得，记录编程成长历程，探索代码世界的无限可能' }}
             </p>
 
@@ -189,7 +189,7 @@ onMounted(() => {
 
               <router-link
                 to="/daily-log"
-                class="btn-glass inline-flex items-center gap-2 text-gray-700 dark:text-gray-300"
+                class="btn-glass inline-flex items-center gap-2 text-content-secondary"
               >
                 <el-icon class="text-lg"><Timer /></el-icon>
                 <span>技术日志</span>
@@ -202,7 +202,7 @@ onMounted(() => {
                 v-if="configStore.siteGithub"
                 :href="configStore.siteGithub"
                 target="_blank"
-                class="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-100 text-gray-600 transition-all hover:bg-gray-200 hover:text-gray-900 dark:bg-dark-700 dark:text-gray-400 dark:hover:bg-dark-600 dark:hover:text-white"
+                class="flex h-10 w-10 items-center justify-center rounded-xl bg-surface-tertiary text-content-secondary transition-all hover:bg-surface-secondary hover:text-content-primary"
               >
                 <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
@@ -211,7 +211,7 @@ onMounted(() => {
               <a
                 v-if="configStore.siteEmail"
                 :href="`mailto:${configStore.siteEmail}`"
-                class="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-100 text-gray-600 transition-all hover:bg-gray-200 hover:text-gray-900 dark:bg-dark-700 dark:text-gray-400 dark:hover:bg-dark-600 dark:hover:text-white"
+                class="flex h-10 w-10 items-center justify-center rounded-xl bg-surface-tertiary text-content-secondary transition-all hover:bg-surface-secondary hover:text-content-primary"
               >
                 <el-icon class="text-lg"><Message /></el-icon>
               </a>
@@ -228,9 +228,9 @@ onMounted(() => {
                   <div class="h-3 w-3 rounded-full bg-yellow-500" />
                   <div class="h-3 w-3 rounded-full bg-green-500" />
                 </div>
-                <span class="text-xs text-gray-400">blog.vue</span>
+                <span class="text-xs text-content-tertiary">blog.vue</span>
               </div>
-              <pre class="overflow-x-auto text-sm leading-relaxed text-gray-700 dark:text-gray-300"><code>&lt;script setup&gt;
+              <pre class="overflow-x-auto text-sm leading-relaxed text-content-secondary"><code>&lt;script setup&gt;
 const passion = ref('Coding')
 const dream = computed(() => {
   return `Build with ${passion.value}`
@@ -245,12 +245,12 @@ watch(experience, (newVal) => {
 &lt;/script&gt;</code></pre>
             </div>
 
-            <!-- 装饰元素 -->
-            <div class="absolute -right-4 top-1/2 -translate-y-1/2 transform rounded-2xl bg-gradient-to-br from-aurora-purple to-aurora-pink p-4 shadow-xl animate-float">
+            <!-- 装饰元素 - 使用主题蓝色系 -->
+            <div class="absolute -right-4 top-1/2 -translate-y-1/2 transform rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-400 p-4 shadow-xl animate-float dark:from-blue-500 dark:to-blue-500">
               <el-icon class="text-3xl text-white"><Code /></el-icon>
             </div>
 
-            <div class="absolute -left-8 bottom-10 transform rounded-2xl bg-gradient-to-br from-aurora-cyan to-aurora-blue p-4 shadow-xl animation-delay-500 animate-float">
+            <div class="absolute -left-8 bottom-10 transform rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-500 p-4 shadow-xl animation-delay-500 animate-float dark:from-blue-500 dark:to-blue-500">
               <el-icon class="text-3xl text-white"><Coffee /></el-icon>
             </div>
           </div>
@@ -258,35 +258,35 @@ watch(experience, (newVal) => {
       </div>
 
       <!-- 底部渐变过渡 -->
-      <div class="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-[var(--bg-primary)] to-transparent" />
+      <div class="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-[var(--theme-bg-primary)] to-transparent" />
     </section>
 
     <!-- Stats Bar -->
     <section class="relative z-20 -mt-16 mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
       <div class="glass-card grid grid-cols-2 gap-8 rounded-3xl p-8 md:grid-cols-4">
         <div class="text-center">
-          <div class="text-3xl font-bold text-gray-900 dark:text-white sm:text-4xl">
+          <div class="text-3xl font-bold text-content-primary sm:text-4xl">
             {{ animatedStats.articleCount }}
           </div>
-          <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">篇文章</div>
+          <div class="mt-1 text-sm text-content-tertiary">篇文章</div>
         </div>
         <div class="text-center">
-          <div class="text-3xl font-bold text-gray-900 dark:text-white sm:text-4xl">
+          <div class="text-3xl font-bold text-content-primary sm:text-4xl">
             {{ animatedStats.categoryCount }}
           </div>
-          <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">个分类</div>
+          <div class="mt-1 text-sm text-content-tertiary">个分类</div>
         </div>
         <div class="text-center">
-          <div class="text-3xl font-bold text-gray-900 dark:text-white sm:text-4xl">
+          <div class="text-3xl font-bold text-content-primary sm:text-4xl">
             {{ animatedStats.tagCount }}
           </div>
-          <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">个标签</div>
+          <div class="mt-1 text-sm text-content-tertiary">个标签</div>
         </div>
         <div class="text-center">
-          <div class="text-3xl font-bold text-gray-900 dark:text-white sm:text-4xl">
+          <div class="text-3xl font-bold text-content-primary sm:text-4xl">
             {{ animatedStats.dayCount }}
           </div>
-          <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">天运行</div>
+          <div class="mt-1 text-sm text-content-tertiary">天运行</div>
         </div>
       </div>
     </section>
@@ -296,10 +296,10 @@ watch(experience, (newVal) => {
       <!-- Section Header -->
       <div class="mb-12 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 class="text-3xl font-bold text-gray-900 dark:text-white sm:text-4xl">
+          <h2 class="text-3xl font-bold text-content-primary sm:text-4xl">
             最新文章
           </h2>
-          <p class="mt-2 text-gray-600 dark:text-gray-400">
+          <p class="mt-2 text-content-secondary">
             探索技术的无限可能，分享学习的点滴收获
           </p>
         </div>
@@ -336,7 +336,7 @@ watch(experience, (newVal) => {
         <article
           v-for="(article, index) in filteredArticles"
           :key="article.id"
-          class="group cursor-pointer overflow-hidden rounded-3xl bg-white shadow-card transition-all duration-500 hover:shadow-card-hover hover:-translate-y-2 dark:bg-dark-800"
+          class="group cursor-pointer overflow-hidden rounded-3xl bg-surface-secondary shadow-card transition-all duration-500 hover:shadow-card-hover hover:-translate-y-2"
           :style="{ animationDelay: `${index * 100}ms` }"
           @click="navigateToArticle(article.slug)"
         >
@@ -348,8 +348,8 @@ watch(experience, (newVal) => {
               :alt="article.title"
               class="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
             />
-            <div v-else class="flex h-full w-full items-center justify-center bg-gradient-to-br from-aurora-purple/20 to-aurora-pink/20">
-              <el-icon class="text-4xl text-aurora-purple/50"><Document /></el-icon>
+            <div v-else class="flex h-full w-full items-center justify-center bg-gradient-to-br from-blue-400/20 to-cyan-300/20 dark:from-cyan-500/20 dark:to-blue-400/20">
+              <el-icon class="text-4xl text-primary/50"><Document /></el-icon>
             </div>
 
             <!-- 置顶标签 -->
@@ -362,7 +362,7 @@ watch(experience, (newVal) => {
 
             <!-- 分类标签 -->
             <div class="absolute bottom-4 left-4">
-              <span class="rounded-full bg-white/90 px-3 py-1 text-xs font-medium text-gray-700 shadow-sm backdrop-blur-sm dark:bg-dark-900/90 dark:text-gray-300">
+              <span class="rounded-full bg-surface-secondary/90 px-3 py-1 text-xs font-medium text-content-secondary shadow-sm backdrop-blur-sm">
                 {{ article.categoryName }}
               </span>
             </div>
@@ -370,13 +370,13 @@ watch(experience, (newVal) => {
 
           <!-- 内容 -->
           <div class="p-6">
-            <h3 class="mb-3 text-lg font-semibold text-gray-900 line-clamp-2 transition-colors group-hover:text-aurora-purple dark:text-white dark:group-hover:text-aurora-pink">
+            <h3 class="mb-3 text-lg font-semibold text-content-primary line-clamp-2 transition-colors group-hover:text-primary">
               {{ article.title }}
             </h3>
-            <p class="mb-4 text-sm text-gray-600 line-clamp-2 leading-relaxed dark:text-gray-400">
+            <p class="mb-4 text-sm text-content-secondary line-clamp-2 leading-relaxed">
               {{ article.summary }}
             </p>
-            <div class="flex items-center gap-4 text-xs text-gray-400">
+            <div class="flex items-center gap-4 text-xs text-content-tertiary">
               <span class="flex items-center gap-1">
                 <el-icon><Calendar /></el-icon>
                 {{ formatDateCN(article.publishTime) }}
@@ -392,15 +392,15 @@ watch(experience, (newVal) => {
 
       <!-- Empty State -->
       <div v-else class="flex flex-col items-center justify-center py-20 text-center">
-        <el-icon class="mb-4 text-6xl text-gray-300 dark:text-gray-600"><Document /></el-icon>
-        <p class="text-gray-500 dark:text-gray-400">暂无文章</p>
+        <el-icon class="mb-4 text-6xl text-content-tertiary/50"><Document /></el-icon>
+        <p class="text-content-secondary">暂无文章</p>
       </div>
 
       <!-- View All Button -->
       <div class="mt-12 text-center">
         <router-link
           to="/article"
-          class="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-6 py-3 text-sm font-medium text-gray-700 transition-all hover:border-aurora-purple hover:text-aurora-purple dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-aurora-pink dark:hover:text-aurora-pink"
+          class="inline-flex items-center gap-2 rounded-full border border-border bg-surface-secondary px-6 py-3 text-sm font-medium text-content-secondary transition-all hover:border-primary hover:text-primary"
         >
           查看全部文章
           <el-icon><ArrowRight /></el-icon>
@@ -411,14 +411,14 @@ watch(experience, (newVal) => {
     <!-- Categories Section -->
     <section class="relative overflow-hidden py-24">
       <!-- 背景装饰 -->
-      <div class="absolute inset-0 bg-gradient-to-b from-transparent via-aurora-purple/5 to-transparent" />
+      <div class="absolute inset-0 bg-gradient-to-b from-transparent via-primary/5 to-transparent" />
 
       <div class="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div class="mb-12 text-center">
-          <h2 class="text-3xl font-bold text-gray-900 dark:text-white sm:text-4xl">
+          <h2 class="text-3xl font-bold text-content-primary sm:text-4xl">
             探索分类
           </h2>
-          <p class="mt-2 text-gray-600 dark:text-gray-400">
+          <p class="mt-2 text-content-secondary">
             按主题浏览感兴趣的内容
           </p>
         </div>
@@ -427,17 +427,17 @@ watch(experience, (newVal) => {
           <button
             v-for="cat in aggregated?.categories"
             :key="cat.id"
-            class="group relative overflow-hidden rounded-2xl bg-white p-6 text-left shadow-card transition-all duration-300 hover:shadow-card-hover hover:-translate-y-1 dark:bg-dark-800"
+            class="group relative overflow-hidden rounded-2xl bg-surface-secondary p-6 text-left shadow-card transition-all duration-300 hover:shadow-card-hover hover:-translate-y-1"
             @click="navigateToCategory(cat.id)"
           >
             <!-- 装饰背景 -->
-            <div class="absolute -right-4 -top-4 h-20 w-20 rounded-full bg-gradient-to-br from-aurora-purple/20 to-aurora-pink/20 opacity-0 transition-opacity group-hover:opacity-100" />
+            <div class="absolute -right-4 -top-4 h-20 w-20 rounded-full bg-gradient-to-br from-primary/20 to-cyan-400/20 opacity-0 transition-opacity group-hover:opacity-100" />
 
             <div class="relative">
-              <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+              <h3 class="text-lg font-semibold text-content-primary">
                 {{ cat.name }}
               </h3>
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              <p class="mt-1 text-sm text-content-tertiary">
                 {{ cat.articleCount || 0 }} 篇文章
               </p>
             </div>
@@ -446,49 +446,49 @@ watch(experience, (newVal) => {
       </div>
     </section>
 
-    <!-- Archive Preview Section -->
-    <section v-if="aggregated?.archive?.length" class="mx-auto max-w-7xl px-4 py-24 sm:px-6 lg:px-8">
-      <div class="mb-12 flex items-end justify-between">
-        <div>
-          <h2 class="text-3xl font-bold text-gray-900 dark:text-white sm:text-4xl">
-            文章归档
-          </h2>
-          <p class="mt-2 text-gray-600 dark:text-gray-400">
-            按时间线回顾过往文章
-          </p>
-        </div>
-        <router-link
-          to="/article/archive"
-          class="flex items-center gap-1 text-sm font-medium text-aurora-purple transition-colors hover:text-aurora-pink dark:text-aurora-pink dark:hover:text-aurora-cyan"
-        >
-          查看全部
-          <el-icon><ArrowRight /></el-icon>
-        </router-link>
-      </div>
-
-      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div
-          v-for="item in aggregated.archive.slice(0, 8)"
-          :key="`${item.year}-${item.month}`"
-          class="glass-card group cursor-pointer p-6"
-          @click="router.push(`/article?year=${item.year}&month=${item.month}`)"
-        >
-          <div class="flex items-center justify-between">
-            <div>
-              <div class="text-2xl font-bold text-gray-900 dark:text-white">
-                {{ item.year }}年{{ item.month }}月
-              </div>
-              <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                {{ item.count }} 篇文章
-              </div>
-            </div>
-            <div class="flex h-10 w-10 items-center justify-center rounded-full bg-aurora-purple/10 text-aurora-purple transition-all group-hover:bg-aurora-purple group-hover:text-white dark:bg-aurora-pink/10 dark:text-aurora-pink dark:group-hover:bg-aurora-pink">
-              <el-icon><ArrowRight /></el-icon>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
+    <!--     <!-- Archive Preview Section --> -->
+    <!--     <section v-if="aggregated?.archive?.length" class="mx-auto max-w-7xl px-4 py-24 sm:px-6 lg:px-8"> -->
+    <!--       <div class="mb-12 flex items-end justify-between"> -->
+    <!--         <div> -->
+    <!--           <h2 class="text-3xl font-bold text-gray-900 dark:text-white sm:text-4xl"> -->
+    <!--             文章归档 -->
+    <!--           </h2> -->
+    <!--           <p class="mt-2 text-gray-600 dark:text-gray-400"> -->
+    <!--             按时间线回顾过往文章 -->
+    <!--           </p> -->
+    <!--         </div> -->
+    <!--         <router-link -->
+    <!--           to="/article/archive" -->
+    <!--           class="flex items-center gap-1 text-sm font-medium text-aurora-purple transition-colors hover:text-aurora-pink dark:text-aurora-pink dark:hover:text-aurora-cyan" -->
+    <!--         > -->
+    <!--           查看全部 -->
+    <!--           <el-icon><ArrowRight /></el-icon> -->
+    <!--         </router-link> -->
+    <!--       </div> -->
+    <!--  -->
+    <!--       <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"> -->
+    <!--         <div -->
+    <!--           v-for="item in aggregated.archive.slice(0, 8)" -->
+    <!--           :key="`${item.year}-${item.month}`" -->
+    <!--           class="glass-card group cursor-pointer p-6" -->
+    <!--           @click="router.push(`/article?year=${item.year}&month=${item.month}`)" -->
+    <!--         > -->
+    <!--           <div class="flex items-center justify-between"> -->
+    <!--             <div> -->
+    <!--               <div class="text-2xl font-bold text-gray-900 dark:text-white"> -->
+    <!--                 {{ item.year }}年{{ item.month }}月 -->
+    <!--               </div> -->
+    <!--               <div class="mt-1 text-sm text-gray-500 dark:text-gray-400"> -->
+    <!--                 {{ item.count }} 篇文章 -->
+    <!--               </div> -->
+    <!--             </div> -->
+    <!--             <div class="flex h-10 w-10 items-center justify-center rounded-full bg-aurora-purple/10 text-aurora-purple transition-all group-hover:bg-aurora-purple group-hover:text-white dark:bg-aurora-pink/10 dark:text-aurora-pink dark:group-hover:bg-aurora-pink"> -->
+    <!--               <el-icon><ArrowRight /></el-icon> -->
+    <!--             </div> -->
+    <!--           </div> -->
+    <!--         </div> -->
+    <!--       </div> -->
+    <!--     </section> -->
   </div>
 </template>
 

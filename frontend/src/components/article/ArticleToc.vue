@@ -33,14 +33,14 @@ onMounted(generateToc)
 </script>
 
 <template>
-  <div v-if="tocList.length > 0" class="rounded-xl border bg-white p-4">
-    <h4 class="mb-4 font-semibold text-gray-900">目录</h4>
+  <div v-if="tocList.length > 0" class="rounded-xl border bg-surface-secondary p-4">
+    <h4 class="mb-4 font-semibold text-content-primary">目录</h4>
     <nav class="space-y-2">
       <a
         v-for="item in tocList"
         :key="item.id"
-        class="block cursor-pointer text-sm transition-colors hover:text-blue-600"
-        :class="item.level === 2 ? 'text-gray-700' : 'pl-4 text-gray-500'"
+        class="block cursor-pointer text-sm transition-colors hover:text-primary"
+        :class="item.level === 2 ? 'text-content-secondary' : 'pl-4 text-content-tertiary'"
         @click="scrollToHeading(item.id)"
       >
         {{ item.text }}

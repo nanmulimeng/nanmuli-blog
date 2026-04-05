@@ -134,7 +134,7 @@ onMounted(() => {
   <div class="article-detail-page">
     <!-- Reading Progress Bar -->
     <div
-      class="fixed top-0 left-0 right-0 h-[3px] z-50 bg-gradient-to-r from-aurora-purple via-aurora-pink to-aurora-cyan transition-all duration-150"
+      class="fixed top-0 left-0 right-0 h-[3px] z-50 bg-gradient-to-r from-blue-600 via-cyan-500 to-blue-400 transition-all duration-150 dark:from-blue-500 dark:via-blue-500 dark:to-blue-400"
       :style="{ width: `${readingProgress}%` }"
     />
 
@@ -149,20 +149,20 @@ onMounted(() => {
       <!-- Article Hero Section -->
       <section class="relative pt-32 pb-16 overflow-hidden">
         <!-- Background Decoration -->
-        <div class="absolute inset-0 bg-gradient-to-b from-aurora-purple/10 via-transparent to-transparent" />
+        <div class="absolute inset-0 bg-gradient-to-b from-blue-500/10 via-transparent to-transparent dark:from-cyan-500/10" />
 
         <div class="relative mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
           <!-- Breadcrumb -->
-          <nav class="mb-8 flex items-center gap-2 text-sm text-gray-500">
-            <router-link to="/" class="hover:text-aurora-purple transition-colors">
+          <nav class="mb-8 flex items-center gap-2 text-sm text-content-tertiary">
+            <router-link to="/" class="hover:text-primary transition-colors">
               首页
             </router-link>
             <el-icon><ArrowRight class="text-xs" /></el-icon>
-            <router-link to="/article" class="hover:text-aurora-purple transition-colors">
+            <router-link to="/article" class="hover:text-primary transition-colors">
               文章
             </router-link>
             <el-icon><ArrowRight class="text-xs" /></el-icon>
-            <span class="text-gray-900 dark:text-white font-medium truncate max-w-[200px]">
+            <span class="text-content-primary font-medium truncate max-w-[200px]">
               {{ article.title }}
             </span>
           </nav>
@@ -179,51 +179,51 @@ onMounted(() => {
                   :to="`/article?categoryId=${cat.id}`"
                   class="text-sm transition-colors"
                   :class="index === article.categoryPath.length - 1
-                    ? 'inline-flex items-center px-4 py-1.5 rounded-full bg-gradient-to-r from-aurora-purple to-aurora-pink text-white font-medium shadow-lg shadow-aurora-purple/30'
-                    : 'text-gray-500 hover:text-aurora-purple'"
+                    ? 'inline-flex items-center px-4 py-1.5 rounded-full bg-gradient-to-r from-blue-600 to-cyan-500 text-white font-medium shadow-lg shadow-primary/30 dark:from-blue-500 dark:to-blue-500'
+                    : 'text-content-tertiary hover:text-primary'"
                 >
                   {{ cat.name }}
                 </router-link>
-                <span v-if="index < article.categoryPath.length - 1" class="text-gray-300">/</span>
+                <span v-if="index < article.categoryPath.length - 1" class="text-content-tertiary/50">/</span>
               </span>
             </div>
             <router-link
               v-else
               :to="`/article?categoryId=${article.categoryId}`"
-              class="inline-flex items-center px-4 py-1.5 rounded-full bg-gradient-to-r from-aurora-purple to-aurora-pink text-white font-medium shadow-lg shadow-aurora-purple/30"
+              class="inline-flex items-center px-4 py-1.5 rounded-full bg-gradient-to-r from-blue-600 to-cyan-500 text-white font-medium shadow-lg shadow-primary/30 dark:from-blue-500 dark:to-blue-500"
             >
               {{ article.category?.name || article.categoryName }}
             </router-link>
           </div>
 
           <!-- Title -->
-          <h1 class="text-3xl md:text-4xl lg:text-5xl font-bold text-gray-900 dark:text-white leading-tight">
+          <h1 class="text-3xl md:text-4xl lg:text-5xl font-bold text-content-primary leading-tight">
             {{ article.title }}
           </h1>
 
           <!-- Meta Info -->
           <div class="mt-8 flex flex-wrap items-center gap-6 text-sm">
-            <span class="flex items-center gap-2 text-gray-500 dark:text-gray-400">
-              <div class="flex h-8 w-8 items-center justify-center rounded-full bg-aurora-purple/10">
-                <el-icon class="text-aurora-purple"><Calendar /></el-icon>
+            <span class="flex items-center gap-2 text-content-tertiary">
+              <div class="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
+                <el-icon class="text-primary"><Calendar /></el-icon>
               </div>
               {{ formatDateCN(article.publishTime) }}
             </span>
-            <span class="flex items-center gap-2 text-gray-500 dark:text-gray-400">
-              <div class="flex h-8 w-8 items-center justify-center rounded-full bg-aurora-cyan/10">
-                <el-icon class="text-aurora-cyan"><View /></el-icon>
+            <span class="flex items-center gap-2 text-content-tertiary">
+              <div class="flex h-8 w-8 items-center justify-center rounded-full bg-info/10">
+                <el-icon class="text-info"><View /></el-icon>
               </div>
               {{ article.viewCount }} 阅读
             </span>
-            <span class="flex items-center gap-2 text-gray-500 dark:text-gray-400">
-              <div class="flex h-8 w-8 items-center justify-center rounded-full bg-aurora-pink/10">
-                <el-icon class="text-aurora-pink"><Clock /></el-icon>
+            <span class="flex items-center gap-2 text-content-tertiary">
+              <div class="flex h-8 w-8 items-center justify-center rounded-full bg-warning/10">
+                <el-icon class="text-warning"><Clock /></el-icon>
               </div>
               {{ article.readingTime }}分钟
             </span>
-            <span class="flex items-center gap-2 text-gray-500 dark:text-gray-400">
-              <div class="flex h-8 w-8 items-center justify-center rounded-full bg-green-500/10">
-                <el-icon class="text-green-500"><Document /></el-icon>
+            <span class="flex items-center gap-2 text-content-tertiary">
+              <div class="flex h-8 w-8 items-center justify-center rounded-full bg-success/10">
+                <el-icon class="text-success"><Document /></el-icon>
               </div>
               {{ article.wordCount }}字
             </span>
@@ -258,14 +258,14 @@ onMounted(() => {
               <!-- Article Footer Actions -->
               <div class="mt-8 glass-card rounded-2xl p-6">
                 <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                  <div class="text-sm text-gray-500 dark:text-gray-400">
+                  <div class="text-sm text-content-tertiary">
                     最后更新于 {{ formatDateTimeCN(article.updateTime) }}
                   </div>
 
                   <div class="flex items-center gap-3">
-                    <span class="text-sm text-gray-500 dark:text-gray-400">分享到：</span>
+                    <span class="text-sm text-content-tertiary">分享到：</span>
                     <button
-                      class="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-100 text-gray-600 transition-all hover:bg-[#1da1f2] hover:text-white dark:bg-dark-700 dark:text-gray-400"
+                      class="flex h-10 w-10 items-center justify-center rounded-xl bg-surface-tertiary text-content-secondary transition-all hover:bg-[#1da1f2] hover:text-white"
                       @click="shareArticle('twitter')"
                     >
                       <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
@@ -273,7 +273,7 @@ onMounted(() => {
                       </svg>
                     </button>
                     <button
-                      class="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-100 text-gray-600 transition-all hover:bg-[#e6162d] hover:text-white dark:bg-dark-700 dark:text-gray-400"
+                      class="flex h-10 w-10 items-center justify-center rounded-xl bg-surface-tertiary text-content-secondary transition-all hover:bg-[#e6162d] hover:text-white"
                       @click="shareArticle('weibo')"
                     >
                       <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
@@ -281,8 +281,8 @@ onMounted(() => {
                       </svg>
                     </button>
                     <button
-                      class="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-100 text-gray-600 transition-all hover:bg-aurora-purple hover:text-white dark:bg-dark-700 dark:text-gray-400"
-                      :class="{ 'bg-green-500 text-white': copySuccess }"
+                      class="flex h-10 w-10 items-center justify-center rounded-xl bg-surface-tertiary text-content-secondary transition-all hover:bg-primary hover:text-white"
+                      :class="{ 'bg-success text-white': copySuccess }"
                       @click="copyLink"
                     >
                       <el-icon v-if="!copySuccess"><Link /></el-icon>
@@ -294,7 +294,7 @@ onMounted(() => {
 
               <!-- Related Articles -->
               <div v-if="relatedArticles.length" class="mt-12">
-                <h3 class="mb-6 text-xl font-bold text-gray-900 dark:text-white">
+                <h3 class="mb-6 text-xl font-bold text-content-primary">
                   相关文章
                 </h3>
                 <div class="grid gap-4 sm:grid-cols-2">
@@ -304,10 +304,10 @@ onMounted(() => {
                     class="group cursor-pointer glass-card p-5"
                     @click="router.push(`/article/${rel.slug}`)"
                   >
-                    <h4 class="font-medium text-gray-900 line-clamp-2 transition-colors group-hover:text-aurora-purple dark:text-white dark:group-hover:text-aurora-pink">
+                    <h4 class="font-medium text-content-primary line-clamp-2 transition-colors group-hover:text-primary">
                       {{ rel.title }}
                     </h4>
-                    <p class="mt-2 text-sm text-gray-500 line-clamp-1">
+                    <p class="mt-2 text-sm text-content-tertiary line-clamp-1">
                       {{ rel.summary }}
                     </p>
                   </article>
@@ -320,7 +320,7 @@ onMounted(() => {
               <div class="sticky top-28 space-y-6">
                 <!-- TOC Card -->
                 <div class="glass-card rounded-2xl p-6">
-                  <h3 class="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white mb-4">
+                  <h3 class="flex items-center gap-2 text-sm font-semibold text-content-primary mb-4">
                     <el-icon><List /></el-icon>
                     目录
                   </h3>
@@ -331,12 +331,12 @@ onMounted(() => {
                       :href="`#heading-${index}`"
                       class="block py-2 text-sm transition-all rounded-lg px-3"
                       :class="[
-                        item.level === 1 ? 'text-gray-700 font-medium dark:text-gray-300' : 'text-gray-500 dark:text-gray-400',
+                        item.level === 1 ? 'text-content-secondary font-medium' : 'text-content-tertiary',
                         item.level === 2 ? 'pl-6' : '',
                         item.level === 3 ? 'pl-9' : '',
                         activeHeading === `heading-${index}`
-                          ? 'bg-aurora-purple/10 text-aurora-purple dark:bg-aurora-pink/10 dark:text-aurora-pink'
-                          : 'hover:bg-gray-100 dark:hover:bg-dark-700'
+                          ? 'bg-primary/10 text-primary'
+                          : 'hover:bg-surface-tertiary'
                       ]"
                       @click.prevent="scrollToHeading(index)"
                     >
@@ -347,20 +347,20 @@ onMounted(() => {
 
                 <!-- Quick Actions -->
                 <div class="glass-card rounded-2xl p-6">
-                  <h3 class="text-sm font-semibold text-gray-900 dark:text-white mb-4">
+                  <h3 class="text-sm font-semibold text-content-primary mb-4">
                     快速操作
                   </h3>
                   <div class="space-y-2">
                     <router-link
                       to="/article"
-                      class="flex items-center gap-3 p-3 rounded-xl text-sm text-gray-600 transition-all hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-dark-700"
+                      class="flex items-center gap-3 p-3 rounded-xl text-sm text-content-secondary transition-all hover:bg-surface-tertiary"
                     >
                       <el-icon><ArrowLeft /></el-icon>
                       返回文章列表
                     </router-link>
                     <router-link
                       to="/"
-                      class="flex items-center gap-3 p-3 rounded-xl text-sm text-gray-600 transition-all hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-dark-700"
+                      class="flex items-center gap-3 p-3 rounded-xl text-sm text-content-secondary transition-all hover:bg-surface-tertiary"
                     >
                       <el-icon><HomeFilled /></el-icon>
                       回到首页

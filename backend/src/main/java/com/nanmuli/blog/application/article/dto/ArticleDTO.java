@@ -4,12 +4,14 @@ import com.nanmuli.blog.application.category.dto.CategoryDTO;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 
+import java.io.Serializable;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
 @Data
-public class ArticleDTO {
+public class ArticleDTO implements Serializable {
+    private static final long serialVersionUID = 1L;
     private Long id;
     private String title;
     private String slug;

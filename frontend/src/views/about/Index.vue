@@ -71,10 +71,10 @@ onMounted(() => {
         </div>
 
         <!-- Name & Title -->
-        <h1 class="mt-6 text-2xl md:text-3xl font-bold text-gray-900">
+        <h1 class="mt-6 text-2xl md:text-3xl font-bold text-content-primary">
           {{ configStore.siteAuthor || '博主' }}
         </h1>
-        <p class="mt-2 text-gray-500">全栈开发工程师 | 技术博主</p>
+        <p class="mt-2 text-content-secondary">全栈开发工程师 | 技术博主</p>
 
         <!-- Social Links -->
         <div class="mt-6 flex justify-center gap-4">
@@ -83,7 +83,7 @@ onMounted(() => {
             :href="configStore.siteGithub"
             target="_blank"
             rel="noopener noreferrer"
-            class="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200 hover:text-gray-900 transition-colors"
+            class="w-10 h-10 rounded-full bg-surface-tertiary flex items-center justify-center text-content-secondary hover:bg-surface-tertiary hover:text-content-primary transition-colors"
             aria-label="GitHub"
           >
             <el-icon><Promotion /></el-icon>
@@ -91,7 +91,7 @@ onMounted(() => {
           <a
             v-if="configStore.siteEmail"
             :href="`mailto:${configStore.siteEmail}`"
-            class="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200 hover:text-gray-900 transition-colors"
+            class="w-10 h-10 rounded-full bg-surface-tertiary flex items-center justify-center text-content-secondary hover:bg-surface-tertiary hover:text-content-primary transition-colors"
             aria-label="邮箱"
           >
             <el-icon><Message /></el-icon>
@@ -103,19 +103,19 @@ onMounted(() => {
     <!-- Bio Section -->
     <section v-if="configStore.siteAbout" class="py-12">
       <div class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
-        <h2 class="text-xl font-bold text-gray-900 mb-6">关于我</h2>
-        <div class="prose prose-gray max-w-none text-gray-600 leading-relaxed" v-html="configStore.siteAbout" />
+        <h2 class="text-xl font-bold text-content-primary mb-6">关于我</h2>
+        <div class="prose prose-gray max-w-none text-content-secondary leading-relaxed" v-html="configStore.siteAbout" />
       </div>
     </section>
 
     <!-- Skills Section -->
-    <section class="py-12 bg-gray-50">
+    <section class="py-12 bg-surface-tertiary">
       <div class="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
-        <h2 class="text-xl font-bold text-gray-900 mb-8">技能栈</h2>
+        <h2 class="text-xl font-bold text-content-primary mb-8">技能栈</h2>
 
         <div class="space-y-8">
           <div v-for="cat in skillCategories" :key="cat.key">
-            <h3 class="text-sm font-medium text-gray-500 uppercase tracking-wide mb-4">{{ cat.name }}</h3>
+            <h3 class="text-sm font-medium text-content-tertiary uppercase tracking-wide mb-4">{{ cat.name }}</h3>
 
             <div class="grid gap-3 sm:grid-cols-2">
               <div
@@ -124,14 +124,14 @@ onMounted(() => {
                 class="flex items-center gap-3 bg-white rounded-lg p-3"
               >
                 <img v-if="skill.icon" :src="skill.icon" class="w-6 h-6" :alt="skill.name">
-                <span class="flex-1 font-medium text-gray-900">{{ skill.name }}</span>
+                <span class="flex-1 font-medium text-content-primary">{{ skill.name }}</span>
 
                 <div class="flex gap-1">
                   <div
                     v-for="i in 5"
                     :key="i"
                     class="w-2 h-2 rounded-full"
-                    :class="i <= skill.proficiency ? 'bg-primary-500' : 'bg-gray-200'"
+                    :class="i <= skill.proficiency ? 'bg-primary-500' : 'bg-surface-tertiary'"
                   />
                 </div>
               </div>
@@ -144,16 +144,16 @@ onMounted(() => {
     <!-- Experience Timeline -->
     <section class="py-12">
       <div class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
-        <h2 class="text-xl font-bold text-gray-900 mb-8">经历</h2>
+        <h2 class="text-xl font-bold text-content-primary mb-8">经历</h2>
 
-        <div class="relative border-l-2 border-gray-200 ml-3 space-y-8">
+        <div class="relative border-l-2 border-border ml-3 space-y-8">
           <div v-for="(exp, index) in experiences" :key="index" class="relative pl-8">
             <div class="absolute -left-2 top-1 w-4 h-4 rounded-full bg-primary-500 border-2 border-white" />
 
             <div class="text-sm text-primary-600 font-medium">{{ exp.period }}</div>
-            <h3 class="mt-1 text-lg font-semibold text-gray-900">{{ exp.title }}</h3>
-            <div class="text-gray-500">{{ exp.company }}</div>
-            <p class="mt-2 text-gray-600">{{ exp.description }}</p>
+            <h3 class="mt-1 text-lg font-semibold text-content-primary">{{ exp.title }}</h3>
+            <div class="text-content-tertiary">{{ exp.company }}</div>
+            <p class="mt-2 text-content-secondary">{{ exp.description }}</p>
           </div>
         </div>
       </div>

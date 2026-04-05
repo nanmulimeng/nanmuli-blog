@@ -40,7 +40,7 @@ onMounted(fetchArticles)
 
 <template>
   <div class="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
-    <h1 class="mb-8 text-3xl font-bold text-gray-900">文章归档</h1>
+    <h1 class="mb-8 text-3xl font-bold text-content-primary">文章归档</h1>
 
     <div v-if="loading" class="space-y-4">
       <el-skeleton v-for="i in 3" :key="i" :rows="3" animated />
@@ -48,16 +48,16 @@ onMounted(fetchArticles)
 
     <div v-else class="space-y-8">
       <div v-for="[year, items] in groupedArticles" :key="year">
-        <h2 class="mb-4 text-2xl font-bold text-gray-800">{{ year }}</h2>
+        <h2 class="mb-4 text-2xl font-bold text-content-primary">{{ year }}</h2>
         <div class="space-y-3">
           <div
             v-for="article in items"
             :key="article.id"
-            class="flex cursor-pointer items-center justify-between rounded-lg border bg-white p-4 transition-colors hover:bg-gray-50"
+            class="flex cursor-pointer items-center justify-between rounded-lg border bg-surface-secondary p-4 transition-colors hover:bg-surface-tertiary"
             @click="router.push(`/article/${article.slug}`)"
           >
-            <span class="font-medium text-gray-900">{{ article.title }}</span>
-            <span class="text-sm text-gray-500">{{ formatDate(article.publishTime, 'MM-DD') }}</span>
+            <span class="font-medium text-content-primary">{{ article.title }}</span>
+            <span class="text-sm text-content-tertiary">{{ formatDate(article.publishTime, 'MM-DD') }}</span>
           </div>
         </div>
       </div>

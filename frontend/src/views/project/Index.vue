@@ -22,10 +22,10 @@ onMounted(fetchProjects)
 <template>
   <div class="project-page">
     <!-- Page Header -->
-    <section class="bg-gray-50 py-12">
+    <section class="bg-surface-tertiary py-12">
       <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 text-center">
-        <h1 class="text-3xl font-bold text-gray-900">项目展示</h1>
-        <p class="mt-2 text-gray-500">个人开源项目与作品</p>
+        <h1 class="text-3xl font-bold text-content-primary">项目展示</h1>
+        <p class="mt-2 text-content-secondary">个人开源项目与作品</p>
       </div>
     </section>
 
@@ -34,8 +34,8 @@ onMounted(fetchProjects)
       <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <!-- Loading -->
         <div v-if="loading" class="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          <div v-for="i in 6" :key="i" class="bg-white rounded-xl overflow-hidden border border-gray-100">
-            <div class="aspect-video bg-gray-100" />
+          <div v-for="i in 6" :key="i" class="bg-surface-secondary rounded-xl overflow-hidden border border-border">
+            <div class="aspect-video bg-surface-tertiary" />
             <div class="p-5">
               <el-skeleton :rows="2" animated />
             </div>
@@ -44,8 +44,8 @@ onMounted(fetchProjects)
 
         <!-- Empty -->
         <div v-else-if="projects.length === 0" class="text-center py-20">
-          <el-icon :size="64" class="text-gray-200 mb-4"><OfficeBuilding /></el-icon>
-          <p class="text-gray-500">暂无项目</p>
+          <el-icon :size="64" class="text-content-tertiary/30 mb-4"><OfficeBuilding /></el-icon>
+          <p class="text-content-tertiary">暂无项目</p>
         </div>
 
         <!-- Projects -->
@@ -53,26 +53,26 @@ onMounted(fetchProjects)
           <div
             v-for="project in projects"
             :key="project.id"
-            class="group bg-white rounded-xl overflow-hidden border border-gray-100 shadow-sm transition-all duration-150 hover:shadow-lg"
+            class="group bg-surface-secondary rounded-xl overflow-hidden border border-border shadow-sm transition-all duration-150 hover:shadow-lg"
           >
             <!-- Cover -->
-            <div class="aspect-video bg-gray-100 relative overflow-hidden">
+            <div class="aspect-video bg-surface-tertiary relative overflow-hidden">
               <img
                 v-if="project.cover"
                 :src="project.cover"
                 :alt="project.name"
                 class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
               >
-              <div v-else class="w-full h-full flex items-center justify-center text-gray-300">
+              <div v-else class="w-full h-full flex items-center justify-center text-content-tertiary/50">
                 <el-icon :size="48"><OfficeBuilding /></el-icon>
               </div>
             </div>
 
             <!-- Content -->
             <div class="p-5">
-              <h3 class="text-lg font-semibold text-gray-900 mb-2">{{ project.name }}</h3>
+              <h3 class="text-lg font-semibold text-content-primary mb-2">{{ project.name }}</h3>
 
-              <p class="text-sm text-gray-600 line-clamp-2 mb-4">
+              <p class="text-sm text-content-secondary line-clamp-2 mb-4">
                 {{ project.description }}
               </p>
 
@@ -81,7 +81,7 @@ onMounted(fetchProjects)
                 <span
                   v-for="tech in project.techStack?.slice(0, 4)"
                   :key="tech"
-                  class="px-2 py-1 bg-gray-100 rounded text-xs text-gray-600"
+                  class="px-2 py-1 bg-surface-tertiary rounded text-xs text-content-secondary"
                 >
                   {{ tech }}
                 </span>
@@ -94,7 +94,7 @@ onMounted(fetchProjects)
                   :href="project.demoUrl"
                   target="_blank"
                   rel="noopener noreferrer"
-                  class="text-sm text-primary-600 hover:text-primary-700 flex items-center gap-1"
+                  class="text-sm text-primary hover:text-primary-light flex items-center gap-1"
                   @click.stop
                 >
                   <el-icon><Link /></el-icon> 演示
@@ -104,7 +104,7 @@ onMounted(fetchProjects)
                   :href="project.githubUrl"
                   target="_blank"
                   rel="noopener noreferrer"
-                  class="text-sm text-gray-600 hover:text-gray-900 flex items-center gap-1"
+                  class="text-sm text-content-secondary hover:text-content-primary flex items-center gap-1"
                   @click.stop
                 >
                   <el-icon><Promotion /></el-icon> GitHub

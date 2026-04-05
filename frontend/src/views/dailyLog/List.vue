@@ -16,8 +16,8 @@ const pageSize = ref(20)
 const moodMap: Record<string, { icon: string; label: string; color: string }> = {
   happy: { icon: 'Sunny', label: '开心', color: '#f59e0b' },
   excited: { icon: 'Star', label: '兴奋', color: '#ef4444' },
-  normal: { icon: 'Minus', label: '平静', color: '#6b7280' },
-  tired: { icon: 'Moon', label: '疲惫', color: '#6366f1' },
+  normal: { icon: 'Minus', label: '平静', color: '#64748B' },
+  tired: { icon: 'Moon', label: '疲惫', color: '#3B82F6' },
 }
 
 // 按月份分组
@@ -62,10 +62,10 @@ onMounted(fetchLogs)
 <template>
   <div class="daily-log-page">
     <!-- Page Header -->
-    <section class="bg-gray-50 py-12">
+    <section class="bg-surface-tertiary py-12">
       <div class="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 text-center">
-        <h1 class="text-3xl font-bold text-gray-900">技术日志</h1>
-        <p class="mt-2 text-gray-500">记录每日技术学习与思考</p>
+        <h1 class="text-3xl font-bold text-content-primary">技术日志</h1>
+        <p class="mt-2 text-content-secondary">记录每日技术学习与思考</p>
       </div>
     </section>
 
@@ -74,15 +74,15 @@ onMounted(fetchLogs)
       <div class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
         <!-- Loading -->
         <div v-if="loading" class="space-y-8">
-          <div v-for="i in 3" :key="i" class="bg-white rounded-xl p-6 border border-gray-100">
+          <div v-for="i in 3" :key="i" class="bg-surface-secondary rounded-xl p-6 border border-border">
             <el-skeleton :rows="2" animated />
           </div>
         </div>
 
         <!-- Empty -->
         <div v-else-if="logs.length === 0" class="text-center py-20">
-          <el-icon :size="64" class="text-gray-200 mb-4"><Timer /></el-icon>
-          <p class="text-gray-500">暂无日志</p>
+          <el-icon :size="64" class="text-content-tertiary/30 mb-4"><Timer /></el-icon>
+          <p class="text-content-tertiary">暂无日志</p>
         </div>
 
         <!-- Timeline Content -->
@@ -94,8 +94,8 @@ onMounted(fetchLogs)
           >
             <!-- Month Header -->
             <div class="relative flex items-center justify-center mb-8">
-              <div class="absolute left-0 right-0 h-px bg-gray-200" />
-              <span class="relative px-4 bg-gray-50 text-lg font-semibold text-gray-900">
+              <div class="absolute left-0 right-0 h-px bg-border" />
+              <span class="relative px-4 bg-surface-tertiary text-lg font-semibold text-content-primary">
                 {{ formatMonthCN(month) }}
               </span>
             </div>
@@ -110,11 +110,11 @@ onMounted(fetchLogs)
                 <!-- Timeline Dot -->
                 <div
                   class="absolute left-0 w-8 h-8 rounded-full flex items-center justify-center z-10"
-                  :style="{ backgroundColor: moodMap[log.mood]?.color + '20' || '#e5e7eb' }"
+                  :style="{ backgroundColor: moodMap[log.mood]?.color + '20' || 'var(--theme-surface-tertiary)' }"
                 >
                   <el-icon
                     :size="16"
-                    :style="{ color: moodMap[log.mood]?.color || '#6b7280' }"
+                    :style="{ color: moodMap[log.mood]?.color || '#64748B' }"
                   >
                     <component :is="moodMap[log.mood]?.icon || 'Minus'" />
                   </el-icon>
@@ -122,7 +122,7 @@ onMounted(fetchLogs)
 
                 <!-- Log Card -->
                 <div
-                  class="bg-white rounded-xl p-5 border border-gray-100 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                  class="bg-surface-secondary rounded-xl p-5 border border-border shadow-sm hover:shadow-md transition-shadow cursor-pointer"
                   @click="router.push(`/daily-log/${log.id}`)"
                 >
                   <div class="flex items-center justify-between mb-3">
@@ -140,12 +140,12 @@ onMounted(fetchLogs)
                       >
                         {{ moodMap[log.mood]?.label }}
                       </span>
-                      <span v-if="log.weather" class="text-sm text-gray-400">{{ log.weather }}</span>
+                      <span v-if="log.weather" class="text-sm text-content-tertiary">{{ log.weather }}</span>
                     </div>
                   </div>
 
                   <div
-                    class="prose prose-sm max-w-none text-gray-700 line-clamp-3"
+                    class="prose prose-sm max-w-none text-content-secondary line-clamp-3"
                     v-html="log.contentHtml"
                   />
 
@@ -153,7 +153,7 @@ onMounted(fetchLogs)
                     <span
                       v-for="tag in log.tags"
                       :key="tag"
-                      class="px-2 py-0.5 bg-gray-100 rounded text-xs text-gray-600"
+                      class="px-2 py-0.5 bg-surface-tertiary rounded text-xs text-content-secondary"
                     >
                       #{{ tag }}
                     </span>

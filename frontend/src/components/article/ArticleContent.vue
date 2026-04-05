@@ -10,7 +10,7 @@ defineProps<{
 
 <style scoped>
 :deep(.markdown-body) {
-  @apply text-gray-800 leading-relaxed;
+  @apply text-content-primary leading-relaxed;
 }
 
 :deep(.markdown-body h1) {
@@ -30,7 +30,9 @@ defineProps<{
 }
 
 :deep(.markdown-body pre) {
-  @apply bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto mb-4;
+  @apply bg-surface-secondary text-content-primary p-4 rounded-lg overflow-x-auto mb-4;
+  background-color: #1e1e2e;
+  color: #cdd6f4;
 }
 
 :deep(.markdown-body code) {
@@ -38,7 +40,7 @@ defineProps<{
 }
 
 :deep(.markdown-body :not(pre) > code) {
-  @apply bg-gray-100 text-red-600 px-1.5 py-0.5 rounded text-sm;
+  @apply bg-surface-tertiary text-primary px-1.5 py-0.5 rounded text-sm;
 }
 
 :deep(.markdown-body ul),
@@ -55,7 +57,7 @@ defineProps<{
 }
 
 :deep(.markdown-body blockquote) {
-  @apply border-l-4 border-blue-500 pl-4 italic text-gray-600 my-4;
+  @apply border-l-4 border-primary pl-4 italic text-content-secondary my-4;
 }
 
 :deep(.markdown-body img) {
@@ -72,10 +74,10 @@ defineProps<{
 
 :deep(.markdown-body th),
 :deep(.markdown-body td) {
-  @apply border border-gray-300 px-4 py-2;
+  @apply border border-border px-4 py-2;
 }
 
 :deep(.markdown-body th) {
-  @apply bg-gray-100 font-semibold;
+  @apply bg-surface-tertiary font-semibold;
 }
 </style>

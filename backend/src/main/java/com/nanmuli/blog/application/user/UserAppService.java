@@ -59,15 +59,6 @@ public class UserAppService {
         StpUtil.logout();
     }
 
-    // TODO: 临时密码重置方法，测试完成后删除
-    @Transactional
-    public void resetPassword(String username, String password) {
-        User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new BusinessException("用户不存在"));
-        user.setPassword(BCrypt.hashpw(password, BCrypt.gensalt()));
-        userRepository.save(user);
-    }
-
     /**
      * 获取客户端真实IP地址
      */

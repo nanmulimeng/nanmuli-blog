@@ -26,6 +26,17 @@ sa-token:
   is-share: false
   token-style: uuid
   is-log: false
+  # Redis 持久化配置 - 与Spring Redis使用相同配置
+  alone-redis:
+    host: localhost
+    port: 6380  # 与application-dev.yml保持一致
+    database: 1  # 使用不同的数据库，避免与业务数据冲突
+    timeout: 10s
+    lettuce:
+      pool:
+        max-active: 8
+        max-idle: 8
+        min-idle: 0
 
 # MyBatis-Plus
 mybatis-plus:

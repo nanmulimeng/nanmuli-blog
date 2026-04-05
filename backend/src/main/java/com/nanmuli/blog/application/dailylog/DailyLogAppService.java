@@ -62,6 +62,9 @@ public class DailyLogAppService {
         DailyLogDTO dto = new DailyLogDTO();
         BeanUtils.copyProperties(dailyLog, dto);
         dto.setId(dailyLog.getId());
+        // 显式映射时间字段（字段名不一致）
+        dto.setCreateTime(dailyLog.getCreatedAt());
+        dto.setUpdateTime(dailyLog.getUpdatedAt());
         return dto;
     }
 }

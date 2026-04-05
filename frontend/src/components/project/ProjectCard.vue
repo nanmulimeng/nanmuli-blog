@@ -16,11 +16,11 @@ function handleClick(): void {
 
 <template>
   <article
-    class="group overflow-hidden rounded-xl border bg-white transition-shadow hover:shadow-lg"
+    class="group overflow-hidden rounded-xl border bg-surface-secondary transition-shadow hover:shadow-lg"
   >
     <div
       v-if="project.cover"
-      class="h-48 overflow-hidden bg-gray-100"
+      class="h-48 overflow-hidden bg-surface-tertiary"
       @click="handleClick"
     >
       <img
@@ -32,13 +32,13 @@ function handleClick(): void {
 
     <div class="p-6">
       <h3
-        class="mb-2 cursor-pointer text-xl font-bold text-gray-900 group-hover:text-blue-600"
+        class="mb-2 cursor-pointer text-xl font-bold text-content-primary group-hover:text-primary"
         @click="handleClick"
       >
         {{ project.name }}
       </h3>
 
-      <p class="mb-4 line-clamp-2 text-sm text-gray-600">
+      <p class="mb-4 line-clamp-2 text-sm text-content-secondary">
         {{ project.description }}
       </p>
 
@@ -46,7 +46,7 @@ function handleClick(): void {
         <span
           v-for="tech in project.techStack.slice(0, 5)"
           :key="tech"
-          class="rounded bg-blue-50 px-2 py-1 text-xs text-blue-600"
+          class="rounded bg-primary/10 px-2 py-1 text-xs text-primary"
         >
           {{ tech }}
         </span>
@@ -57,7 +57,7 @@ function handleClick(): void {
           v-if="project.githubUrl"
           :href="project.githubUrl"
           target="_blank"
-          class="text-sm text-gray-500 hover:text-blue-600"
+          class="text-sm text-content-tertiary hover:text-primary"
           @click.stop
         >
           GitHub
@@ -66,7 +66,7 @@ function handleClick(): void {
           v-if="project.demoUrl"
           :href="project.demoUrl"
           target="_blank"
-          class="text-sm text-gray-500 hover:text-blue-600"
+          class="text-sm text-content-tertiary hover:text-primary"
           @click.stop
         >
           演示
@@ -75,7 +75,7 @@ function handleClick(): void {
           v-if="project.docUrl"
           :href="project.docUrl"
           target="_blank"
-          class="text-sm text-gray-500 hover:text-blue-600"
+          class="text-sm text-content-tertiary hover:text-primary"
           @click.stop
         >
           文档

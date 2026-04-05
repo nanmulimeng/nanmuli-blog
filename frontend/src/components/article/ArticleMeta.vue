@@ -7,7 +7,7 @@ defineProps<{
 </script>
 
 <template>
-  <div class="flex flex-wrap items-center gap-4 text-sm text-gray-500">
+  <div class="flex flex-wrap items-center gap-4 text-sm text-content-tertiary">
     <span class="flex items-center gap-1">
       <el-icon><Calendar /></el-icon>
       {{ article.publishTime?.split('T')[0] }}

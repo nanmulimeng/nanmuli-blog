@@ -14,10 +14,10 @@ const footerLinks = [
 </script>
 
 <template>
-  <footer class="relative overflow-hidden border-t border-gray-200 dark:border-white/10">
+  <footer class="relative overflow-hidden border-t border-border">
     <!-- Background Decoration -->
-    <div class="absolute inset-0 bg-gradient-to-b from-transparent via-aurora-purple/5 to-aurora-purple/10" />
-    <div class="absolute bottom-0 left-1/2 -translate-x-1/2 h-px w-1/2 bg-gradient-to-r from-transparent via-aurora-purple to-transparent" />
+    <div class="absolute inset-0 bg-gradient-to-b from-transparent via-primary/5 to-primary/10" />
+    <div class="absolute bottom-0 left-1/2 -translate-x-1/2 h-px w-1/2 bg-gradient-to-r from-transparent via-primary to-transparent" />
 
     <div class="relative mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
       <!-- Main Footer Content -->
@@ -25,14 +25,14 @@ const footerLinks = [
         <!-- Brand -->
         <div class="lg:col-span-2">
           <div class="flex items-center gap-3 mb-4">
-            <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-aurora-purple to-aurora-pink text-white shadow-lg">
+            <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 text-white shadow-lg dark:from-blue-500 dark:to-blue-500">
               <el-icon class="text-xl"><Document /></el-icon>
             </div>
-            <span class="text-xl font-bold text-gray-900 dark:text-white">
+            <span class="text-xl font-bold text-content-primary">
               {{ configStore.siteName || 'Nanmuli' }}
             </span>
           </div>
-          <p class="max-w-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+          <p class="max-w-sm text-content-secondary leading-relaxed">
             {{ configStore.siteDescription || '记录技术成长，分享学习心得，探索代码世界的无限可能' }}
           </p>
 
@@ -43,7 +43,7 @@ const footerLinks = [
               :href="configStore.siteGithub"
               target="_blank"
               rel="noopener noreferrer"
-              class="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-100 text-gray-600 transition-all hover:bg-gray-900 hover:text-white dark:bg-dark-700 dark:text-gray-400 dark:hover:bg-white dark:hover:text-gray-900"
+              class="flex h-10 w-10 items-center justify-center rounded-xl bg-surface-tertiary text-content-secondary transition-all hover:bg-content-primary hover:text-surface-secondary"
               aria-label="GitHub"
             >
               <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
@@ -53,7 +53,7 @@ const footerLinks = [
             <a
               v-if="configStore.siteEmail"
               :href="`mailto:${configStore.siteEmail}`"
-              class="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-100 text-gray-600 transition-all hover:bg-aurora-purple hover:text-white dark:bg-dark-700 dark:text-gray-400"
+              class="flex h-10 w-10 items-center justify-center rounded-xl bg-surface-tertiary text-content-secondary transition-all hover:bg-primary hover:text-white"
               aria-label="邮箱"
             >
               <el-icon class="text-lg"><Message /></el-icon>
@@ -63,13 +63,13 @@ const footerLinks = [
 
         <!-- Quick Links -->
         <div>
-          <h3 class="text-sm font-semibold text-gray-900 dark:text-white mb-4">快速链接</h3>
+          <h3 class="text-sm font-semibold text-content-primary mb-4">快速链接</h3>
           <nav class="space-y-3">
             <router-link
               v-for="link in footerLinks"
               :key="link.path"
               :to="link.path"
-              class="block text-gray-600 hover:text-aurora-purple transition-colors dark:text-gray-400 dark:hover:text-aurora-pink"
+              class="block text-content-secondary hover:text-primary transition-colors"
             >
               {{ link.label }}
             </router-link>
@@ -78,17 +78,17 @@ const footerLinks = [
 
         <!-- Admin -->
         <div>
-          <h3 class="text-sm font-semibold text-gray-900 dark:text-white mb-4">管理</h3>
+          <h3 class="text-sm font-semibold text-content-primary mb-4">管理</h3>
           <nav class="space-y-3">
             <router-link
               to="/admin"
-              class="block text-gray-600 hover:text-aurora-purple transition-colors dark:text-gray-400 dark:hover:text-aurora-pink"
+              class="block text-content-secondary hover:text-primary transition-colors"
             >
               管理后台
             </router-link>
             <router-link
               to="/admin/article"
-              class="block text-gray-600 hover:text-aurora-purple transition-colors dark:text-gray-400 dark:hover:text-aurora-pink"
+              class="block text-content-secondary hover:text-primary transition-colors"
             >
               发布文章
             </router-link>
@@ -97,15 +97,15 @@ const footerLinks = [
       </div>
 
       <!-- Bottom Bar -->
-      <div class="mt-12 pt-8 border-t border-gray-200 dark:border-white/10">
-        <div class="flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-gray-500 dark:text-gray-400">
+      <div class="mt-12 pt-8 border-t border-border">
+        <div class="flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-content-tertiary">
           <p>
             {{ configStore.siteFooter || `© ${currentYear} Nanmuli Blog. All rights reserved.` }}
             <span v-if="configStore.siteIcp" class="ml-2">| {{ configStore.siteIcp }}</span>
           </p>
           <p class="flex items-center gap-1">
             Made with
-            <el-icon class="text-aurora-pink"><StarFilled /></el-icon>
+            <el-icon class="text-primary"><StarFilled /></el-icon>
             and code
           </p>
         </div>

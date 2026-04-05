@@ -112,7 +112,7 @@ public class FileAppService {
         dto.setFileSize(blogFile.getFileSize());
         dto.setMimeType(blogFile.getMimeType());
         dto.setStorageType(blogFile.getStorageType());
-        dto.setCreatedAt(blogFile.getCreatedAt());
+        dto.setCreateTime(blogFile.getCreatedAt());
         return dto;
     }
 

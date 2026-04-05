@@ -9,6 +9,78 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+      /* ============================================
+         Theme System - CSS Variables (Inline to prevent tree-shaking)
+         ============================================ */
+      :root {
+        /* 亮色模式 - 沉稳深蓝 */
+        --theme-primary: #2563EB;
+        --theme-primary-light: #3B82F6;
+        --theme-primary-dark: #1D4ED8;
+        --theme-bg-primary: #FAFAFA;
+        --theme-bg-secondary: #FFFFFF;
+        --theme-bg-tertiary: #F3F4F6;
+        --theme-bg-card: #FFFFFF;
+        --theme-text-primary: #1F2937;
+        --theme-text-secondary: #4B5563;
+        --theme-text-tertiary: #9CA3AF;
+        --theme-text-inverse: #FFFFFF;
+        --theme-border: #E5E7EB;
+        --theme-border-light: #F3F4F6;
+        --theme-divider: #E5E7EB;
+        --theme-glass: rgba(255, 255, 255, 0.85);
+        --theme-glass-border: rgba(37, 99, 235, 0.1);
+        --theme-gradient: linear-gradient(135deg, #2563EB 0%, #3B82F6 100%);
+        --theme-gradient-text: linear-gradient(135deg, #1E40AF 0%, #2563EB 50%, #3B82F6 100%);
+        --theme-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+        --theme-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        --theme-shadow-md: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        --theme-shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        --theme-shadow-glow: 0 0 20px rgba(37, 99, 235, 0.15);
+        --theme-success: #10B981;
+        --theme-warning: #F59E0B;
+        --theme-error: #EF4444;
+        --theme-info: #3B82F6;
+      }
+
+      .dark {
+        /* 暗色模式 - 沉稳深蓝 */
+        --theme-primary: #3B82F6;
+        --theme-primary-light: #60A5FA;
+        --theme-primary-dark: #2563EB;
+        --theme-bg-primary: #0F172A;
+        --theme-bg-secondary: #1E293B;
+        --theme-bg-tertiary: #334155;
+        --theme-bg-card: #1E293B;
+        --theme-text-primary: #F8FAFC;
+        --theme-text-secondary: #CBD5E1;
+        --theme-text-tertiary: #94A3B8;
+        --theme-text-inverse: #0F172A;
+        --theme-border: rgba(59, 130, 246, 0.2);
+        --theme-border-light: rgba(148, 163, 184, 0.15);
+        --theme-divider: rgba(148, 163, 184, 0.15);
+        --theme-glass: rgba(30, 41, 59, 0.9);
+        --theme-glass-border: rgba(59, 130, 246, 0.25);
+        --theme-gradient: linear-gradient(135deg, #2563EB 0%, #3B82F6 50%, #60A5FA 100%);
+        --theme-gradient-text: linear-gradient(135deg, #60A5FA 0%, #3B82F6 50%, #2563EB 100%);
+        --theme-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+        --theme-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
+        --theme-shadow-md: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
+        --theme-shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.6), 0 10px 10px -5px rgba(0, 0, 0, 0.4);
+        --theme-shadow-glow: 0 0 20px rgba(59, 130, 246, 0.25), 0 0 40px rgba(37, 99, 235, 0.1);
+        --theme-success: #10B981;
+        --theme-warning: #F59E0B;
+        --theme-error: #EF4444;
+        --theme-info: #3B82F6;
+      }
+
+      body {
+        background-color: var(--theme-bg-primary);
+        color: var(--theme-text-primary);
+        transition: background-color 0.3s ease, color 0.3s ease;
+      }
+    </style>
   </head>
   <body>
     <div id="app"></div>

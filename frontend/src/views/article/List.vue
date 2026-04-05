@@ -117,28 +117,28 @@ onMounted(() => {
     <!-- Page Header with Gradient -->
     <section class="relative overflow-hidden pt-20 pb-12">
       <!-- Background Decoration -->
-      <div class="absolute inset-0 bg-gradient-to-br from-aurora-purple/10 via-aurora-pink/5 to-aurora-cyan/10" />
-      <div class="absolute top-0 right-0 h-96 w-96 rounded-full bg-aurora-purple/20 blur-3xl" />
-      <div class="absolute bottom-0 left-0 h-64 w-64 rounded-full bg-aurora-cyan/20 blur-3xl" />
+      <div class="absolute inset-0 bg-gradient-to-br from-blue-100/30 via-cyan-50/20 to-blue-50/30 dark:from-cyan-900/15 dark:via-blue-900/10 dark:to-cyan-800/15" />
+      <div class="absolute top-0 right-0 h-96 w-96 rounded-full bg-blue-400/15 blur-3xl dark:bg-cyan-500/10" />
+      <div class="absolute bottom-0 left-0 h-64 w-64 rounded-full bg-cyan-300/15 blur-3xl dark:bg-blue-500/10" />
 
       <div class="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <!-- Breadcrumb -->
-        <nav class="mb-6 flex items-center gap-2 text-sm text-gray-500">
-          <router-link to="/" class="hover:text-aurora-purple transition-colors">
+        <nav class="mb-6 flex items-center gap-2 text-sm text-content-tertiary">
+          <router-link to="/" class="hover:text-primary transition-colors">
             首页
           </router-link>
           <el-icon><ArrowRight class="text-xs" /></el-icon>
-          <span class="text-gray-900 dark:text-white font-medium">文章</span>
+          <span class="text-content-primary font-medium">文章</span>
         </nav>
 
         <!-- Title -->
         <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
           <div>
-            <h1 class="text-4xl sm:text-5xl font-bold text-gray-900 dark:text-white">
+            <h1 class="text-4xl sm:text-5xl font-bold text-content-primary">
               {{ selectedCategoryName }}
             </h1>
-            <p class="mt-2 text-gray-600 dark:text-gray-400">
-              共 <span class="text-aurora-purple font-semibold">{{ total }}</span> 篇技术文章
+            <p class="mt-2 text-content-secondary">
+              共 <span class="text-primary font-semibold">{{ total }}</span> 篇技术文章
             </p>
           </div>
 
@@ -151,7 +151,7 @@ onMounted(() => {
               class="input-glass w-full sm:w-72 pr-10"
               @keyup.enter="fetchArticles"
             />
-            <el-icon class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+            <el-icon class="absolute right-3 top-1/2 -translate-y-1/2 text-content-tertiary">
               <Search />
             </el-icon>
           </div>
@@ -186,15 +186,15 @@ onMounted(() => {
 
             <!-- Sort Options -->
             <div class="flex items-center gap-2">
-              <span class="text-sm text-gray-500 dark:text-gray-400">排序：</span>
-              <div class="flex items-center gap-1 rounded-xl bg-gray-100 p-1 dark:bg-dark-700">
+              <span class="text-sm text-content-tertiary">排序：</span>
+              <div class="flex items-center gap-1 rounded-xl bg-surface-tertiary p-1">
                 <button
                   v-for="opt in sortOptions"
                   :key="opt.value"
                   class="flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm transition-all"
                   :class="sortBy === opt.value
-                    ? 'bg-white text-aurora-purple shadow-sm dark:bg-dark-600 dark:text-aurora-pink'
-                    : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'"
+                    ? 'bg-surface-secondary text-primary shadow-sm'
+                    : 'text-content-secondary hover:text-content-primary'"
                   @click="handleSortChange(opt.value)"
                 >
                   <el-icon class="text-xs"><component :is="opt.icon" /></el-icon>
@@ -212,11 +212,11 @@ onMounted(() => {
       <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <!-- Search Result Info -->
         <div v-if="searchKeyword" class="mb-6 flex items-center gap-2">
-          <span class="text-gray-600 dark:text-gray-400">
-            搜索 "<span class="text-aurora-purple font-medium">{{ searchKeyword }}</span>" 的结果
+          <span class="text-content-secondary">
+            搜索 "<span class="text-primary font-medium">{{ searchKeyword }}</span>" 的结果
           </span>
           <button
-            class="text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+            class="text-sm text-content-tertiary hover:text-content-secondary"
             @click="clearSearch"
           >
             清除搜索
@@ -232,13 +232,13 @@ onMounted(() => {
 
         <!-- Empty State -->
         <div v-else-if="articles.length === 0" class="flex flex-col items-center justify-center py-24">
-          <div class="flex h-24 w-24 items-center justify-center rounded-full bg-gray-100 dark:bg-dark-700">
-            <el-icon class="text-4xl text-gray-400">
+          <div class="flex h-24 w-24 items-center justify-center rounded-full bg-surface-tertiary">
+            <el-icon class="text-4xl text-content-tertiary">
               <Document />
             </el-icon>
           </div>
-          <h3 class="mt-6 text-xl font-semibold text-gray-900 dark:text-white">暂无文章</h3>
-          <p class="mt-2 text-gray-500 dark:text-gray-400">该分类下还没有文章，去看看其他内容吧</p>
+          <h3 class="mt-6 text-xl font-semibold text-content-primary">暂无文章</h3>
+          <p class="mt-2 text-content-secondary">该分类下还没有文章，去看看其他内容吧</p>
           <button
             class="mt-6 btn-gradient"
             @click="handleCategoryChange(undefined)"
@@ -252,7 +252,7 @@ onMounted(() => {
           <article
             v-for="(article, index) in articles"
             :key="article.id"
-            class="group cursor-pointer overflow-hidden rounded-3xl bg-white shadow-card transition-all duration-500 hover:shadow-card-hover hover:-translate-y-2 dark:bg-dark-800"
+            class="group cursor-pointer overflow-hidden rounded-3xl bg-surface-secondary shadow-card transition-all duration-500 hover:shadow-card-hover hover:-translate-y-2"
             :style="{ animationDelay: `${index * 50}ms` }"
             @click="router.push(`/article/${article.slug}`)"
           >
@@ -266,9 +266,9 @@ onMounted(() => {
               />
               <div
                 v-else
-                class="flex h-full w-full items-center justify-center bg-gradient-to-br from-aurora-purple/20 to-aurora-pink/20"
+                class="flex h-full w-full items-center justify-center bg-gradient-to-br from-blue-400/20 to-cyan-300/20 dark:from-cyan-500/20 dark:to-blue-400/20"
               >
-                <el-icon class="text-5xl text-aurora-purple/50">
+                <el-icon class="text-5xl text-primary/50">
                   <Document />
                 </el-icon>
               </div>
@@ -282,25 +282,60 @@ onMounted(() => {
               </div>
 
               <!-- Category Badge -->
-              <div class="absolute bottom-4 left-4">
-                <span class="rounded-full bg-white/90 px-3 py-1 text-xs font-medium text-gray-700 shadow-sm backdrop-blur-sm dark:bg-dark-900/90 dark:text-gray-300">
-                  {{ article.category?.name || article.categoryName }}
+              <div class="absolute bottom-4 left-4 max-w-[80%]">
+                <!-- 分类路径 -->
+                <div v-if="article.categoryPath?.length" class="flex items-center gap-1 flex-wrap">
+                  <span
+                    v-for="(cat, index) in article.categoryPath"
+                    :key="cat.id"
+                    class="flex items-center gap-1"
+                  >
+                    <span
+                      class="rounded-full px-2 py-1 text-xs font-medium shadow-sm backdrop-blur-sm"
+                      :style="{
+                        backgroundColor: cat.color ? cat.color + '90' : 'rgba(255,255,255,0.9)',
+                        color: cat.color ? '#fff' : '#374151'
+                      }"
+                    >
+                      {{ cat.name }}
+                    </span>
+                    <span
+                      v-if="index < article.categoryPath.length - 1"
+                      class="text-white/80 text-xs"
+                    >/</span>
+                  </span>
+                </div>
+                <span
+                  v-else-if="article.category"
+                  class="rounded-full px-3 py-1 text-xs font-medium shadow-sm backdrop-blur-sm"
+                  :style="{
+                    backgroundColor: article.category.color ? article.category.color + '90' : 'rgba(255,255,255,0.9)',
+                    color: article.category.color ? '#fff' : '#374151'
+                  }"
+                >
+                  {{ article.category.name }}
+                </span>
+                <span
+                  v-else
+                  class="rounded-full bg-surface-secondary/90 px-3 py-1 text-xs font-medium text-content-secondary shadow-sm backdrop-blur-sm"
+                >
+                  {{ article.categoryName }}
                 </span>
               </div>
             </div>
 
             <!-- Content -->
             <div class="p-6">
-              <h3 class="mb-3 text-lg font-semibold text-gray-900 line-clamp-2 transition-colors group-hover:text-aurora-purple dark:text-white dark:group-hover:text-aurora-pink">
+              <h3 class="mb-3 text-lg font-semibold text-content-primary line-clamp-2 transition-colors group-hover:text-primary">
                 {{ article.title }}
               </h3>
 
-              <p class="mb-4 text-sm text-gray-600 line-clamp-2 leading-relaxed dark:text-gray-400">
+              <p class="mb-4 text-sm text-content-secondary line-clamp-2 leading-relaxed">
                 {{ article.summary }}
               </p>
 
               <div class="flex items-center justify-between">
-                <div class="flex items-center gap-3 text-xs text-gray-400">
+                <div class="flex items-center gap-3 text-xs text-content-tertiary">
                   <span class="flex items-center gap-1">
                     <el-icon><Calendar /></el-icon>
                     {{ formatDateCN(article.publishTime) }}
@@ -316,7 +351,7 @@ onMounted(() => {
                   <span
                     v-for="tag in article.tags.slice(0, 2)"
                     :key="tag"
-                    class="rounded-full bg-aurora-purple/10 px-2 py-0.5 text-xs text-aurora-purple dark:bg-aurora-pink/10 dark:text-aurora-pink"
+                    class="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary"
                   >
                     {{ tag }}
                   </span>
@@ -331,7 +366,7 @@ onMounted(() => {
           <div class="flex items-center gap-2">
             <button
               :disabled="currentPage === 1"
-              class="flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 text-gray-600 transition-all hover:border-aurora-purple hover:text-aurora-purple disabled:opacity-50 disabled:cursor-not-allowed dark:border-dark-600 dark:text-gray-400"
+              class="flex h-10 w-10 items-center justify-center rounded-xl border border-border text-content-secondary transition-all hover:border-primary hover:text-primary disabled:opacity-50 disabled:cursor-not-allowed"
               @click="handlePageChange(currentPage - 1)"
             >
               <el-icon><ArrowLeft /></el-icon>
@@ -343,8 +378,8 @@ onMounted(() => {
                 :key="page"
                 class="flex h-10 w-10 items-center justify-center rounded-xl text-sm font-medium transition-all"
                 :class="currentPage === page
-                  ? 'bg-gradient-to-r from-aurora-purple to-aurora-pink text-white'
-                  : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-dark-700'"
+                  ? 'btn-gradient text-white'
+                  : 'text-content-secondary hover:bg-surface-tertiary'"
                 @click="handlePageChange(page)"
               >
                 {{ page }}
@@ -353,7 +388,7 @@ onMounted(() => {
 
             <button
               :disabled="currentPage >= Math.ceil(total / pageSize)"
-              class="flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 text-gray-600 transition-all hover:border-aurora-purple hover:text-aurora-purple disabled:opacity-50 disabled:cursor-not-allowed dark:border-dark-600 dark:text-gray-400"
+              class="flex h-10 w-10 items-center justify-center rounded-xl border border-border text-content-secondary transition-all hover:border-primary hover:text-primary disabled:opacity-50 disabled:cursor-not-allowed"
               @click="handlePageChange(currentPage + 1)"
             >
               <el-icon><ArrowRight /></el-icon>

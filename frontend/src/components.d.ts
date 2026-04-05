@@ -18,6 +18,7 @@ declare module 'vue' {
     ArticleToc: typeof import('./components/article/ArticleToc.vue')['default']
     DailyLogCard: typeof import('./components/dailyLog/DailyLogCard.vue')['default']
     DailyLogTimeline: typeof import('./components/dailyLog/DailyLogTimeline.vue')['default']
+    ElAlert: typeof import('element-plus/es')['ElAlert']
     ElAvatar: typeof import('element-plus/es')['ElAvatar']
     ElButton: typeof import('element-plus/es')['ElButton']
     ElCard: typeof import('element-plus/es')['ElCard']
@@ -52,6 +53,7 @@ declare module 'vue' {
     RouterView: typeof import('vue-router')['RouterView']
     SkillCloud: typeof import('./components/skill/SkillCloud.vue')['default']
     SkillItem: typeof import('./components/skill/SkillItem.vue')['default']
+    ThemeSwitcher: typeof import('./components/common/ThemeSwitcher.vue')['default']
   }
   export interface ComponentCustomProperties {
     vLoading: typeof import('element-plus/es')['ElLoadingDirective']

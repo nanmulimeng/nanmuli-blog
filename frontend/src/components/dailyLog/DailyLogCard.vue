@@ -13,8 +13,8 @@ const emit = defineEmits<{
 const moodMap: Record<string, { emoji: string; label: string; color: string }> = {
   happy: { emoji: '😊', label: '开心', color: '#f59e0b' },
   excited: { emoji: '🤩', label: '兴奋', color: '#ef4444' },
-  normal: { emoji: '😐', label: '平静', color: '#6b7280' },
-  tired: { emoji: '😴', label: '疲惫', color: '#8b5cf6' },
+  normal: { emoji: '😐', label: '平静', color: '#64748B' },
+  tired: { emoji: '😴', label: '疲惫', color: '#3B82F6' },
 }
 
 function handleClick(): void {
@@ -24,7 +24,7 @@ function handleClick(): void {
 
 <template>
   <article
-    class="group cursor-pointer rounded-xl border bg-white p-6 transition-shadow hover:shadow-lg"
+    class="group cursor-pointer rounded-xl border bg-surface-secondary p-6 transition-shadow hover:shadow-lg"
     @click="handleClick"
   >
     <div class="mb-4 flex items-center justify-between">
@@ -37,15 +37,15 @@ function handleClick(): void {
           >
             {{ moodMap[log.mood]?.label || '平静' }}
           </div>
-          <div class="text-xs text-gray-400">{{ formatDate(log.logDate) }}</div>
+          <div class="text-xs text-content-tertiary">{{ formatDate(log.logDate) }}</div>
         </div>
       </div>
-      <div v-if="log.weather" class="text-sm text-gray-500">
+      <div v-if="log.weather" class="text-sm text-content-tertiary">
         {{ log.weather }}
       </div>
     </div>
 
-    <p class="mb-4 line-clamp-4 text-gray-700">
+    <p class="mb-4 line-clamp-4 text-content-secondary">
       {{ log.content.replace(/[#*`_\[\]]/g, '').slice(0, 200) }}
     </p>
 
@@ -54,12 +54,12 @@ function handleClick(): void {
         <span
           v-for="tag in log.tags.slice(0, 3)"
           :key="tag"
-          class="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-600"
+          class="rounded bg-surface-tertiary px-2 py-0.5 text-xs text-content-secondary"
         >
           #{{ tag }}
         </span>
       </div>
-      <div class="text-xs text-gray-400">{{ log.wordCount }} 字</div>
+      <div class="text-xs text-content-tertiary">{{ log.wordCount }} 字</div>
     </div>
   </article>
 </template>

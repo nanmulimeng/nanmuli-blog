@@ -29,7 +29,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="flex h-screen bg-gray-100">
+  <div class="flex h-screen bg-surface-primary transition-colors duration-300">
     <AppSidebar :collapsed="isCollapsed" />
     <div class="flex flex-1 flex-col overflow-hidden">
       <header class="flex h-16 items-center justify-between border-b bg-white px-6">

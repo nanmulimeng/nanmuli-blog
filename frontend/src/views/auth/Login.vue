@@ -51,11 +51,11 @@ async function handleSubmit(): Promise<void> {
 </script>
 
 <template>
-  <div class="flex min-h-screen items-center justify-center bg-gradient-to-br from-primary-50 to-primary-100 p-4">
-    <div class="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl">
+  <div class="flex min-h-screen items-center justify-center bg-surface-primary p-4">
+    <div class="w-full max-w-md rounded-2xl bg-surface-secondary p-8 shadow-xl border border-border">
       <div class="mb-8 text-center">
-        <h1 class="text-2xl font-bold text-gray-900">管理员登录</h1>
-        <p class="mt-2 text-sm text-gray-600">个人技术博客管理后台</p>
+        <h1 class="text-2xl font-bold text-content-primary">管理员登录</h1>
+        <p class="mt-2 text-sm text-content-secondary">个人技术博客管理后台</p>
       </div>
 
       <el-form ref="formRef" :model="form" :rules="rules" label-position="top">
@@ -93,10 +93,39 @@ async function handleSubmit(): Promise<void> {
       </el-form>
 
       <div class="mt-6 text-center">
-        <router-link to="/" class="text-sm text-primary-600 hover:underline">
+        <router-link to="/" class="text-sm text-primary hover:underline">
           返回首页
         </router-link>
       </div>
     </div>
   </div>
 </template>
+
+<style scoped>
+/* 暗色模式输入框样式适配 */
+:deep(.el-input__wrapper) {
+  background-color: var(--theme-bg-tertiary);
+  box-shadow: 0 0 0 1px var(--theme-border) inset;
+}
+
+:deep(.el-input__wrapper:hover) {
+  box-shadow: 0 0 0 1px var(--theme-primary) inset;
+}
+
+:deep(.el-input__wrapper.is-focus) {
+  box-shadow: 0 0 0 1px var(--theme-primary) inset;
+}
+
+:deep(.el-input__inner) {
+  color: var(--theme-text-primary);
+  background-color: transparent;
+}
+
+:deep(.el-input__inner::placeholder) {
+  color: var(--theme-text-tertiary);
+}
+
+:deep(.el-form-item__label) {
+  color: var(--theme-text-secondary);
+}
+</style>

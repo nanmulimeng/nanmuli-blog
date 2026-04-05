@@ -22,7 +22,7 @@ function handleArticleClick(id: number): void {
       <el-skeleton v-for="i in 3" :key="i" :rows="3" animated />
     </div>
 
-    <div v-else-if="articles.length === 0" class="py-12 text-center text-gray-500">
+    <div v-else-if="articles.length === 0" class="py-12 text-center text-content-tertiary">
       暂无文章
     </div>
 

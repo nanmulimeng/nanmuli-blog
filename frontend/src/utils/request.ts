@@ -13,7 +13,8 @@ request.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token')
     if (token) {
-      config.headers.Authorization = `Bearer ${token}`
+      // Sa-Token 直接使用 token 值，不需要 Bearer 前缀
+      config.headers.Authorization = token
     }
     return config
   },

@@ -33,11 +33,4 @@ public class AuthController {
         userAppService.logout();
         return Result.success();
     }
-
-    // TODO: 临时密码重置端点，测试完成后删除
-    @PostMapping("/auth/reset-password")
-    public Result<Void> resetPassword(@RequestParam String username, @RequestParam String password) {
-        userAppService.resetPassword(username, password);
-        return Result.success();
-    }
 }

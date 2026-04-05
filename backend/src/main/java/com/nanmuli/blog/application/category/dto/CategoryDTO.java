@@ -3,11 +3,13 @@ package com.nanmuli.blog.application.category.dto;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 
+import java.io.Serializable;
 import java.time.LocalDateTime;
 import java.util.List;
 
 @Data
-public class CategoryDTO {
+public class CategoryDTO implements Serializable {
+    private static final long serialVersionUID = 1L;
     private Long id;
     private String name;
     private String slug;
