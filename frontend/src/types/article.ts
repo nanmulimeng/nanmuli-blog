@@ -1,4 +1,5 @@
 import type { PageQuery } from './api'
+import type { Category } from './category'
 
 export interface Article {
   id: number
@@ -9,7 +10,10 @@ export interface Article {
   summary: string
   cover: string
   categoryId: number
-  categoryName: string
+  categoryName?: string  // 从category中提取
+  category?: Category    // 完整分类信息
+  categoryPath?: Category[]  // 分类层级路径（如：后端开发 > Java）
+  tags?: string[]        // SEO关键词列表（从分类继承）
   userId: number
   viewCount: number
   likeCount: number
@@ -22,13 +26,10 @@ export interface Article {
   publishTime: string
   createTime: string
   updateTime: string
-  tags: Tag[]
-  tagIds?: number[]
 }
 
 export interface ArticleQuery extends PageQuery {
-  categoryId?: number
-  tagId?: number
+  categoryId?: number  // 按叶子分类筛选
   keyword?: string
   sort?: string
 }
@@ -38,6 +39,7 @@ export interface ArticleListResult {
   total: number
 }
 
+// Tag已废弃，使用多级分类替代
 export interface Tag {
   id: number
   name: string

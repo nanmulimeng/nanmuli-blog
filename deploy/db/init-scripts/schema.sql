@@ -188,7 +188,7 @@ CREATE INDEX IF NOT EXISTS idx_daily_log_deleted ON daily_log(is_deleted);
 -- 分类标签模块
 -- ============================================
 
--- 分类表
+-- 分类表（合并标签功能，支持多级树形结构）
 CREATE TABLE IF NOT EXISTS category (
     id BIGSERIAL PRIMARY KEY,
     name VARCHAR(50) NOT NULL,
@@ -200,12 +200,13 @@ CREATE TABLE IF NOT EXISTS category (
     parent_id BIGINT,
     article_count INT NOT NULL DEFAULT 0,
     status INT NOT NULL DEFAULT 1,
+    is_leaf BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     is_deleted BOOLEAN NOT NULL DEFAULT FALSE
 );
 
-COMMENT ON TABLE category IS '分类表';
+COMMENT ON TABLE category IS '分类表（合并标签功能）';
 COMMENT ON COLUMN category.name IS '分类名称';
 COMMENT ON COLUMN category.slug IS 'URL别名';
 COMMENT ON COLUMN category.description IS '描述';
@@ -215,11 +216,13 @@ COMMENT ON COLUMN category.sort IS '排序';
 COMMENT ON COLUMN category.parent_id IS '父分类ID（支持多级）';
 COMMENT ON COLUMN category.article_count IS '文章数量';
 COMMENT ON COLUMN category.status IS '状态：1-正常 0-禁用';
+COMMENT ON COLUMN category.is_leaf IS '是否为叶子节点：true-可关联文章（原标签概念），false-父分类（容器）';
 COMMENT ON COLUMN category.is_deleted IS '逻辑删除标记';
 
 CREATE INDEX IF NOT EXISTS idx_category_parent_id ON category(parent_id);
 CREATE INDEX IF NOT EXISTS idx_category_sort ON category(sort);
 CREATE INDEX IF NOT EXISTS idx_category_status ON category(status);
+CREATE INDEX IF NOT EXISTS idx_category_is_leaf ON category(is_leaf);
 CREATE INDEX IF NOT EXISTS idx_category_deleted ON category(is_deleted);
 
 -- 标签表
@@ -592,15 +595,37 @@ INSERT INTO sys_user (id, username, password, nickname, email, role, status)
 VALUES (1, 'admin', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iAt6Z5EO', '管理员', 'admin@example.com', 'ADMIN', 1)
 ON CONFLICT (username) DO NOTHING;
 
--- 插入默认分类
-INSERT INTO category (id, name, slug, description, sort)
+-- 插入默认父分类（容器节点）
+INSERT INTO category (id, name, slug, description, sort, is_leaf)
 VALUES
-    (1, '后端开发', 'backend', 'Java后端开发相关文章', 1),
-    (2, '前端技术', 'frontend', '前端开发技术分享', 2),
-    (3, '数据库', 'database', '数据库技术与优化', 3),
-    (4, 'DevOps', 'devops', '运维与部署', 4),
-    (5, '技术日志', 'daily-log', '每日技术笔记', 5),
-    (6, '项目展示', 'projects', '个人项目介绍', 6)
+    (1, '后端开发', 'backend', 'Java后端开发相关文章', 1, FALSE),
+    (2, '前端技术', 'frontend', '前端开发技术分享', 2, FALSE),
+    (3, '数据库', 'database', '数据库技术与优化', 3, FALSE),
+    (4, 'DevOps', 'devops', '运维与部署', 4, FALSE),
+    (5, '项目展示', 'projects', '个人项目介绍', 5, FALSE)
+ON CONFLICT DO NOTHING;
+
+-- 插入默认叶子分类（可关联文章，原标签概念）
+INSERT INTO category (id, name, slug, description, parent_id, color, sort, is_leaf)
+VALUES
+    -- 后端开发子类
+    (11, 'Java', 'java', 'Java编程语言', 1, '#007396', 1, TRUE),
+    (12, 'Spring Boot', 'spring-boot', 'Spring Boot框架', 1, '#6DB33F', 2, TRUE),
+    (13, 'MyBatis', 'mybatis', 'MyBatis持久层框架', 1, '#D64545', 3, TRUE),
+    -- 前端技术子类
+    (21, 'Vue.js', 'vue', 'Vue.js前端框架', 2, '#4FC08D', 1, TRUE),
+    (22, 'TypeScript', 'typescript', 'TypeScript类型安全JavaScript', 2, '#3178C6', 2, TRUE),
+    (23, 'Element Plus', 'element-plus', 'Element Plus UI组件库', 2, '#409EFF', 3, TRUE),
+    -- 数据库子类
+    (31, 'PostgreSQL', 'postgresql', 'PostgreSQL数据库', 3, '#336791', 1, TRUE),
+    (32, 'Redis', 'redis', 'Redis缓存', 3, '#DC382D', 2, TRUE),
+    -- DevOps子类
+    (41, 'Docker', 'docker', 'Docker容器化', 4, '#2496ED', 1, TRUE),
+    (42, 'Linux', 'linux', 'Linux系统', 4, '#FCC624', 2, TRUE),
+    (43, 'Nginx', 'nginx', 'Nginx服务器', 4, '#009639', 3, TRUE),
+    -- 项目展示子类
+    (51, '开源项目', 'open-source', '开源项目分享', 5, '#FF6B6B', 1, TRUE),
+    (52, '个人作品', 'personal-work', '个人作品展示', 5, '#4ECDC4', 2, TRUE)
 ON CONFLICT DO NOTHING;
 
 -- 插入默认标签

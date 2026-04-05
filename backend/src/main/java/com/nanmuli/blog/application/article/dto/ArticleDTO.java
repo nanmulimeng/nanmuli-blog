@@ -1,10 +1,10 @@
 package com.nanmuli.blog.application.article.dto;
 
 import com.nanmuli.blog.application.category.dto.CategoryDTO;
-import com.nanmuli.blog.application.tag.dto.TagDTO;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 @Data
@@ -17,7 +17,8 @@ public class ArticleDTO {
     private String summary;
     private String cover;
     private CategoryDTO category;
-    private List<TagDTO> tags;
+    private List<CategoryDTO> categoryPath;  // 分类层级路径
+    private List<String> tags;  // 简化为字符串列表（SEO关键词用途）
     private Integer viewCount;
     private Integer likeCount;
     private Integer wordCount;

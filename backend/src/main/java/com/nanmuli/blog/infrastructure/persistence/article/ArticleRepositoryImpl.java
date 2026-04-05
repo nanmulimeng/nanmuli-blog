@@ -95,6 +95,13 @@ public class ArticleRepositoryImpl implements ArticleRepository {
     }
 
     @Override
+    public Long countByCategoryId(Long categoryId) {
+        LambdaQueryWrapper<Article> wrapper = Wrappers.lambdaQuery();
+        wrapper.eq(Article::getCategoryId, categoryId);
+        return articleMapper.selectCount(wrapper);
+    }
+
+    @Override
     public List<Article> findLatestArticles(int limit) {
         LambdaQueryWrapper<Article> wrapper = Wrappers.lambdaQuery();
         wrapper.eq(Article::getStatus, 1)

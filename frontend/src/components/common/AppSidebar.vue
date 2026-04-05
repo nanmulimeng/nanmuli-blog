@@ -11,7 +11,7 @@ const menuItems = [
   { path: '/admin', icon: 'Odometer', label: '仪表盘' },
   { path: '/admin/article', icon: 'Document', label: '文章管理' },
   { path: '/admin/daily-log', icon: 'Notebook', label: '日志管理' },
-  { path: '/admin/tag', icon: 'Collection', label: '标签管理' },
+  { path: '/admin/category', icon: 'Collection', label: '分类管理' },
   { path: '/admin/project', icon: 'FolderOpened', label: '项目管理' },
   { path: '/admin/skill', icon: 'Trophy', label: '技能管理' },
   { path: '/admin/config', icon: 'Setting', label: '系统配置' },

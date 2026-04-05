@@ -23,6 +23,11 @@ public class CategoryController {
         return Result.success(categoryAppService.listAllActive());
     }
 
+    @GetMapping("/category/leaf")
+    public Result<List<CategoryDTO>> listLeaf() {
+        return Result.success(categoryAppService.listLeafCategories());
+    }
+
     @GetMapping("/admin/category/list")
     public Result<List<CategoryDTO>> adminList() {
         return Result.success(categoryAppService.listAll());

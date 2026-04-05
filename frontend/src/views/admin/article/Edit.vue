@@ -3,19 +3,16 @@ import { reactive, ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { getArticleById, updateArticle } from '@/api/article'
-import { getCategoryList } from '@/api/category'
-import { getTagList } from '@/api/tag'
+import { getLeafCategoryList } from '@/api/category'
 import type { FormInstance, FormRules } from 'element-plus'
 import type { Article } from '@/types/article'
 import type { Category } from '@/types/category'
-import type { Tag } from '@/types/tag'
 
 const route = useRoute()
 const router = useRouter()
 const formRef = ref<FormInstance>()
 const loading = ref(false)
 const categories = ref<Category[]>([])
-const tags = ref<Tag[]>([])
 const articleId = Number(route.params.id)
 
 const form = reactive<Partial<Article>>({
@@ -25,7 +22,6 @@ const form = reactive<Partial<Article>>({
   summary: '',
   cover: '',
   categoryId: undefined,
-  tagIds: [],
   isTop: false,
   isOriginal: true,
   originalUrl: '',
@@ -41,10 +37,6 @@ async function fetchArticle(): Promise<void> {
   try {
     const article = await getArticleById(articleId)
     Object.assign(form, article)
-    // 提取标签ID列表
-    if (article.tags) {
-      form.tagIds = article.tags.map((tag) => tag.id)
-    }
   } catch {
     ElMessage.error('加载文章失败')
   }
@@ -52,17 +44,9 @@ async function fetchArticle(): Promise<void> {
 
 async function fetchCategories() {
   try {
-    categories.value = await getCategoryList()
+    categories.value = await getLeafCategoryList()
   } catch {
     ElMessage.error('加载分类失败')
-  }
-}
-
-async function fetchTags() {
-  try {
-    tags.value = await getTagList()
-  } catch {
-    ElMessage.error('加载标签失败')
   }
 }
 
@@ -92,7 +76,6 @@ function handleCancel(): void {
 onMounted(() => {
   fetchArticle()
   fetchCategories()
-  fetchTags()
 })
 </script>
 
@@ -118,29 +101,12 @@ onMounted(() => {
       </el-form-item>
 
       <el-form-item label="分类">
-        <el-select v-model="form.categoryId" placeholder="选择分类" clearable>
+        <el-select v-model="form.categoryId" placeholder="选择分类" clearable class="w-full">
           <el-option
             v-for="cat in categories"
             :key="cat.id"
             :label="cat.name"
             :value="cat.id"
-          />
-        </el-select>
-      </el-form-item>
-
-      <el-form-item label="标签">
-        <el-select
-          v-model="form.tagIds"
-          multiple
-          filterable
-          placeholder="选择标签"
-          style="width: 100%"
-        >
-          <el-option
-            v-for="tag in tags"
-            :key="tag.id"
-            :label="tag.name"
-            :value="tag.id"
           />
         </el-select>
       </el-form-item>

@@ -78,10 +78,4 @@ public class ArticleController {
         return Result.success();
     }
 
-    @GetMapping("/article/list-by-tag")
-    public Result<PageResult<ArticleDTO>> listByTag(@RequestParam Long tagId,
-                                                     @RequestParam(defaultValue = "1") int current,
-                                                     @RequestParam(defaultValue = "10") int size) {
-        return Result.success(articleAppService.listByTagId(tagId, current, size));
-    }
 }

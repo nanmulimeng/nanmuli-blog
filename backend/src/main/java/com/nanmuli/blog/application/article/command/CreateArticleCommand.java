@@ -4,8 +4,6 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
-import java.util.List;
-
 @Data
 public class CreateArticleCommand {
     @NotBlank(message = "标题不能为空")
@@ -15,9 +13,9 @@ public class CreateArticleCommand {
     private String content;
     private String cover;
     private Long categoryId;
-    private List<Long> tagIds;
     private String summary;
-    private Boolean isOriginal;
+    private Boolean isOriginal = true;
     private String originalUrl;
-    private Boolean isTop;
+    private Boolean isTop = false;
+    private Integer status = 1;
 }

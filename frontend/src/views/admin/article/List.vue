@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { getArticleList, deleteArticle } from '@/api/article'
+import { getAdminArticleList, deleteArticle } from '@/api/article'
 import { formatDate } from '@/utils/format'
 import { ArticleStatusMap } from '@/constants'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -18,7 +18,7 @@ const pageSize = ref(10)
 async function fetchData(): Promise<void> {
   loading.value = true
   try {
-    const res = await getArticleList({
+    const res = await getAdminArticleList({
       current: currentPage.value,
       size: pageSize.value,
     })

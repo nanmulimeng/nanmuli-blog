@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { getArticleList } from '@/api/article'
-import { getCategoryList } from '@/api/category'
+import { getCategoryList, getLeafCategoryList } from '@/api/category'
 import { formatDateCN } from '@/utils/format'
 import type { Article } from '@/types/article'
 import type { Category } from '@/types/category'
@@ -11,7 +11,8 @@ const router = useRouter()
 
 const loading = ref(false)
 const articles = ref<Article[]>([])
-const categories = ref<Category[]>([])
+const categoryTree = ref<Category[]>([])
+const leafCategories = ref<Category[]>([])
 const total = ref(0)
 
 const currentPage = ref(1)
@@ -24,6 +25,33 @@ const sortOptions = [
   { value: 'oldest', label: '最早发布' },
   { value: 'popular', label: '最多阅读' }
 ]
+
+// 扁平化叶子分类列表（用于筛选）
+const flatLeafCategories = computed(() => {
+  const result: Category[] = []
+  function traverse(list: Category[]) {
+    list.forEach(item => {
+      if (item.isLeaf) {
+        result.push(item)
+      }
+      if (item.children?.length) {
+        traverse(item.children)
+      }
+    })
+  }
+  traverse(categoryTree.value)
+  return result.sort((a, b) => (a.sort || 0) - (b.sort || 0))
+})
+
+// 获取分类的完整路径名称
+function getCategoryPathName(categoryId: number): string {
+  const article = articles.value.find(a => a.categoryId === categoryId)
+  if (article?.categoryPath?.length) {
+    return article.categoryPath.map(c => c.name).join(' > ')
+  }
+  const category = leafCategories.value.find(c => c.id === categoryId)
+  return category?.name || ''
+}
 
 async function fetchArticles(): Promise<void> {
   loading.value = true
@@ -42,8 +70,10 @@ async function fetchArticles(): Promise<void> {
 }
 
 async function fetchCategories(): Promise<void> {
-  const res = await getCategoryList()
-  categories.value = res
+  // 获取树形分类（用于展示层级）
+  categoryTree.value = await getCategoryList()
+  // 获取叶子分类（用于筛选）
+  leafCategories.value = await getLeafCategoryList()
 }
 
 function handleCategoryChange(categoryId: number | undefined): void {
@@ -78,7 +108,7 @@ onMounted(() => {
     <section class="sticky top-16 z-40 border-b border-gray-200 bg-white/95 backdrop-blur-md">
       <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-4">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <!-- Category Filter -->
+          <!-- Category Filter (Leaf Categories Only) -->
           <div class="flex items-center gap-2 overflow-x-auto pb-2 sm:pb-0 scrollbar-hide">
             <button
               class="px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all duration-150"
@@ -90,7 +120,7 @@ onMounted(() => {
               全部
             </button>
             <button
-              v-for="cat in categories"
+              v-for="cat in flatLeafCategories"
               :key="cat.id"
               class="px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all duration-150"
               :class="selectedCategory === cat.id
@@ -145,8 +175,20 @@ onMounted(() => {
             @click="router.push(`/article/${article.slug}`)"
           >
             <div class="mb-4 flex items-center gap-3">
-              <span class="rounded-full bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-600">
-                {{ article.categoryName }}
+              <!-- 分类路径（如：后端开发 > Java） -->
+              <span v-if="article.categoryPath?.length" class="flex items-center gap-1">
+                <span
+                  v-for="(cat, index) in article.categoryPath"
+                  :key="cat.id"
+                  class="text-xs"
+                  :class="index === article.categoryPath.length - 1 ? 'font-medium text-primary-600' : 'text-gray-400'"
+                >
+                  {{ cat.name }}
+                  <span v-if="index < article.categoryPath.length - 1" class="mx-1 text-gray-300">></span>
+                </span>
+              </span>
+              <span v-else class="rounded-full bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-600">
+                {{ article.category?.name || article.categoryName }}
               </span>
               <span class="text-sm text-gray-400">{{ formatDateCN(article.publishTime) }}</span>
             </div>
@@ -165,13 +207,14 @@ onMounted(() => {
                   <el-icon><View /></el-icon> {{ article.viewCount }}
                 </span>
               </div>
+              <!-- 关键词标签 -->
               <div v-if="article.tags?.length" class="flex gap-2">
                 <span
                   v-for="tag in article.tags.slice(0, 2)"
-                  :key="tag.id"
+                  :key="tag"
                   class="px-2 py-0.5 bg-gray-100 rounded text-xs text-gray-600"
                 >
-                  {{ tag.name }}
+                  {{ tag }}
                 </span>
               </div>
             </div>

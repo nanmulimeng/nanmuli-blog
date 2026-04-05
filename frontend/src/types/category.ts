@@ -6,9 +6,11 @@ export interface Category {
   icon: string
   color: string
   sort: number
-  parentId: number
+  parentId: number | null
   articleCount: number
   status: number
+  isLeaf: boolean
   createTime: string
   updateTime: string
+  children?: Category[]
 }

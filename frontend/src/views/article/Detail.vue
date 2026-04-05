@@ -72,13 +72,37 @@ onMounted(() => {
       <!-- Article Header -->
       <section class="pt-24 pb-12 bg-gradient-to-b from-primary-50/50 to-white">
         <div class="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
-          <!-- Category -->
+          <!-- Category Path (如：后端开发 > Java) -->
           <div class="mb-6">
+            <div v-if="article.categoryPath?.length" class="flex items-center gap-2">
+              <span
+                v-for="(cat, index) in article.categoryPath"
+                :key="cat.id"
+                class="flex items-center gap-2"
+              >
+                <router-link
+                  v-if="index < article.categoryPath.length - 1"
+                  :to="`/article?category=${cat.id}`"
+                  class="text-sm text-gray-500 hover:text-primary-600 transition-colors"
+                >
+                  {{ cat.name }}
+                </router-link>
+                <router-link
+                  v-else
+                  :to="`/article?category=${cat.id}`"
+                  class="inline-flex items-center px-3 py-1 rounded-full bg-primary-50 text-primary-600 text-sm font-medium hover:bg-primary-100 transition-colors"
+                >
+                  {{ cat.name }}
+                </router-link>
+                <span v-if="index < article.categoryPath.length - 1" class="text-gray-300">">"</span>
+              </span>
+            </div>
             <router-link
+              v-else
               :to="`/article?category=${article.categoryId}`"
               class="inline-flex items-center px-3 py-1 rounded-full bg-primary-50 text-primary-600 text-sm font-medium hover:bg-primary-100 transition-colors"
             >
-              {{ article.categoryName }}
+              {{ article.category?.name || article.categoryName }}
             </router-link>
           </div>
 
@@ -107,16 +131,15 @@ onMounted(() => {
             </span>
           </div>
 
-          <!-- Tags -->
+          <!-- Keywords (SEO) -->
           <div v-if="article.tags?.length" class="mt-6 flex flex-wrap gap-2">
-            <router-link
-              v-for="tag in article.tags"
-              :key="tag.id"
-              :to="`/tag/${tag.slug}`"
-              class="px-3 py-1 rounded-full bg-gray-100 text-gray-600 text-sm hover:bg-primary-50 hover:text-primary-600 transition-colors"
+            <span
+              v-for="(tag, index) in article.tags"
+              :key="index"
+              class="px-3 py-1 rounded-full bg-gray-100 text-gray-500 text-xs"
             >
-              {{ tag.name }}
-            </router-link>
+              {{ tag }}
+            </span>
           </div>
         </div>
       </section>

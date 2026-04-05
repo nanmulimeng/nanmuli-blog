@@ -36,4 +36,9 @@ public interface ArticleRepository {
     void deleteById(ArticleId id);
 
     void increaseViewCount(ArticleId id);
+
+    /**
+     * 统计指定分类的文章数量
+     */
+    Long countByCategoryId(Long categoryId);
 }

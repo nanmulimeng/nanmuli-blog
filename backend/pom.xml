@@ -21,6 +21,7 @@
         <knife4j.version>4.4.0</knife4j.version>
         <hutool.version>5.8.36</hutool.version>
         <pgvector.version>0.1.4</pgvector.version>
+        <flexmark.version>0.64.8</flexmark.version>
     </properties>
     <dependencies>
         <dependency>
@@ -83,6 +84,12 @@
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <optional>true</optional>
+        </dependency>
+        <!-- Markdown解析 -->
+        <dependency>
+            <groupId>com.vladsch.flexmark</groupId>
+            <artifactId>flexmark-all</artifactId>
+            <version>${flexmark.version}</version>
         </dependency>
         <!-- Spring AI - 阿里云DashScope (暂时禁用，等待M6发布) -->
         <!-- <dependency>

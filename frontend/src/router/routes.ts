@@ -116,10 +116,10 @@ export const adminRoutes: RouteRecordRaw[] = [
     meta: { layout: AdminLayout, title: '编辑日志', requiresAuth: true },
   },
   {
-    path: '/admin/tag',
-    name: 'AdminTag',
-    component: () => import('@/views/admin/tag/Index.vue'),
-    meta: { layout: AdminLayout, title: '标签管理', requiresAuth: true },
+    path: '/admin/category',
+    name: 'AdminCategory',
+    component: () => import('@/views/admin/category/Index.vue'),
+    meta: { layout: AdminLayout, title: '分类管理', requiresAuth: true },
   },
   {
     path: '/admin/project',
