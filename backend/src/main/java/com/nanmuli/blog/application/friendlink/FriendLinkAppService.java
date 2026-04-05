@@ -55,6 +55,9 @@ public class FriendLinkAppService {
         FriendLinkDTO dto = new FriendLinkDTO();
         BeanUtils.copyProperties(friendLink, dto);
         dto.setId(friendLink.getId());
+        // 显式映射时间字段（字段名不一致）
+        dto.setCreateTime(friendLink.getCreatedAt());
+        dto.setUpdateTime(friendLink.getUpdatedAt());
         return dto;
     }
 }

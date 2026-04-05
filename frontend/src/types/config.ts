@@ -6,4 +6,5 @@ export interface Config {
   description: string
   groupName: string
   isPublic: boolean
+  sensitive?: boolean
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getConfigList, updateConfig } from '@/api/config'
 import type { Config } from '@/types/config'
@@ -50,17 +50,15 @@ const groupedConfigs = computed(() => {
   return groups
 })
 
-import { computed } from 'vue'
-
 onMounted(fetchData)
 </script>
 
 <template>
   <div>
-    <h2 class="mb-6 text-xl font-bold text-gray-900">系统配置</h2>
+    <h2 class="mb-6 text-xl font-bold text-content-primary">系统配置</h2>
 
     <div v-for="(items, group) in groupedConfigs" :key="group" class="mb-8">
-      <h3 class="mb-4 text-lg font-semibold text-gray-800">
+      <h3 class="mb-4 text-lg font-semibold text-content-secondary">
         {{ groupNames[group] || group }}
       </h3>
 
@@ -80,7 +78,7 @@ onMounted(fetchData)
             </el-button>
           </div>
           <template v-if="config.defaultValue">
-            <p class="mt-1 text-xs text-gray-500">
+            <p class="mt-1 text-xs text-content-tertiary">
               默认值: {{ config.defaultValue }}
             </p>
           </template>

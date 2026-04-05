@@ -9,6 +9,7 @@ const loading = ref(false)
 const dialogVisible = ref(false)
 const isEdit = ref(false)
 const tags = ref<Tag[]>([])
+const formRef = ref()
 const form = ref<Partial<Tag>>({
   name: '',
   slug: '',
@@ -16,6 +17,11 @@ const form = ref<Partial<Tag>>({
   description: '',
   status: 1,
 })
+
+const rules = {
+  name: [{ required: true, message: '请输入标签名称', trigger: 'blur' }],
+  slug: [{ required: true, message: '请输入标签别名', trigger: 'blur' }],
+}
 
 async function fetchData(): Promise<void> {
   loading.value = true
@@ -52,19 +58,25 @@ async function handleDelete(row: Tag): Promise<void> {
 }
 
 async function handleSubmit(): Promise<void> {
-  try {
-    if (isEdit.value && form.value.id) {
-      await updateTag(form.value.id, form.value)
-      ElMessage.success('更新成功')
-    } else {
-      await createTag(form.value)
-      ElMessage.success('创建成功')
+  if (!formRef.value) return
+
+  await formRef.value.validate(async (valid: boolean) => {
+    if (!valid) return
+
+    try {
+      if (isEdit.value && form.value.id) {
+        await updateTag(form.value.id, form.value)
+        ElMessage.success('更新成功')
+      } else {
+        await createTag(form.value)
+        ElMessage.success('创建成功')
+      }
+      dialogVisible.value = false
+      fetchData()
+    } catch {
+      ElMessage.error('操作失败')
     }
-    dialogVisible.value = false
-    fetchData()
-  } catch {
-    ElMessage.error('操作失败')
-  }
+  })
 }
 
 onMounted(fetchData)
@@ -73,19 +85,24 @@ onMounted(fetchData)
 <template>
   <div>
     <div class="mb-6 flex items-center justify-between">
-      <h2 class="text-xl font-bold text-gray-900">标签管理</h2>
+      <h2 class="text-xl font-bold text-content-primary">标签管理</h2>
       <el-button type="primary" :icon="Plus" @click="handleCreate">
         新建标签
       </el-button>
     </div>
 
-    <el-table v-loading="loading" :data="tags" border>
+    <el-empty v-if="!loading && tags.length === 0" description="暂无标签" />
+
+    <el-table v-if="tags.length > 0" v-loading="loading" :data="tags" border>
       <el-table-column prop="id" label="ID" width="80" />
       <el-table-column prop="name" label="名称">
         <template #default="{ row }">
           <span
-            class="rounded px-2 py-1 text-white"
-            :style="{ backgroundColor: row.color || '#6b7280' }"
+            class="rounded px-2 py-1 text-sm font-medium"
+            :style="{
+              backgroundColor: (row.color || '#6b7280') + '20',
+              color: row.color || '#6b7280'
+            }"
           >
             {{ row.name }}
           </span>
@@ -105,8 +122,8 @@ onMounted(fetchData)
       </el-table-column>
     </el-table>
 
-    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑标签' : '新建标签'">
-      <el-form :model="form" label-width="80px">
+    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑标签' : '新建标签'" width="600px">
+      <el-form :model="form" label-width="100px" :rules="rules" ref="formRef">
         <el-form-item label="名称">
           <el-input v-model="form.name" />
         </el-form-item>
@@ -127,3 +144,7 @@ onMounted(fetchData)
     </el-dialog>
   </div>
 </template>
+
+<style scoped>
+/* 表格样式已由全局样式处理 */
+</style>

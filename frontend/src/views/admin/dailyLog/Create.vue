@@ -3,6 +3,7 @@ import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { createDailyLog } from '@/api/dailyLog'
+import MarkdownEditor from '@/components/editor/MarkdownEditor.vue'
 import type { FormInstance, FormRules } from 'element-plus'
 
 const router = useRouter()
@@ -23,10 +24,10 @@ const rules: FormRules = {
 }
 
 const moodOptions = [
-  { label: '😊 开心', value: 'happy' },
-  { label: '🤩 兴奋', value: 'excited' },
-  { label: '😐 平静', value: 'normal' },
-  { label: '😴 疲惫', value: 'tired' },
+  { label: '开心', value: 'happy', color: '#f59e0b' },
+  { label: '兴奋', value: 'excited', color: '#ef4444' },
+  { label: '平静', value: 'normal', color: '#64748B' },
+  { label: '疲惫', value: 'tired', color: '#3B82F6' },
 ]
 
 async function handleSubmit(): Promise<void> {
@@ -56,7 +57,7 @@ function handleCancel(): void {
 <template>
   <div>
     <div class="mb-6 flex items-center justify-between">
-      <h2 class="text-xl font-bold text-gray-900">新建日志</h2>
+      <h2 class="text-xl font-bold text-content-primary">新建日志</h2>
     </div>
 
     <el-form
@@ -82,7 +83,13 @@ function handleCancel(): void {
             :key="opt.value"
             :label="opt.value"
           >
-            {{ opt.label }}
+            <span class="inline-flex items-center gap-1">
+              <span
+                class="h-3 w-3 rounded-full"
+                :style="{ backgroundColor: opt.color }"
+              />
+              {{ opt.label }}
+            </span>
           </el-radio>
         </el-radio-group>
       </el-form-item>
@@ -102,11 +109,7 @@ function handleCancel(): void {
       </el-form-item>
 
       <el-form-item label="内容" prop="content">
-        <md-editor-v3
-          v-model="form.content"
-          :theme="'light'"
-          style="height: 400px"
-        />
+        <MarkdownEditor v-model="form.content" height="400px" />
       </el-form-item>
 
       <el-form-item>

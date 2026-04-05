@@ -378,6 +378,1293 @@ body {
 }
 
 /* ============================================
+   Element Plus Dark Mode Overrides
+   ============================================ */
+
+.dark .el-table {
+  background-color: var(--theme-bg-secondary);
+  color: var(--theme-text-primary);
+}
+
+.dark .el-table th.el-table__cell {
+  background-color: var(--theme-bg-tertiary);
+  color: var(--theme-text-primary);
+}
+
+.dark .el-table td.el-table__cell {
+  background-color: var(--theme-bg-secondary);
+  border-bottom-color: var(--theme-border);
+}
+
+/* el-table 边框样式 - 暗色模式 */
+.dark .el-table--border .el-table__cell {
+  border-right-color: var(--theme-border);
+  border-bottom-color: var(--theme-border);
+}
+
+.dark .el-table--border th.el-table__cell {
+  border-right-color: var(--theme-border);
+  border-bottom-color: var(--theme-border);
+}
+
+.dark .el-table--border td.el-table__cell {
+  border-right-color: var(--theme-border);
+  border-bottom-color: var(--theme-border);
+}
+
+/* 修复表格顶部边框 */
+.dark .el-table--border {
+  border-color: var(--theme-border);
+}
+
+.dark .el-table--border::before {
+  background-color: var(--theme-border);
+}
+
+.dark .el-table--border::after,
+.dark .el-table--group::after,
+.dark .el-table::before {
+  background-color: var(--theme-border);
+}
+
+/* el-table 表格底部边框 */
+.dark .el-table__inner-wrapper::before {
+  background-color: var(--theme-border);
+}
+
+/* el-table 修复所有单元格背景 - 防止白块 */
+.dark .el-table,
+.dark .el-table__inner-wrapper,
+.dark .el-table__body,
+.dark .el-table__header,
+.dark .el-table__footer {
+  background-color: transparent;
+}
+
+.dark .el-table tr:hover > td.el-table__cell {
+  background-color: var(--theme-bg-tertiary);
+}
+
+/* el-table 固定列 - 右侧固定列背景 */
+.dark .el-table__fixed-right {
+  background-color: transparent !important;
+  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.3) !important;
+}
+
+.dark .el-table__fixed-right::before {
+  background-color: var(--theme-border);
+}
+
+.dark .el-table__fixed-right .el-table__fixed-body-wrapper,
+.dark .el-table__fixed-right .el-table__fixed-footer-wrapper,
+.dark .el-table__fixed-right .el-table__fixed-header-wrapper {
+  background-color: transparent !important;
+}
+
+.dark .el-table__fixed-right .el-table__cell,
+.dark .el-table__fixed-right th.el-table__cell,
+.dark .el-table__fixed-right td.el-table__cell {
+  background-color: var(--theme-bg-secondary) !important;
+  border-left-color: var(--theme-border) !important;
+}
+
+.dark .el-table__fixed-right th.el-table__cell {
+  background-color: var(--theme-bg-tertiary) !important;
+}
+
+/* el-table 固定列阴影 */
+.dark .el-table__fixed-right-patch {
+  background-color: var(--theme-bg-tertiary) !important;
+  border-bottom-color: var(--theme-border);
+}
+
+/* el-table 左侧固定列 */
+.dark .el-table__fixed {
+  background-color: transparent !important;
+}
+
+.dark .el-table__fixed .el-table__cell {
+  background-color: var(--theme-bg-secondary) !important;
+}
+
+.dark .el-table__fixed th.el-table__cell {
+  background-color: var(--theme-bg-tertiary) !important;
+}
+
+/* el-table hover时fixed列背景 */
+.dark .el-table__fixed-right tr:hover td.el-table__cell,
+.dark .el-table__fixed tr:hover td.el-table__cell {
+  background-color: var(--theme-bg-tertiary) !important;
+}
+
+/* el-table 内部wrapper背景 */
+.dark .el-table__body-wrapper,
+.dark .el-table__header-wrapper,
+.dark .el-table__footer-wrapper {
+  background-color: transparent;
+}
+
+/* el-table 修复右侧白块 - 强制所有fixed右侧单元格背景 */
+.dark .el-table .el-table__fixed-right .el-table__cell {
+  background-color: var(--theme-bg-secondary) !important;
+}
+
+.dark .el-table .el-table__fixed-right th.el-table__cell {
+  background-color: var(--theme-bg-tertiary) !important;
+}
+
+/* el-table 行hover时右侧fixed列 */
+.dark .el-table .el-table__fixed-right tr:hover > td.el-table__cell {
+  background-color: var(--theme-bg-tertiary) !important;
+}
+
+/* 额外：确保表格所有部分背景一致 - 深度选择器 */
+.dark .el-table .el-table__cell,
+.dark .el-table th.el-table__cell,
+.dark .el-table td.el-table__cell {
+  background-color: var(--theme-bg-secondary);
+}
+
+.dark .el-table th.el-table__cell {
+  background-color: var(--theme-bg-tertiary);
+}
+
+/* 修复固定列阴影导致的白块 */
+.dark .el-table__fixed-right::after {
+  background: linear-gradient(to right, transparent, rgba(0, 0, 0, 0.3)) !important;
+}
+
+.dark .el-table__fixed::after {
+  background: linear-gradient(to left, transparent, rgba(0, 0, 0, 0.3)) !important;
+}
+
+/* 终极修复：确保el-table没有任何白色背景 */
+.dark .el-table * {
+  background-color: transparent;
+}
+
+.dark .el-table th,
+.dark .el-table td,
+.dark .el-table tr {
+  background-color: transparent;
+}
+
+.dark .el-table th.el-table__cell,
+.dark .el-table td.el-table__cell {
+  background-color: var(--theme-bg-secondary);
+}
+
+.dark .el-table th.el-table__cell {
+  background-color: var(--theme-bg-tertiary);
+}
+
+/* 修复固定列所有子元素背景 - 排除需要设置背景的元素 */
+.dark .el-table__fixed-right *:not(.el-table__cell):not(th):not(td):not(.el-table__fixed-right-patch),
+.dark .el-table__fixed *:not(.el-table__cell):not(th):not(td) {
+  background-color: transparent !important;
+}
+
+/* 重新设置固定列patch背景 */
+.dark .el-table__fixed-right-patch {
+  background-color: var(--theme-bg-tertiary) !important;
+}
+
+/* 修复固定列header部分 - 针对截图中的白块 */
+.dark .el-table__fixed-right .el-table__header-wrapper,
+.dark .el-table__fixed-right .el-table__header {
+  background-color: var(--theme-bg-tertiary) !important;
+}
+
+.dark .el-table__fixed-right .el-table__header-wrapper .el-table__cell,
+.dark .el-table__fixed-right .el-table__header .el-table__cell,
+.dark .el-table__fixed-right th.el-table__cell {
+  background-color: var(--theme-bg-tertiary) !important;
+}
+
+/* 终极修复：直接针对fixed-right容器 */
+.dark .el-table .el-table__fixed-right {
+  background-color: var(--theme-bg-secondary) !important;
+}
+
+.dark .el-table .el-table__fixed-right .el-table__header-wrapper {
+  background-color: var(--theme-bg-tertiary) !important;
+}
+
+/* 修复表头固定列背景 */
+.dark .el-table__header-wrapper .el-table__fixed-right {
+  background-color: var(--theme-bg-tertiary) !important;
+}
+
+/* 额外：修复可能的伪元素 */
+.dark .el-table__fixed-right::before,
+.dark .el-table__fixed-right::after {
+  background-color: transparent !important;
+}
+
+/* 修复fixed-right内部的直接子div */
+.dark .el-table__fixed-right > div[class*="header"],
+.dark .el-table__fixed-right > div[class*="wrapper"] {
+  background-color: var(--theme-bg-tertiary) !important;
+}
+
+/* 修复任何可能的白色背景元素 */
+.dark .el-table__fixed-right [class*="el-table__"],
+.dark .el-table__fixed [class*="el-table__"] {
+  background-color: var(--theme-bg-secondary);
+}
+
+.dark .el-table__fixed-right [class*="header"],
+.dark .el-table__fixed [class*="header"] {
+  background-color: var(--theme-bg-tertiary);
+}
+
+/* 针对截图问题的特定修复 - 修复表头右侧白块 */
+.dark .el-table__header .el-table__fixed-right,
+.dark .el-table__header .el-table__fixed-right .el-table__cell,
+.dark .el-table__header .el-table__fixed-right th {
+  background-color: var(--theme-bg-tertiary) !important;
+}
+
+/* 修复可能的gutter或空白区域 */
+.dark .el-table__body-wrapper ~ .el-table__fixed-right,
+.dark .el-table__header-wrapper ~ .el-table__fixed-right {
+  background-color: var(--theme-bg-tertiary) !important;
+}
+
+/* 修复Element Plus表格内部可能的白块 */
+.dark .el-table .el-table__fixed-right,
+.dark .el-table--border .el-table__fixed-right {
+  background-color: var(--theme-bg-secondary) !important;
+}
+
+/* 确保header wrapper内的所有元素都有正确背景 */
+.dark .el-table__fixed-right .el-table__header-wrapper *,
+.dark .el-table__fixed-right .el-table__header * {
+  background-color: var(--theme-bg-tertiary) !important;
+}
+
+/* 最终修复：使用[attr]选择器提高优先级 */
+.dark[class] .el-table__fixed-right,
+.dark[class] .el-table__fixed-right .el-table__header-wrapper,
+.dark[class] .el-table__fixed-right .el-table__header,
+.dark[class] .el-table__fixed-right th.el-table__cell {
+  background-color: var(--theme-bg-tertiary) !important;
+}
+
+/* 修复可能的is-scroll-right类 */
+.dark .el-table.is-scrolling-right .el-table__fixed-right,
+.dark .el-table.is-scrolling-middle .el-table__fixed-right {
+  background-color: var(--theme-bg-secondary) !important;
+}
+
+/* 修复el-table--border状态下的fixed-right */
+.dark .el-table--border .el-table__fixed-right,
+.dark .el-table--border .el-table__fixed-right .el-table__header-wrapper {
+  background-color: var(--theme-bg-tertiary) !important;
+}
+
+/* 修复Element Plus表格fixed-right的所有可能情况 */
+html.dark .el-table__fixed-right {
+  background-color: var(--theme-bg-secondary) !important;
+}
+
+html.dark .el-table__fixed-right .el-table__header-wrapper,
+html.dark .el-table__fixed-right .el-table__header,
+html.dark .el-table__fixed-right th {
+  background-color: var(--theme-bg-tertiary) !important;
+}
+
+/* 使用html选择器提高优先级 */
+html.dark .el-table .el-table__fixed-right-patch {
+  background-color: var(--theme-bg-tertiary) !important;
+}
+
+/* 检查并修复任何可能被忽略的元素 */
+.dark .el-table__fixed-right,
+.dark .el-table__fixed-right div,
+.dark .el-table__fixed-right th,
+.dark .el-table__fixed-right td {
+  background-color: var(--theme-bg-secondary);
+}
+
+.dark .el-table__fixed-right .el-table__header,
+.dark .el-table__fixed-right .el-table__header-wrapper,
+.dark .el-table__fixed-right th,
+.dark .el-table__fixed-right th div {
+  background-color: var(--theme-bg-tertiary) !important;
+}
+
+/* 修复表格头部可能的白色背景 */
+.dark .el-table__header-wrapper,
+.dark .el-table__header,
+.dark .el-table__header thead,
+.dark .el-table__header tr,
+.dark .el-table__header th {
+  background-color: var(--theme-bg-tertiary);
+}
+
+/* 针对fixed列在header的特殊处理 */
+.dark .el-table__header-wrapper .el-table__fixed-right,
+.dark .el-table__header-wrapper .el-table__fixed-right * {
+  background-color: var(--theme-bg-tertiary) !important;
+}
+
+/* 深度修复：使用!important和多重选择器 */
+.dark .el-table .el-table__fixed-right,
+.dark .el-table--border .el-table__fixed-right,
+.dark .el-table .el-table__fixed-right.el-table__fixed-right {
+  background-color: var(--theme-bg-secondary) !important;
+}
+
+/* 修复表格固定列表头背景 */
+.dark .el-table__fixed-right .el-table__header-wrapper,
+.dark .el-table__fixed-right .el-table__header,
+.dark .el-table__fixed-right .el-table__header thead,
+.dark .el-table__fixed-right .el-table__header tr,
+.dark .el-table__fixed-right .el-table__header th,
+.dark .el-table__fixed-right .el-table__header th .cell {
+  background-color: var(--theme-bg-tertiary) !important;
+}
+
+/* 关键修复：直接针对截图中的白块问题 */
+.dark .el-table .el-table__fixed-right {
+  background-color: var(--theme-bg-secondary) !important;
+}
+
+.dark .el-table .el-table__fixed-right .el-table__header-wrapper {
+  background-color: var(--theme-bg-tertiary) !important;
+}
+
+/* 修复表格固定列内的所有th单元格 */
+.dark .el-table .el-table__fixed-right th.el-table__cell {
+  background-color: var(--theme-bg-tertiary) !important;
+  border-bottom-color: var(--theme-border) !important;
+}
+
+/* 修复可能的白块：针对fixed-right内的所有直接子元素 */
+.dark .el-table__fixed-right > * {
+  background-color: var(--theme-bg-secondary) !important;
+}
+
+.dark .el-table__fixed-right .el-table__header-wrapper > * {
+  background-color: var(--theme-bg-tertiary) !important;
+}
+
+/* 最终修复：使用非常具体的选择器 */
+html.dark body .el-table .el-table__fixed-right,
+html.dark body .el-table--border .el-table__fixed-right {
+  background-color: var(--theme-bg-secondary) !important;
+}
+
+html.dark body .el-table .el-table__fixed-right .el-table__header-wrapper,
+html.dark body .el-table .el-table__fixed-right .el-table__header,
+html.dark body .el-table .el-table__fixed-right th {
+  background-color: var(--theme-bg-tertiary) !important;
+}
+
+/* ============================================
+   Element Plus Table 固定列白块终极修复
+   ============================================ */
+
+/* 覆盖Element Plus默认变量 */
+.dark {
+  --el-table-header-bg-color: var(--theme-bg-tertiary) !important;
+  --el-table-row-hover-bg-color: var(--theme-bg-tertiary) !important;
+  --el-table-fixed-box-shadow: -2px 0 8px rgba(0, 0, 0, 0.3) !important;
+  --el-table-bg-color: var(--theme-bg-secondary) !important;
+  --el-table-tr-bg-color: var(--theme-bg-secondary) !important;
+  --el-table-th-bg-color: var(--theme-bg-tertiary) !important;
+}
+
+/* 终极修复：使用最高优先级选择器强制覆盖固定列背景 */
+html.dark body div.el-table div.el-table__fixed-right,
+html.dark body div.el-table--border div.el-table__fixed-right {
+  background-color: var(--theme-bg-secondary) !important;
+}
+
+/* 强制覆盖固定列表头容器背景 */
+html.dark body div.el-table div.el-table__fixed-right div.el-table__fixed-header-wrapper,
+html.dark body div.el-table div.el-table__fixed-right div.el-table__header-wrapper {
+  background-color: var(--theme-bg-tertiary) !important;
+}
+
+/* 强制覆盖固定列表头表格背景 */
+html.dark body div.el-table div.el-table__fixed-right table.el-table__header,
+html.dark body div.el-table div.el-table__fixed-right table.el-table__header thead,
+html.dark body div.el-table div.el-table__fixed-right table.el-table__header thead tr,
+html.dark body div.el-table div.el-table__fixed-right table.el-table__header thead tr th,
+html.dark body div.el-table div.el-table__fixed-right table.el-table__header thead tr th.el-table__cell {
+  background-color: var(--theme-bg-tertiary) !important;
+}
+
+/* 强制覆盖固定列表头单元格内的所有元素 */
+html.dark body div.el-table div.el-table__fixed-right table.el-table__header thead tr th *,
+html.dark body div.el-table div.el-table__fixed-right table.el-table__header thead tr th.el-table__cell * {
+  background-color: var(--theme-bg-tertiary) !important;
+}
+
+/* 强制覆盖固定列body容器背景 */
+html.dark body div.el-table div.el-table__fixed-right div.el-table__fixed-body-wrapper,
+html.dark body div.el-table div.el-table__fixed-right div.el-table__body-wrapper {
+  background-color: var(--theme-bg-secondary) !important;
+}
+
+/* 强制覆盖固定列body表格背景 */
+html.dark body div.el-table div.el-table__fixed-right table.el-table__body,
+html.dark body div.el-table div.el-table__fixed-right table.el-table__body tbody,
+html.dark body div.el-table div.el-table__fixed-right table.el-table__body tbody tr,
+html.dark body div.el-table div.el-table__fixed-right table.el-table__body tbody tr td,
+html.dark body div.el-table div.el-table__fixed-right table.el-table__body tbody tr td.el-table__cell {
+  background-color: var(--theme-bg-secondary) !important;
+}
+
+/* 强制覆盖fixed-right-patch（滚动条补丁）背景 */
+html.dark body div.el-table div.el-table__fixed-right-patch,
+html.dark body div.el-table--border div.el-table__fixed-right-patch {
+  background-color: var(--theme-bg-tertiary) !important;
+}
+
+/* 修复row hover时固定列背景 */
+html.dark body div.el-table div.el-table__fixed-right table.el-table__body tbody tr:hover td,
+html.dark body div.el-table div.el-table__fixed-right table.el-table__body tbody tr:hover td.el-table__cell {
+  background-color: var(--theme-bg-tertiary) !important;
+}
+
+/* 移除固定列可能存在的伪元素背景 */
+html.dark body div.el-table div.el-table__fixed-right::before,
+html.dark body div.el-table div.el-table__fixed-right::after {
+  background: transparent !important;
+  content: none !important;
+}
+
+/* 覆盖.el-table__cell的直接背景设置 */
+html.dark body .el-table .el-table__fixed-right .el-table__cell {
+  background-color: var(--theme-bg-secondary) !important;
+}
+
+html.dark body .el-table .el-table__fixed-right th.el-table__cell {
+  background-color: var(--theme-bg-tertiary) !important;
+}
+
+/* 修复Element Plus表格在暗黑模式下的白块 - 针对表头右侧 */
+.dark .el-table__fixed-right {
+  background-color: var(--theme-bg-secondary) !important;
+}
+
+.dark .el-table__fixed-right::before,
+.dark .el-table__fixed-right::after {
+  content: none !important;
+  background: transparent !important;
+}
+
+/* 修复fixed-right内的表格头部 */
+.dark .el-table__fixed-right .el-table__header-wrapper,
+.dark .el-table__fixed-right .el-table__header-wrapper .el-table__header,
+.dark .el-table__fixed-right .el-table__header thead,
+.dark .el-table__fixed-right .el-table__header tr {
+  background-color: var(--theme-bg-tertiary) !important;
+}
+
+/* 关键修复：确保所有th都有正确背景 */
+.dark .el-table__fixed-right th,
+.dark .el-table__fixed-right th.el-table__cell,
+.dark .el-table__fixed-right .el-table__cell {
+  background-color: var(--theme-bg-tertiary) !important;
+  border-color: var(--theme-border) !important;
+}
+
+/* 修复表格内容区域的fixed-right */
+.dark .el-table__body-wrapper ~ .el-table__fixed-right,
+.dark .el-table__header-wrapper ~ .el-table__fixed-right {
+  background-color: var(--theme-bg-secondary) !important;
+}
+
+/* 强制所有fixed-right内的th背景 */
+.dark .el-table .el-table__fixed-right th,
+.dark .el-table .el-table__fixed-right th * {
+  background-color: var(--theme-bg-tertiary) !important;
+}
+
+/* 修复可能的空div或装饰元素 - 排除cell */
+.dark .el-table__fixed-right > div:not(.el-table__cell) {
+  background-color: var(--theme-bg-secondary) !important;
+}
+
+.dark .el-table__fixed-right .el-table__header-wrapper > div:not(.el-table__cell) {
+  background-color: var(--theme-bg-tertiary) !important;
+}
+
+.dark .el-table__fixed-right .el-table__cell,
+.dark .el-table__fixed .el-table__cell {
+  background-color: var(--theme-bg-secondary) !important;
+}
+
+.dark .el-table__fixed-right th.el-table__cell,
+.dark .el-table__fixed th.el-table__cell {
+  background-color: var(--theme-bg-tertiary) !important;
+}
+
+/* el-table 单元格文字颜色强制覆盖 */
+.dark .el-table {
+  --el-table-text-color: var(--theme-text-primary);
+  --el-table-header-text-color: var(--theme-text-primary);
+}
+
+.dark .el-table .cell {
+  color: var(--theme-text-primary) !important;
+}
+
+.dark .el-table td.el-table__cell {
+  color: var(--theme-text-primary);
+}
+
+.dark .el-table td.el-table__cell .cell {
+  color: var(--theme-text-primary) !important;
+}
+
+.dark .el-table th.el-table__cell .cell {
+  color: var(--theme-text-primary) !important;
+}
+
+.dark .el-dialog {
+  background-color: var(--theme-bg-secondary);
+}
+
+.dark .el-dialog__title {
+  color: var(--theme-text-primary);
+}
+
+.dark .el-form-item__label {
+  color: var(--theme-text-secondary);
+}
+
+.dark .el-input__wrapper {
+  background-color: var(--theme-bg-tertiary);
+  box-shadow: 0 0 0 1px var(--theme-border) inset;
+}
+
+.dark .el-input__inner {
+  color: var(--theme-text-primary);
+}
+
+.dark .el-input__wrapper.is-focus {
+  box-shadow: 0 0 0 1px var(--theme-primary) inset;
+}
+
+/* el-input placeholder 暗色模式 */
+.dark .el-input__inner::placeholder {
+  color: var(--theme-text-tertiary);
+}
+
+/* el-input-number 暗色模式 */
+.dark .el-input-number__decrease,
+.dark .el-input-number__increase {
+  background-color: var(--theme-bg-tertiary);
+  border-color: var(--theme-border);
+  color: var(--theme-text-secondary);
+}
+
+.dark .el-input-number__decrease:hover,
+.dark .el-input-number__increase:hover {
+  color: var(--theme-primary);
+}
+
+/* el-textarea 暗色模式 */
+.dark .el-textarea__inner {
+  background-color: var(--theme-bg-tertiary) !important;
+  border-color: var(--theme-border) !important;
+  color: var(--theme-text-primary) !important;
+}
+
+.dark .el-textarea__inner:focus {
+  border-color: var(--theme-primary) !important;
+}
+
+.dark .el-textarea__inner::placeholder {
+  color: var(--theme-text-tertiary);
+}
+
+/* el-select 暗色模式 */
+.dark .el-select .el-input__wrapper {
+  background-color: var(--theme-bg-tertiary);
+}
+
+.dark .el-select .el-input.is-focus .el-input__wrapper {
+  box-shadow: 0 0 0 1px var(--theme-primary) inset;
+}
+
+.dark .el-button--default {
+  background-color: var(--theme-bg-tertiary);
+  border-color: var(--theme-border);
+  color: var(--theme-text-primary);
+}
+
+.dark .el-button--default:hover {
+  background-color: var(--theme-bg-secondary);
+  border-color: var(--theme-primary);
+  color: var(--theme-primary);
+}
+
+.dark .el-pagination {
+  color: var(--theme-text-secondary);
+}
+
+.dark .el-pagination .el-pager li {
+  background-color: var(--theme-bg-tertiary);
+  color: var(--theme-text-primary);
+}
+
+.dark .el-pagination .el-pager li:hover,
+.dark .el-pagination .el-pager li.is-active {
+  background-color: var(--theme-primary);
+  color: white;
+}
+
+.dark .el-select-dropdown {
+  background-color: var(--theme-bg-secondary);
+  border-color: var(--theme-border);
+}
+
+.dark .el-select-dropdown__item {
+  color: var(--theme-text-primary);
+}
+
+.dark .el-select-dropdown__item:hover,
+.dark .el-select-dropdown__item.hover {
+  background-color: var(--theme-bg-tertiary);
+}
+
+.dark .el-select-dropdown__item.selected {
+  color: var(--theme-primary);
+  font-weight: 600;
+}
+
+/* el-select-dropdown 分组标题 */
+.dark .el-select-group__title {
+  color: var(--theme-text-tertiary);
+}
+
+/* el-option 选中状态 */
+.dark .el-select-dropdown__item.is-selected {
+  color: var(--theme-primary);
+  font-weight: 600;
+}
+
+/* el-select 多选标签 */
+.dark .el-select .el-tag {
+  background-color: var(--theme-bg-tertiary);
+  border-color: var(--theme-border);
+  color: var(--theme-text-primary);
+}
+
+.dark .el-select .el-tag .el-tag__close {
+  color: var(--theme-text-secondary);
+}
+
+.dark .el-select .el-tag .el-tag__close:hover {
+  background-color: var(--theme-error);
+  color: white;
+}
+
+/* el-select 输入框暗色模式增强 */
+.dark .el-select .el-input__wrapper {
+  background-color: var(--theme-bg-tertiary) !important;
+  box-shadow: 0 0 0 1px var(--theme-border) inset !important;
+}
+
+.dark .el-select .el-input__inner {
+  color: var(--theme-text-primary) !important;
+}
+
+.dark .el-select .el-input .el-select__caret {
+  color: var(--theme-text-secondary);
+}
+
+/* el-select 占位符颜色 */
+.dark .el-select .el-input__inner::placeholder {
+  color: var(--theme-text-tertiary);
+}
+
+.dark .el-dropdown-menu {
+  background-color: var(--theme-bg-secondary);
+  border-color: var(--theme-border);
+}
+
+.dark .el-dropdown-menu__item {
+  color: var(--theme-text-primary);
+}
+
+.dark .el-dropdown-menu__item:hover {
+  background-color: var(--theme-bg-tertiary);
+  color: var(--theme-primary);
+}
+
+/* el-dropdown-menu 分割线 */
+.dark .el-dropdown-menu__item--divided {
+  border-top-color: var(--theme-border);
+}
+
+.dark .el-dropdown-menu__item--divided:before {
+  background-color: var(--theme-bg-secondary);
+}
+
+/* el-menu 暗色模式 */
+.dark .el-menu {
+  background-color: var(--theme-bg-secondary);
+  border-right-color: var(--theme-border);
+}
+
+.dark .el-menu-item {
+  color: var(--theme-text-secondary);
+}
+
+.dark .el-menu-item:hover {
+  background-color: var(--theme-bg-tertiary);
+  color: var(--theme-text-primary);
+}
+
+.dark .el-menu-item.is-active {
+  color: var(--theme-primary);
+  background-color: rgba(59, 130, 246, 0.1);
+}
+
+.dark .el-sub-menu__title {
+  color: var(--theme-text-secondary);
+}
+
+.dark .el-sub-menu__title:hover {
+  background-color: var(--theme-bg-tertiary);
+  color: var(--theme-text-primary);
+}
+
+.dark .el-alert--info.is-light {
+  background-color: var(--theme-bg-tertiary);
+  color: var(--theme-text-secondary);
+}
+
+.dark .el-alert--info .el-alert__title {
+  color: var(--theme-text-primary);
+}
+
+.dark .el-alert .el-alert__icon {
+  color: var(--theme-primary);
+}
+
+.dark .el-alert--success .el-alert__icon {
+  color: var(--theme-success);
+}
+
+.dark .el-alert--warning .el-alert__icon {
+  color: var(--theme-warning);
+}
+
+.dark .el-alert--error .el-alert__icon {
+  color: var(--theme-error);
+}
+
+.dark .el-empty__description {
+  color: var(--theme-text-secondary);
+}
+
+.dark .el-loading-mask {
+  background-color: rgba(15, 23, 42, 0.7);
+}
+
+/* el-table 空状态背景 */
+.dark .el-table__empty-block {
+  background-color: var(--theme-bg-secondary);
+}
+
+.dark .el-table__empty-text {
+  color: var(--theme-text-secondary);
+}
+
+/* el-card 暗色模式 */
+.dark .el-card {
+  background-color: var(--theme-bg-secondary);
+  border-color: var(--theme-border);
+  color: var(--theme-text-primary);
+}
+
+.dark .el-card__header {
+  border-bottom-color: var(--theme-border);
+  color: var(--theme-text-primary);
+}
+
+/* el-message-box 暗色模式 */
+.dark .el-message-box {
+  background-color: var(--theme-bg-secondary);
+  border-color: var(--theme-border);
+}
+
+.dark .el-message-box__title {
+  color: var(--theme-text-primary);
+}
+
+.dark .el-message-box__message {
+  color: var(--theme-text-secondary);
+}
+
+.dark .el-message-box__headerbtn .el-message-box__close {
+  color: var(--theme-text-tertiary);
+}
+
+.dark .el-message-box__headerbtn:hover .el-message-box__close {
+  color: var(--theme-text-primary);
+}
+
+/* el-descriptions 暗色模式 */
+.dark .el-descriptions {
+  background-color: transparent;
+}
+
+.dark .el-descriptions__body {
+  background-color: var(--theme-bg-secondary);
+}
+
+.dark .el-descriptions__label {
+  background-color: var(--theme-bg-tertiary);
+  color: var(--theme-text-secondary);
+}
+
+.dark .el-descriptions__content {
+  color: var(--theme-text-primary);
+}
+
+/* el-divider 暗色模式 */
+.dark .el-divider__text {
+  background-color: var(--theme-bg-secondary);
+  color: var(--theme-text-secondary);
+}
+
+.dark .el-divider {
+  border-color: var(--theme-border);
+}
+
+/* el-drawer 暗色模式 */
+.dark .el-drawer {
+  background-color: var(--theme-bg-secondary);
+}
+
+.dark .el-drawer__header {
+  color: var(--theme-text-primary);
+  border-bottom-color: var(--theme-border);
+}
+
+/* el-tooltip 暗色模式 */
+.dark .el-tooltip__popper.is-dark {
+  background-color: var(--theme-bg-tertiary);
+  border-color: var(--theme-border);
+  color: var(--theme-text-primary);
+}
+
+/* el-popconfirm 暗色模式 */
+.dark .el-popconfirm__main {
+  color: var(--theme-text-primary);
+}
+
+/* el-message 暗色模式 */
+.dark .el-message {
+  background-color: var(--theme-bg-secondary);
+  border-color: var(--theme-border);
+}
+
+.dark .el-message__content {
+  color: var(--theme-text-primary);
+}
+
+/* el-notification 暗色模式 */
+.dark .el-notification {
+  background-color: var(--theme-bg-secondary);
+  border-color: var(--theme-border);
+}
+
+.dark .el-notification__title {
+  color: var(--theme-text-primary);
+}
+
+.dark .el-notification__content {
+  color: var(--theme-text-secondary);
+}
+
+/* el-table 展开/折叠图标 */
+.dark .el-table .el-table__expand-icon {
+  color: var(--theme-text-secondary);
+}
+
+.dark .el-table .el-table__expand-icon:hover {
+  color: var(--theme-primary);
+}
+
+.dark .el-table__placeholder {
+  display: inline-block;
+  width: 20px;
+}
+
+/* el-tag 暗色模式增强 */
+.dark .el-tag--success {
+  background-color: rgba(16, 185, 129, 0.15);
+  border-color: rgba(16, 185, 129, 0.3);
+  color: #34d399;
+}
+
+.dark .el-tag--warning {
+  background-color: rgba(245, 158, 11, 0.15);
+  border-color: rgba(245, 158, 11, 0.3);
+  color: #fbbf24;
+}
+
+.dark .el-tag--info {
+  background-color: rgba(148, 163, 184, 0.15);
+  border-color: rgba(148, 163, 184, 0.3);
+  color: #94a3b8;
+}
+
+.dark .el-tag--danger {
+  background-color: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #f87171;
+}
+
+/* el-radio 暗色模式 */
+.dark .el-radio {
+  color: var(--theme-text-primary);
+}
+
+.dark .el-radio__input.is-checked + .el-radio__label {
+  color: var(--theme-primary);
+}
+
+/* radio 未选中状态边框 */
+.dark .el-radio__inner {
+  border-color: var(--theme-text-tertiary);
+  background-color: var(--theme-bg-tertiary);
+}
+
+.dark .el-radio__input.is-checked .el-radio__inner {
+  border-color: var(--theme-primary);
+  background-color: var(--theme-primary);
+}
+
+.dark .el-radio__input.is-checked .el-radio__inner::after {
+  background-color: var(--theme-text-inverse);
+}
+
+.dark .el-radio:hover .el-radio__inner {
+  border-color: var(--theme-primary);
+}
+
+/* el-checkbox 暗色模式 */
+.dark .el-checkbox {
+  color: var(--theme-text-primary);
+}
+
+.dark .el-checkbox__input.is-checked + .el-checkbox__label {
+  color: var(--theme-primary);
+}
+
+/* checkbox 未选中状态边框 - 增强可见性 */
+.dark .el-checkbox__inner {
+  border-color: var(--theme-text-tertiary);
+  background-color: var(--theme-bg-tertiary);
+}
+
+.dark .el-checkbox__input.is-checked .el-checkbox__inner {
+  border-color: var(--theme-primary);
+  background-color: var(--theme-primary);
+}
+
+.dark .el-checkbox__input.is-checked .el-checkbox__inner::after {
+  border-color: var(--theme-text-inverse);
+}
+
+.dark .el-checkbox:hover .el-checkbox__inner {
+  border-color: var(--theme-primary);
+}
+
+/* checkbox 禁用状态 */
+.dark .el-checkbox__input.is-disabled .el-checkbox__inner {
+  border-color: var(--theme-border);
+  background-color: var(--theme-bg-tertiary);
+}
+
+.dark .el-checkbox__input.is-disabled + .el-checkbox__label {
+  color: var(--theme-text-tertiary);
+}
+
+/* el-radio-button 暗色模式（如分类管理的视图切换） */
+.dark .el-radio-button__inner {
+  background-color: var(--theme-bg-tertiary);
+  border-color: var(--theme-border);
+  color: var(--theme-text-secondary);
+}
+
+.dark .el-radio-button__orig-radio:checked + .el-radio-button__inner {
+  background-color: var(--theme-primary);
+  border-color: var(--theme-primary);
+  color: white;
+}
+
+.dark .el-radio-button:first-child .el-radio-button__inner {
+  border-left-color: var(--theme-border);
+}
+
+/* el-breadcrumb 暗色模式 */
+.dark .el-breadcrumb__item {
+  color: var(--theme-text-secondary);
+}
+
+.dark .el-breadcrumb__inner {
+  color: var(--theme-text-secondary);
+}
+
+.dark .el-breadcrumb__inner.is-link {
+  color: var(--theme-text-primary);
+}
+
+.dark .el-breadcrumb__separator {
+  color: var(--theme-text-tertiary);
+}
+
+/* el-select 输入框暗色模式 */
+.dark .el-select .el-input__wrapper {
+  background-color: var(--theme-bg-tertiary);
+}
+
+.dark .el-select .el-input.is-focus .el-input__wrapper {
+  box-shadow: 0 0 0 1px var(--theme-primary) inset;
+}
+
+/* el-color-picker 暗色模式 */
+.dark .el-color-picker__trigger {
+  border-color: var(--theme-border);
+}
+
+/* el-switch 暗色模式 */
+.dark .el-switch__label {
+  color: var(--theme-text-secondary);
+}
+
+.dark .el-switch__label.is-active {
+  color: var(--theme-primary);
+}
+
+/* el-popper/popper 暗色模式 */
+.dark .el-popper {
+  background-color: var(--theme-bg-secondary);
+  border-color: var(--theme-border);
+}
+
+.dark .el-popper__arrow::before {
+  background-color: var(--theme-bg-secondary);
+  border-color: var(--theme-border);
+}
+
+/* el-date-picker / el-picker-panel 暗色模式 */
+.dark .el-picker-panel {
+  background-color: var(--theme-bg-secondary);
+  border-color: var(--theme-border);
+}
+
+.dark .el-picker-panel__content {
+  background-color: var(--theme-bg-secondary);
+}
+
+.dark .el-date-table th {
+  color: var(--theme-text-secondary);
+}
+
+.dark .el-date-table td {
+  color: var(--theme-text-primary);
+}
+
+.dark .el-date-table td.prev-month,
+.dark .el-date-table td.next-month {
+  color: var(--theme-text-tertiary);
+}
+
+.dark .el-date-picker__header-label {
+  color: var(--theme-text-primary);
+}
+
+.dark .el-picker-panel__icon-btn {
+  color: var(--theme-text-secondary);
+}
+
+.dark .el-picker-panel__icon-btn:hover {
+  color: var(--theme-primary);
+}
+
+/* el-date-table 选中状态 */
+.dark .el-date-table td.current:not(.disabled) span {
+  background-color: var(--theme-primary);
+  color: white;
+}
+
+.dark .el-date-table td.today span {
+  color: var(--theme-primary);
+}
+
+.dark .el-date-table td.available:hover {
+  color: var(--theme-primary);
+}
+
+.dark .el-date-table td.selected span {
+  background-color: var(--theme-primary);
+  color: white;
+}
+
+/* el-year-table / el-month-table */
+.dark .el-year-table td .cell,
+.dark .el-month-table td .cell {
+  color: var(--theme-text-primary);
+}
+
+.dark .el-year-table td.current:not(.disabled) .cell,
+.dark .el-month-table td.current:not(.disabled) .cell {
+  background-color: var(--theme-primary);
+  color: white;
+}
+
+.dark .el-year-table td .cell:hover,
+.dark .el-month-table td .cell:hover {
+  color: var(--theme-primary);
+}
+
+/* el-time-spinner */
+.dark .el-time-spinner__item {
+  color: var(--theme-text-primary);
+}
+
+.dark .el-time-spinner__item:hover {
+  background-color: var(--theme-bg-tertiary);
+  color: var(--theme-primary);
+}
+
+.dark .el-time-spinner__item.active:not(.disabled) {
+  color: var(--theme-primary);
+  font-weight: 600;
+}
+
+.dark .el-time-panel {
+  background-color: var(--theme-bg-secondary);
+  border-color: var(--theme-border);
+}
+
+.dark .el-time-panel__footer {
+  border-top-color: var(--theme-border);
+}
+
+.dark .el-time-panel__btn {
+  color: var(--theme-text-primary);
+}
+
+.dark .el-time-panel__btn.confirm {
+  color: var(--theme-primary);
+}
+
+/* ============================================
+   Markdown Editor (md-editor-v3) 暗色模式
+   ============================================ */
+
+.dark .md-editor {
+  background-color: var(--theme-bg-secondary);
+  border-color: var(--theme-border);
+}
+
+.dark .md-editor-toolbar {
+  background-color: var(--theme-bg-tertiary);
+  border-bottom-color: var(--theme-border);
+}
+
+.dark .md-editor-toolbar-item {
+  color: var(--theme-text-secondary);
+}
+
+.dark .md-editor-toolbar-item:hover {
+  background-color: var(--theme-bg-secondary);
+  color: var(--theme-text-primary);
+}
+
+.dark .md-editor-input-wrapper {
+  background-color: var(--theme-bg-secondary);
+}
+
+.dark .md-editor-input {
+  background-color: var(--theme-bg-secondary);
+  color: var(--theme-text-primary);
+}
+
+.dark .md-editor-preview {
+  background-color: var(--theme-bg-secondary);
+  color: var(--theme-text-primary);
+}
+
+.dark .md-editor-preview-wrapper {
+  border-left-color: var(--theme-border);
+}
+
+/* md-editor-v3 工具栏下拉菜单 */
+.dark .md-editor-dropdown {
+  background-color: var(--theme-bg-secondary);
+  border-color: var(--theme-border);
+}
+
+.dark .md-editor-dropdown-item {
+  color: var(--theme-text-primary);
+}
+
+.dark .md-editor-dropdown-item:hover {
+  background-color: var(--theme-bg-tertiary);
+}
+
+/* md-editor-v3 弹窗 */
+.dark .md-editor-modal {
+  background-color: var(--theme-bg-secondary);
+}
+
+.dark .md-editor-modal-header {
+  border-bottom-color: var(--theme-border);
+}
+
+.dark .md-editor-modal-title {
+  color: var(--theme-text-primary);
+}
+
+.dark .md-editor-modal-body {
+  color: var(--theme-text-secondary);
+}
+
+/* md-editor-v3 代码块样式 */
+.dark .md-editor-code {
+  background-color: var(--theme-bg-tertiary);
+  color: var(--theme-text-primary);
+}
+
+.dark .md-editor-code-block {
+  background-color: #1e1e2e;
+}
+
+/* md-editor-v3 滚动条 */
+.dark .md-editor::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.dark .md-editor::-webkit-scrollbar-track {
+  background: var(--theme-bg-tertiary);
+}
+
+.dark .md-editor::-webkit-scrollbar-thumb {
+  background: var(--theme-text-tertiary);
+  border-radius: 4px;
+}
+
+.dark .md-editor::-webkit-scrollbar-thumb:hover {
+  background: var(--theme-text-secondary);
+}
+
+/* ============================================
    Page Transitions
    ============================================ */
 

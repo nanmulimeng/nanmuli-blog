@@ -14,7 +14,6 @@ export interface Article {
   category?: Category    // 完整分类信息
   categoryPath?: Category[]  // 分类层级路径（如：后端开发 > Java）
   tags?: string[]        // SEO关键词列表（从分类继承）
-  userId: number
   viewCount: number
   likeCount: number
   wordCount: number

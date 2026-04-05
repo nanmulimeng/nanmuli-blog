@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { getDailyLogById, updateDailyLog } from '@/api/dailyLog'
+import MarkdownEditor from '@/components/editor/MarkdownEditor.vue'
 import type { DailyLog, DailyLogForm } from '@/types/dailyLog'
 
 const route = useRoute()
@@ -21,8 +22,8 @@ const form = ref<DailyLogForm>({
 const moodOptions = [
   { value: 'happy', label: '开心', color: '#f59e0b' },
   { value: 'excited', label: '兴奋', color: '#ef4444' },
-  { value: 'normal', label: '平静', color: '#6b7280' },
-  { value: 'tired', label: '疲惫', color: '#6366f1' },
+  { value: 'normal', label: '平静', color: '#64748B' },
+  { value: 'tired', label: '疲惫', color: '#3B82F6' },
 ]
 
 const rules = {
@@ -49,7 +50,7 @@ async function fetchLog(): Promise<void> {
       logDate: log.logDate,
       mood: log.mood,
       weather: log.weather || '',
-      content: log.content,
+      content: log.content || '',
       tagIds: log.tags || [],
     }
   } catch {
@@ -83,8 +84,8 @@ onMounted(fetchLog)
 <template>
   <div class="daily-log-edit-page">
     <div class="mb-6">
-      <h1 class="text-2xl font-bold text-gray-900">编辑日志</h1>
-      <p class="text-gray-500 mt-1">修改技术日志内容</p>
+      <h1 class="text-2xl font-bold text-content-primary">编辑日志</h1>
+      <p class="text-content-secondary mt-1">修改技术日志内容</p>
     </div>
 
     <el-card v-loading="loading" class="max-w-3xl">
@@ -136,14 +137,7 @@ onMounted(fetchLog)
         </div>
 
         <el-form-item label="内容" prop="content">
-          <el-input
-            v-model="form.content"
-            type="textarea"
-            :rows="12"
-            placeholder="记录今天的技术收获..."
-            maxlength="5000"
-            show-word-limit
-          />
+          <MarkdownEditor v-model="form.content" height="400px" />
         </el-form-item>
 
         <el-form-item>

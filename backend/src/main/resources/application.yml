@@ -3,6 +3,8 @@ spring:
     name: nanmuli-blog
   profiles:
     active: dev
+  cache:
+    type: redis
   servlet:
     multipart:
       max-file-size: 10MB

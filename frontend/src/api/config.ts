@@ -12,3 +12,11 @@ export function getPublicConfig(): Promise<Record<string, string>> {
 export function updateConfig(key: string, value: string): Promise<void> {
   return put<void>(`/admin/config/${key}`, { value })
 }
+
+export function getAdminConfigList(): Promise<Config[]> {
+  return get<Config[]>('/admin/config/list')
+}
+
+export function getConfigByKey(key: string): Promise<Config> {
+  return get<Config>(`/admin/config/${key}`)
+}

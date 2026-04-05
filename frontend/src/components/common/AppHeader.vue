@@ -94,7 +94,7 @@ onUnmounted(() => {
     >
       <!-- 滚动进度条 -->
       <div
-        class="absolute bottom-0 left-0 h-[2px] bg-gradient-to-r from-blue-600 to-cyan-500 dark:from-blue-500 dark:to-blue-400 transition-all duration-300"
+        class="absolute bottom-0 left-0 h-[2px] bg-gradient-to-r from-primary to-primary-light transition-all duration-300"
         :style="{ width: `${scrollProgress}%` }"
       />
 
@@ -120,11 +120,11 @@ onUnmounted(() => {
             @click="scrollToTop"
           >
             <div
-              class="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 text-white shadow-lg transition-all duration-200 dark:from-blue-500 dark:to-blue-500"
+              class="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary-light text-white shadow-lg transition-all duration-200"
             >
               <el-icon class="text-xl"><Document /></el-icon>
             </div>
-            <span class="text-xl font-bold text-gray-900 dark:text-white">
+            <span class="text-xl font-bold text-content-primary">
               {{ configStore.siteName || 'Nanmuli' }}
             </span>
           </router-link>
@@ -137,8 +137,8 @@ onUnmounted(() => {
               :to="item.path"
               class="group relative px-4 py-2 text-sm font-medium transition-all duration-200"
               :class="isActive(item.path)
-                ? 'text-blue-600 dark:text-cyan-400'
-                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'
+                ? 'text-primary'
+                : 'text-content-secondary hover:text-content-primary'
               "
             >
               <span class="relative z-10">{{ item.label }}</span>
@@ -146,13 +146,13 @@ onUnmounted(() => {
               <span
                 class="absolute inset-0 rounded-xl transition-all duration-200"
                 :class="isActive(item.path)
-                  ? 'bg-blue-50 dark:bg-cyan-500/10 scale-100'
-                  : 'bg-gray-100 dark:bg-white/5 scale-0 group-hover:scale-100'
+                  ? 'bg-primary/10 scale-100'
+                  : 'bg-surface-tertiary scale-0 group-hover:scale-100'
                 "
               />
               <!-- 下划线动画 -->
               <span
-                class="absolute bottom-0 left-1/2 h-0.5 w-0 -translate-x-1/2 rounded-full bg-blue-600 dark:bg-cyan-400 transition-all duration-200 group-hover:w-1/2"
+                class="absolute bottom-0 left-1/2 h-0.5 w-0 -translate-x-1/2 rounded-full bg-primary transition-all duration-200 group-hover:w-1/2"
                 :class="{ 'w-1/2': isActive(item.path) }"
               />
             </router-link>
@@ -162,7 +162,7 @@ onUnmounted(() => {
           <div class="flex items-center gap-2">
             <!-- 搜索按钮 -->
             <button
-              class="flex h-10 w-10 items-center justify-center rounded-xl text-gray-500 transition-all duration-200 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-white"
+              class="flex h-10 w-10 items-center justify-center rounded-xl text-content-tertiary transition-all duration-200 hover:bg-surface-tertiary hover:text-content-primary"
               aria-label="搜索"
               @click="isSearchOpen = true"
             >
@@ -175,7 +175,7 @@ onUnmounted(() => {
             <!-- 管理后台入口 -->
             <router-link
               to="/admin"
-              class="hidden items-center gap-2 rounded-lg bg-gradient-to-r from-blue-600 to-cyan-500 px-4 py-2 text-sm font-medium text-white shadow-lg transition-all duration-200 hover:shadow-xl hover:-translate-y-0.5 sm:flex dark:from-blue-500 dark:to-blue-500"
+              class="hidden items-center gap-2 rounded-lg bg-gradient-to-r from-primary to-primary-light px-4 py-2 text-sm font-medium text-white shadow-lg transition-all duration-200 hover:shadow-xl hover:-translate-y-0.5 sm:flex"
             >
               <el-icon><Setting /></el-icon>
               <span>管理</span>
@@ -183,8 +183,8 @@ onUnmounted(() => {
 
             <!-- Mobile Menu Button -->
             <button
-              class="flex h-10 w-10 items-center justify-center rounded-xl text-gray-500 transition-all duration-200 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-white/10 md:hidden"
-              :class="{ 'bg-gray-100 dark:bg-white/10': isMobileMenuOpen }"
+              class="flex h-10 w-10 items-center justify-center rounded-xl text-content-tertiary transition-all duration-200 hover:bg-surface-tertiary md:hidden"
+              :class="{ 'bg-surface-tertiary': isMobileMenuOpen }"
               @click="toggleMobileMenu"
               aria-label="菜单"
             >
@@ -216,7 +216,7 @@ onUnmounted(() => {
             @click.stop
           >
             <div class="relative">
-              <el-icon class="absolute left-5 top-1/2 -translate-y-1/2 text-xl text-gray-400">
+              <el-icon class="absolute left-5 top-1/2 -translate-y-1/2 text-xl text-content-tertiary">
                 <Search />
               </el-icon>
               <input
@@ -228,13 +228,13 @@ onUnmounted(() => {
               />
               <button
                 v-if="searchQuery"
-                class="absolute right-5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                class="absolute right-5 top-1/2 -translate-y-1/2 text-content-tertiary hover:text-content-secondary"
                 @click="searchQuery = ''"
               >
                 <el-icon><Close /></el-icon>
               </button>
             </div>
-            <p class="mt-4 text-center text-sm text-gray-500">
+            <p class="mt-4 text-center text-sm text-content-tertiary">
               按 Enter 搜索，按 ESC 关闭
             </p>
           </div>
@@ -268,12 +268,12 @@ onUnmounted(() => {
       >
         <div
           v-if="isMobileMenuOpen"
-          class="fixed right-0 top-0 z-50 h-full w-80 overflow-y-auto bg-white/95 p-6 shadow-2xl backdrop-blur-2xl dark:bg-gray-900/95 md:hidden"
+          class="fixed right-0 top-0 z-50 h-full w-80 overflow-y-auto bg-surface-secondary/95 p-6 shadow-2xl backdrop-blur-2xl md:hidden"
         >
           <!-- Close Button -->
           <div class="mb-8 flex justify-end">
             <button
-              class="flex h-10 w-10 items-center justify-center rounded-xl text-gray-500 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-white/10"
+              class="flex h-10 w-10 items-center justify-center rounded-xl text-content-tertiary transition-colors hover:bg-surface-tertiary"
               @click="closeMobileMenu"
             >
               <el-icon class="text-xl"><Close /></el-icon>
@@ -288,8 +288,8 @@ onUnmounted(() => {
               :to="item.path"
               class="group flex items-center gap-4 rounded-xl p-4 transition-all duration-200"
               :class="isActive(item.path)
-                ? 'bg-blue-50 text-blue-600 dark:bg-cyan-500/10 dark:text-cyan-400'
-                : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-white/5'
+                ? 'bg-primary/10 text-primary'
+                : 'text-content-secondary hover:bg-surface-tertiary'
               "
               :style="{ animationDelay: `${index * 50}ms` }"
               @click="closeMobileMenu"
@@ -297,7 +297,7 @@ onUnmounted(() => {
               <div
                 class="flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-200"
                 :class="isActive(item.path)
-                  ? 'bg-gradient-to-br from-blue-600 to-cyan-500 text-white dark:from-blue-500 dark:to-blue-500'
+                  ? 'bg-gradient-to-br from-primary to-primary-light text-white'
                   : 'bg-surface-tertiary'
                 "
               >
@@ -306,7 +306,7 @@ onUnmounted(() => {
               <span class="text-lg font-medium">{{ item.label }}</span>
               <el-icon
                 v-if="isActive(item.path)"
-                class="ml-auto text-blue-600 dark:text-cyan-400"
+                class="ml-auto text-primary"
               >
                 <ArrowRight />
               </el-icon>
@@ -314,10 +314,10 @@ onUnmounted(() => {
           </nav>
 
           <!-- Mobile Admin Link -->
-          <div class="mt-8 border-t border-gray-200 pt-6 dark:border-white/10">
+          <div class="mt-8 border-t border-border pt-6">
             <router-link
               to="/admin"
-              class="flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 p-4 font-medium text-white shadow-lg dark:from-blue-500 dark:to-blue-500"
+              class="flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-primary to-primary-light p-4 font-medium text-white shadow-lg"
               @click="closeMobileMenu"
             >
               <el-icon><Setting /></el-icon>

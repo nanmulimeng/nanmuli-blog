@@ -20,3 +20,7 @@ export function updateTag(id: number, data: Partial<Tag>): Promise<void> {
 export function deleteTag(id: number): Promise<void> {
   return del<void>(`/admin/tag/${id}`)
 }
+
+export function getAdminTagList(): Promise<Tag[]> {
+  return get<Tag[]>('/admin/tag/list')
+}

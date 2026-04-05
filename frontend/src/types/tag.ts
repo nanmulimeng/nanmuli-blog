@@ -4,7 +4,7 @@ export interface Tag {
   slug: string
   color: string
   icon: string
-  description: string
+  description?: string
   articleCount: number
   status: number
   createTime: string

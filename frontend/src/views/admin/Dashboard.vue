@@ -2,10 +2,10 @@
 import { ref, onMounted } from 'vue'
 
 const stats = ref([
-  { label: '文章数量', value: 0, icon: 'Document', color: 'text-primary', bgColor: 'bg-primary/10' },
-  { label: '分类数量', value: 0, icon: 'Folder', color: 'text-success', bgColor: 'bg-success/10' },
-  { label: '标签数量', value: 0, icon: 'Collection', color: 'text-primary', bgColor: 'bg-primary/10' },
-  { label: '总阅读量', value: 0, icon: 'View', color: 'text-warning', bgColor: 'bg-warning/10' },
+  { label: '文章数量', value: 0, icon: 'Document' },
+  { label: '分类数量', value: 0, icon: 'Folder' },
+  { label: '标签数量', value: 0, icon: 'Collection' },
+  { label: '总阅读量', value: 0, icon: 'View' },
 ])
 
 const recentArticles = ref([])
@@ -23,10 +23,10 @@ onMounted(async () => {
       <div
         v-for="stat in stats"
         :key="stat.label"
-        class="rounded-xl border bg-surface-secondary p-6"
+        class="rounded-xl border border-border bg-surface-secondary p-6 shadow-sm transition-all hover:shadow-md"
       >
         <div class="flex items-center gap-4">
-          <div :class="['rounded-lg p-3', stat.bgColor, stat.color]">
+          <div class="rounded-lg bg-primary/10 p-3 text-primary">
             <el-icon :size="24">
               <component :is="stat.icon" />
             </el-icon>
@@ -40,12 +40,12 @@ onMounted(async () => {
     </div>
 
     <div class="mt-8 grid gap-6 lg:grid-cols-2">
-      <div class="rounded-xl border bg-surface-secondary p-6">
+      <div class="rounded-xl border border-border bg-surface-secondary p-6">
         <h3 class="mb-4 text-lg font-semibold text-content-primary">快捷操作</h3>
         <div class="grid grid-cols-2 gap-4">
           <router-link
             to="/admin/article/create"
-            class="flex flex-col items-center rounded-lg border p-4 transition-colors hover:border-primary hover:bg-primary/5"
+            class="flex flex-col items-center rounded-lg border border-border p-4 transition-colors hover:border-primary hover:bg-primary/5"
           >
             <el-icon :size="32" class="mb-2 text-primary">
               <EditPen />
@@ -54,7 +54,7 @@ onMounted(async () => {
           </router-link>
           <router-link
             to="/admin/daily-log"
-            class="flex flex-col items-center rounded-lg border p-4 transition-colors hover:border-primary hover:bg-primary/5"
+            class="flex flex-col items-center rounded-lg border border-border p-4 transition-colors hover:border-primary hover:bg-primary/5"
           >
             <el-icon :size="32" class="mb-2 text-primary">
               <Notebook />
@@ -63,7 +63,7 @@ onMounted(async () => {
           </router-link>
           <router-link
             to="/admin/project"
-            class="flex flex-col items-center rounded-lg border p-4 transition-colors hover:border-primary hover:bg-primary/5"
+            class="flex flex-col items-center rounded-lg border border-border p-4 transition-colors hover:border-primary hover:bg-primary/5"
           >
             <el-icon :size="32" class="mb-2 text-primary">
               <FolderOpened />
@@ -72,7 +72,7 @@ onMounted(async () => {
           </router-link>
           <router-link
             to="/admin/config"
-            class="flex flex-col items-center rounded-lg border p-4 transition-colors hover:border-primary hover:bg-primary/5"
+            class="flex flex-col items-center rounded-lg border border-border p-4 transition-colors hover:border-primary hover:bg-primary/5"
           >
             <el-icon :size="32" class="mb-2 text-primary">
               <Setting />
@@ -82,7 +82,7 @@ onMounted(async () => {
         </div>
       </div>
 
-      <div class="rounded-xl border bg-surface-secondary p-6">
+      <div class="rounded-xl border border-border bg-surface-secondary p-6">
         <h3 class="mb-4 text-lg font-semibold text-content-primary">最近文章</h3>
         <el-empty v-if="!recentArticles.length" description="暂无文章" />
         <div v-else class="space-y-4">

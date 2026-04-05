@@ -55,6 +55,9 @@ public class SkillAppService {
         SkillDTO dto = new SkillDTO();
         BeanUtils.copyProperties(skill, dto);
         dto.setId(skill.getId());
+        // 显式映射时间字段（字段名不一致）
+        dto.setCreateTime(skill.getCreatedAt());
+        dto.setUpdateTime(skill.getUpdatedAt());
         return dto;
     }
 }

@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { getArticleById, updateArticle } from '@/api/article'
 import { getLeafCategoryList } from '@/api/category'
+import MarkdownEditor from '@/components/editor/MarkdownEditor.vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import type { Article } from '@/types/article'
 import type { Category } from '@/types/category'
@@ -36,7 +37,17 @@ const rules: FormRules = {
 async function fetchArticle(): Promise<void> {
   try {
     const article = await getArticleById(articleId)
-    Object.assign(form, article)
+    // 确保 content 不为 null/undefined
+    form.title = article.title || ''
+    form.slug = article.slug || ''
+    form.content = article.content || ''
+    form.summary = article.summary || ''
+    form.cover = article.cover || ''
+    form.categoryId = article.categoryId
+    form.isTop = article.isTop ?? false
+    form.isOriginal = article.isOriginal ?? true
+    form.originalUrl = article.originalUrl || ''
+    form.status = article.status ?? 1
   } catch {
     ElMessage.error('加载文章失败')
   }
@@ -82,7 +93,7 @@ onMounted(() => {
 <template>
   <div>
     <div class="mb-6 flex items-center justify-between">
-      <h2 class="text-xl font-bold text-gray-900">编辑文章</h2>
+      <h2 class="text-xl font-bold text-content-primary">编辑文章</h2>
     </div>
 
     <el-form
@@ -125,11 +136,7 @@ onMounted(() => {
       </el-form-item>
 
       <el-form-item label="内容" prop="content">
-        <md-editor-v3
-          v-model="form.content"
-          :theme="'light'"
-          style="height: 500px"
-        />
+        <MarkdownEditor v-model="form.content" height="500px" />
       </el-form-item>
 
       <el-form-item>

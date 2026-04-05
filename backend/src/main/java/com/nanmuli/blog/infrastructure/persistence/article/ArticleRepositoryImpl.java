@@ -31,14 +31,33 @@ public class ArticleRepositoryImpl implements ArticleRepository {
 
     @Override
     public Optional<Article> findById(ArticleId id) {
+        // MyBatis Plus 全局逻辑删除配置已自动过滤 is_deleted = false
         return Optional.ofNullable(articleMapper.selectById(id.getValue()));
     }
 
     @Override
     public Optional<Article> findBySlug(String slug) {
         LambdaQueryWrapper<Article> wrapper = Wrappers.lambdaQuery();
-        wrapper.eq(Article::getSlug, slug);
+        wrapper.eq(Article::getSlug, slug)
+               .eq(Article::getIsDeleted, false);
         return Optional.ofNullable(articleMapper.selectOne(wrapper));
+    }
+
+    @Override
+    public boolean existsBySlug(String slug) {
+        LambdaQueryWrapper<Article> wrapper = Wrappers.lambdaQuery();
+        wrapper.eq(Article::getSlug, slug)
+               .eq(Article::getIsDeleted, false);
+        return articleMapper.selectCount(wrapper) > 0;
+    }
+
+    @Override
+    public boolean existsBySlugAndIdNot(String slug, Long id) {
+        LambdaQueryWrapper<Article> wrapper = Wrappers.lambdaQuery();
+        wrapper.eq(Article::getSlug, slug)
+               .ne(Article::getId, id)
+               .eq(Article::getIsDeleted, false);
+        return articleMapper.selectCount(wrapper) > 0;
     }
 
     @Override
@@ -49,7 +68,8 @@ public class ArticleRepositoryImpl implements ArticleRepository {
     @Override
     public IPage<Article> findPublishedPage(IPage<Article> page, String sort) {
         LambdaQueryWrapper<Article> wrapper = Wrappers.lambdaQuery();
-        wrapper.eq(Article::getStatus, 1);
+        wrapper.eq(Article::getStatus, 1)
+               .eq(Article::getIsDeleted, false);
 
         // 根据排序参数设置排序方式
         if ("oldest".equals(sort)) {
@@ -70,6 +90,7 @@ public class ArticleRepositoryImpl implements ArticleRepository {
         LambdaQueryWrapper<Article> wrapper = Wrappers.lambdaQuery();
         wrapper.eq(Article::getCategoryId, categoryId)
                 .eq(Article::getStatus, 1)
+                .eq(Article::getIsDeleted, false)
                 .orderByDesc(Article::getPublishTime);
         return articleMapper.selectPage(page, wrapper);
     }
@@ -78,6 +99,7 @@ public class ArticleRepositoryImpl implements ArticleRepository {
     public List<Article> findTopArticles(int limit) {
         LambdaQueryWrapper<Article> wrapper = Wrappers.lambdaQuery();
         wrapper.eq(Article::getStatus, 1)
+                .eq(Article::getIsDeleted, false)
                 .orderByDesc(Article::getIsTop)
                 .orderByDesc(Article::getViewCount)
                 .last("LIMIT " + limit);
@@ -97,7 +119,8 @@ public class ArticleRepositoryImpl implements ArticleRepository {
     @Override
     public Long countByCategoryId(Long categoryId) {
         LambdaQueryWrapper<Article> wrapper = Wrappers.lambdaQuery();
-        wrapper.eq(Article::getCategoryId, categoryId);
+        wrapper.eq(Article::getCategoryId, categoryId)
+               .eq(Article::getIsDeleted, false);
         return articleMapper.selectCount(wrapper);
     }
 
@@ -105,6 +128,7 @@ public class ArticleRepositoryImpl implements ArticleRepository {
     public List<Article> findLatestArticles(int limit) {
         LambdaQueryWrapper<Article> wrapper = Wrappers.lambdaQuery();
         wrapper.eq(Article::getStatus, 1)
+                .eq(Article::getIsDeleted, false)
                 .orderByDesc(Article::getPublishTime)
                 .last("LIMIT " + limit);
         return articleMapper.selectList(wrapper);
@@ -114,6 +138,7 @@ public class ArticleRepositoryImpl implements ArticleRepository {
     public List<Article> findHotArticles(int limit) {
         LambdaQueryWrapper<Article> wrapper = Wrappers.lambdaQuery();
         wrapper.eq(Article::getStatus, 1)
+                .eq(Article::getIsDeleted, false)
                 .orderByDesc(Article::getViewCount)
                 .orderByDesc(Article::getPublishTime)
                 .last("LIMIT " + limit);
@@ -128,7 +153,8 @@ public class ArticleRepositoryImpl implements ArticleRepository {
     @Override
     public Long countPublished() {
         LambdaQueryWrapper<Article> wrapper = Wrappers.lambdaQuery();
-        wrapper.eq(Article::getStatus, 1);
+        wrapper.eq(Article::getStatus, 1)
+               .eq(Article::getIsDeleted, false);
         return articleMapper.selectCount(wrapper);
     }
 
@@ -140,7 +166,8 @@ public class ArticleRepositoryImpl implements ArticleRepository {
     @Override
     public IPage<Article> findAllPage(IPage<Article> page) {
         LambdaQueryWrapper<Article> wrapper = Wrappers.lambdaQuery();
-        wrapper.orderByDesc(Article::getCreatedAt);
+        wrapper.eq(Article::getIsDeleted, false)
+               .orderByDesc(Article::getCreatedAt);
         return articleMapper.selectPage(page, wrapper);
     }
 }

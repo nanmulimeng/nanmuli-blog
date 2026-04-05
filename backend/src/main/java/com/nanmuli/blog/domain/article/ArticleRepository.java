@@ -41,4 +41,14 @@ public interface ArticleRepository {
      * 统计指定分类的文章数量
      */
     Long countByCategoryId(Long categoryId);
+
+    /**
+     * 检查slug是否存在
+     */
+    boolean existsBySlug(String slug);
+
+    /**
+     * 检查slug是否被其他文章使用（排除指定ID）
+     */
+    boolean existsBySlugAndIdNot(String slug, Long id);
 }

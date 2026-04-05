@@ -1,5 +1,6 @@
 package com.nanmuli.blog.interfaces.rest;
 
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.nanmuli.blog.application.file.FileAppService;
 import com.nanmuli.blog.application.file.command.UploadFileCommand;
 import com.nanmuli.blog.application.file.dto.FileDTO;
@@ -17,6 +18,7 @@ public class FileController {
 
     private final FileAppService fileAppService;
 
+    @SaCheckPermission("file:upload")
     @PostMapping("/admin/file/upload")
     public Result<FileDTO> upload(@RequestParam("file") MultipartFile file) {
         UploadFileCommand command = new UploadFileCommand();

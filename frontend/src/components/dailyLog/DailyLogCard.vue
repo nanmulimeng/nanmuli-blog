@@ -10,11 +10,11 @@ const emit = defineEmits<{
   click: [id: number]
 }>()
 
-const moodMap: Record<string, { emoji: string; label: string; color: string }> = {
-  happy: { emoji: '😊', label: '开心', color: '#f59e0b' },
-  excited: { emoji: '🤩', label: '兴奋', color: '#ef4444' },
-  normal: { emoji: '😐', label: '平静', color: '#64748B' },
-  tired: { emoji: '😴', label: '疲惫', color: '#3B82F6' },
+const moodMap: Record<string, { icon: string; label: string; color: string }> = {
+  happy: { icon: 'Sunny', label: '开心', color: '#f59e0b' },
+  excited: { icon: 'Star', label: '兴奋', color: '#ef4444' },
+  normal: { icon: 'Minus', label: '平静', color: '#64748B' },
+  tired: { icon: 'Moon', label: '疲惫', color: '#3B82F6' },
 }
 
 function handleClick(): void {
@@ -29,11 +29,21 @@ function handleClick(): void {
   >
     <div class="mb-4 flex items-center justify-between">
       <div class="flex items-center gap-3">
-        <span class="text-2xl">{{ moodMap[log.mood]?.emoji || '😐' }}</span>
+        <div
+          class="flex h-10 w-10 items-center justify-center rounded-full"
+          :style="{ backgroundColor: (moodMap[log.mood]?.color || '#64748B') + '20' }"
+        >
+          <el-icon
+            :size="20"
+            :style="{ color: moodMap[log.mood]?.color || '#64748B' }"
+          >
+            <component :is="moodMap[log.mood]?.icon || 'Minus'" />
+          </el-icon>
+        </div>
         <div>
           <div
             class="text-sm font-medium"
-            :style="{ color: moodMap[log.mood]?.color || '#6b7280' }"
+            :style="{ color: moodMap[log.mood]?.color || '#64748B' }"
           >
             {{ moodMap[log.mood]?.label || '平静' }}
           </div>

@@ -2,10 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
-/* 自定义基础样式 */
+/* 自定义基础样式 - 使用CSS变量以支持暗黑模式 */
 @layer base {
   body {
-    @apply antialiased text-gray-900 bg-gray-50;
+    @apply antialiased;
+    color: var(--theme-text-primary);
+    background-color: var(--theme-bg-primary);
   }
 }
 

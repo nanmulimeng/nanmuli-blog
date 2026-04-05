@@ -1,6 +1,8 @@
 package com.nanmuli.blog.infrastructure.persistence.category;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.core.toolkit.StringUtils;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.nanmuli.blog.domain.category.Category;
 import com.nanmuli.blog.domain.category.CategoryRepository;
@@ -34,21 +36,25 @@ public class CategoryRepositoryImpl implements CategoryRepository {
     @Override
     public Optional<Category> findBySlug(String slug) {
         LambdaQueryWrapper<Category> wrapper = Wrappers.lambdaQuery();
-        wrapper.eq(Category::getSlug, slug);
+        wrapper.eq(Category::getSlug, slug)
+               .eq(Category::getIsDeleted, false);
         return Optional.ofNullable(categoryMapper.selectOne(wrapper));
     }
 
     @Override
     public List<Category> findAllActive() {
         LambdaQueryWrapper<Category> wrapper = Wrappers.lambdaQuery();
-        wrapper.eq(Category::getStatus, 1).orderByAsc(Category::getSort);
+        wrapper.eq(Category::getStatus, 1)
+               .eq(Category::getIsDeleted, false)
+               .orderByAsc(Category::getSort);
         return categoryMapper.selectList(wrapper);
     }
 
     @Override
     public List<Category> findAll() {
         LambdaQueryWrapper<Category> wrapper = Wrappers.lambdaQuery();
-        wrapper.orderByAsc(Category::getSort);
+        wrapper.eq(Category::getIsDeleted, false)
+               .orderByAsc(Category::getSort);
         return categoryMapper.selectList(wrapper);
     }
 
@@ -60,7 +66,52 @@ public class CategoryRepositoryImpl implements CategoryRepository {
     @Override
     public boolean existsByParentId(Long parentId) {
         LambdaQueryWrapper<Category> wrapper = Wrappers.lambdaQuery();
-        wrapper.eq(Category::getParentId, parentId);
+        wrapper.eq(Category::getParentId, parentId)
+               .eq(Category::getIsDeleted, false);
         return categoryMapper.selectCount(wrapper) > 0;
+    }
+
+    @Override
+    public boolean existsBySlug(String slug) {
+        LambdaQueryWrapper<Category> wrapper = Wrappers.lambdaQuery();
+        wrapper.eq(Category::getSlug, slug)
+               .eq(Category::getIsDeleted, false);
+        return categoryMapper.selectCount(wrapper) > 0;
+    }
+
+    @Override
+    public IPage<Category> findPage(IPage<Category> page, Long parentId, Boolean isLeaf, Integer status, String keyword) {
+        LambdaQueryWrapper<Category> wrapper = Wrappers.lambdaQuery();
+        wrapper.eq(Category::getIsDeleted, false);
+
+        // 父分类筛选
+        if (parentId != null) {
+            wrapper.eq(Category::getParentId, parentId);
+        } else {
+            // parentId为null表示查询根分类
+            wrapper.isNull(Category::getParentId);
+        }
+
+        // 类型筛选
+        if (isLeaf != null) {
+            wrapper.eq(Category::getIsLeaf, isLeaf);
+        }
+
+        // 状态筛选
+        if (status != null) {
+            wrapper.eq(Category::getStatus, status);
+        }
+
+        // 关键词搜索（匹配名称或slug）
+        if (StringUtils.isNotBlank(keyword)) {
+            wrapper.and(w -> w.like(Category::getName, keyword)
+                              .or()
+                              .like(Category::getSlug, keyword));
+        }
+
+        // 默认按排序号升序
+        wrapper.orderByAsc(Category::getSort);
+
+        return categoryMapper.selectPage(page, wrapper);
     }
 }

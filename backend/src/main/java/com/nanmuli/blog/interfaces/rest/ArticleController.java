@@ -1,5 +1,6 @@
 package com.nanmuli.blog.interfaces.rest;
 
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.nanmuli.blog.application.article.ArticleAppService;
 import com.nanmuli.blog.application.article.command.CreateArticleCommand;
 import com.nanmuli.blog.application.article.command.UpdateArticleCommand;
@@ -34,6 +35,7 @@ public class ArticleController {
         return Result.success(articleAppService.getBySlug(slug));
     }
 
+    @SaCheckPermission("article:list")
     @GetMapping("/admin/article/{id}")
     public Result<ArticleDTO> getByIdForAdmin(@PathVariable Long id) {
         return Result.success(articleAppService.getById(id));
@@ -44,11 +46,13 @@ public class ArticleController {
         return Result.success(articleAppService.listTop(limit));
     }
 
+    @SaCheckPermission("article:create")
     @PostMapping("/admin/article")
     public Result<Long> create(@Valid @RequestBody CreateArticleCommand command) {
         return Result.success(articleAppService.create(command));
     }
 
+    @SaCheckPermission("article:update")
     @PutMapping("/admin/article/{id}")
     public Result<Void> update(@PathVariable Long id, @Valid @RequestBody UpdateArticleCommand command) {
         command.setArticleId(id);
@@ -56,12 +60,14 @@ public class ArticleController {
         return Result.success();
     }
 
+    @SaCheckPermission("article:delete")
     @DeleteMapping("/admin/article/{id}")
     public Result<Void> delete(@PathVariable Long id) {
         articleAppService.delete(id);
         return Result.success();
     }
 
+    @SaCheckPermission("article:list")
     @GetMapping("/admin/article/list")
     public Result<PageResult<ArticleDTO>> adminList(ArticlePageQuery query) {
         return Result.success(articleAppService.listAll(query));

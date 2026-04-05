@@ -17,6 +17,19 @@ async function fetchProjects(): Promise<void> {
 }
 
 onMounted(fetchProjects)
+
+/**
+ * 验证URL协议是否安全（只允许http/https）
+ */
+function isSafeUrl(url: string | undefined): boolean {
+  if (!url) return false
+  try {
+    const urlObj = new URL(url)
+    return urlObj.protocol === 'http:' || urlObj.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
 </script>
 
 <template>
@@ -90,7 +103,7 @@ onMounted(fetchProjects)
               <!-- Links -->
               <div class="flex gap-4">
                 <a
-                  v-if="project.demoUrl"
+                  v-if="isSafeUrl(project.demoUrl)"
                   :href="project.demoUrl"
                   target="_blank"
                   rel="noopener noreferrer"
@@ -100,7 +113,7 @@ onMounted(fetchProjects)
                   <el-icon><Link /></el-icon> 演示
                 </a>
                 <a
-                  v-if="project.githubUrl"
+                  v-if="isSafeUrl(project.githubUrl)"
                   :href="project.githubUrl"
                   target="_blank"
                   rel="noopener noreferrer"

@@ -24,12 +24,12 @@ function isActive(path: string): boolean {
 
 <template>
   <aside
-    class="flex flex-col border-r bg-white transition-all duration-300"
+    class="flex flex-col border-r border-border bg-surface-secondary transition-all duration-300"
     :class="collapsed ? 'w-16' : 'w-64'"
   >
-    <div class="flex h-16 items-center justify-center border-b">
-      <span v-if="!collapsed" class="text-lg font-bold text-primary-600">管理后台</span>
-      <el-icon v-else :size="24" class="text-primary-600"><Setting /></el-icon>
+    <div class="flex h-16 items-center justify-center border-b border-border">
+      <span v-if="!collapsed" class="text-lg font-bold text-primary">管理后台</span>
+      <el-icon v-else :size="24" class="text-primary"><Setting /></el-icon>
     </div>
 
     <nav class="flex-1 py-4">
@@ -38,7 +38,7 @@ function isActive(path: string): boolean {
         :key="item.path"
         :to="item.path"
         class="flex items-center px-4 py-3 text-sm transition-colors"
-        :class="isActive(item.path) ? 'bg-primary-50 text-primary-600' : 'text-gray-600 hover:bg-gray-50'"
+        :class="isActive(item.path) ? 'bg-primary/10 text-primary' : 'text-content-secondary hover:bg-surface-tertiary'"
       >
         <el-icon :size="18">
           <component :is="item.icon" />
@@ -47,10 +47,10 @@ function isActive(path: string): boolean {
       </router-link>
     </nav>
 
-    <div class="border-t p-4">
+    <div class="border-t border-border p-4">
       <router-link
         to="/"
-        class="flex items-center text-sm text-gray-600 hover:text-primary-600"
+        class="flex items-center text-sm text-content-primary hover:text-primary transition-colors"
       >
         <el-icon :size="18"><HomeFilled /></el-icon>
         <span v-if="!collapsed" class="ml-3">返回前台</span>

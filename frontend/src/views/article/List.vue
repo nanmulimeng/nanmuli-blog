@@ -117,9 +117,9 @@ onMounted(() => {
     <!-- Page Header with Gradient -->
     <section class="relative overflow-hidden pt-20 pb-12">
       <!-- Background Decoration -->
-      <div class="absolute inset-0 bg-gradient-to-br from-blue-100/30 via-cyan-50/20 to-blue-50/30 dark:from-cyan-900/15 dark:via-blue-900/10 dark:to-cyan-800/15" />
-      <div class="absolute top-0 right-0 h-96 w-96 rounded-full bg-blue-400/15 blur-3xl dark:bg-cyan-500/10" />
-      <div class="absolute bottom-0 left-0 h-64 w-64 rounded-full bg-cyan-300/15 blur-3xl dark:bg-blue-500/10" />
+      <div class="absolute inset-0 bg-gradient-to-br from-primary/10 via-surface-tertiary to-primary/5 dark:from-primary/10 dark:via-surface-secondary dark:to-primary/5" />
+      <div class="absolute top-0 right-0 h-96 w-96 rounded-full bg-primary/15 blur-3xl dark:bg-primary/10" />
+      <div class="absolute bottom-0 left-0 h-64 w-64 rounded-full bg-primary-light/15 blur-3xl dark:bg-primary/10" />
 
       <div class="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <!-- Breadcrumb -->
@@ -168,7 +168,7 @@ onMounted(() => {
             <div class="flex items-center gap-2 overflow-x-auto pb-2 lg:pb-0 scrollbar-hide">
               <button
                 class="pill whitespace-nowrap"
-                :class="selectedCategory === undefined ? 'pill-gradient' : 'pill-glass'"
+                :class="selectedCategory === undefined ? 'pill-primary' : 'pill-secondary'"
                 @click="handleCategoryChange(undefined)"
               >
                 全部
@@ -177,7 +177,7 @@ onMounted(() => {
                 v-for="cat in flatLeafCategories"
                 :key="cat.id"
                 class="pill whitespace-nowrap"
-                :class="selectedCategory === cat.id ? 'pill-gradient' : 'pill-glass'"
+                :class="selectedCategory === cat.id ? 'pill-primary' : 'pill-secondary'"
                 @click="handleCategoryChange(cat.id)"
               >
                 {{ cat.name }}
@@ -266,7 +266,7 @@ onMounted(() => {
               />
               <div
                 v-else
-                class="flex h-full w-full items-center justify-center bg-gradient-to-br from-blue-400/20 to-cyan-300/20 dark:from-cyan-500/20 dark:to-blue-400/20"
+                class="flex h-full w-full items-center justify-center bg-gradient-to-br from-primary/10 to-primary-light/10 dark:from-primary/10 dark:to-primary-light/10"
               >
                 <el-icon class="text-5xl text-primary/50">
                   <Document />
@@ -275,7 +275,7 @@ onMounted(() => {
 
               <!-- Top Badge -->
               <div v-if="article.isTop" class="absolute left-4 top-4">
-                <span class="flex items-center gap-1 rounded-full bg-amber-500 px-3 py-1 text-xs font-medium text-white shadow-lg">
+                <span class="flex items-center gap-1 rounded-full bg-warning px-3 py-1 text-xs font-medium text-white shadow-lg">
                   <el-icon><StarFilled /></el-icon>
                   置顶
                 </span>
@@ -378,7 +378,7 @@ onMounted(() => {
                 :key="page"
                 class="flex h-10 w-10 items-center justify-center rounded-xl text-sm font-medium transition-all"
                 :class="currentPage === page
-                  ? 'btn-gradient text-white'
+                  ? 'bg-primary text-white'
                   : 'text-content-secondary hover:bg-surface-tertiary'"
                 @click="handlePageChange(page)"
               >

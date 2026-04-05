@@ -22,13 +22,13 @@ function handleLogClick(id: number): void {
       <el-skeleton v-for="i in 3" :key="i" :rows="3" animated />
     </div>
 
-    <div v-else-if="logs.length === 0" class="py-12 text-center text-gray-500">
+    <div v-else-if="logs.length === 0" class="py-12 text-center text-content-tertiary">
       暂无日志
     </div>
 
     <div v-else class="relative space-y-6">
       <!-- 时间线轴线 -->
-      <div class="absolute left-4 top-0 bottom-0 w-px bg-gray-200" />
+      <div class="absolute left-4 top-0 bottom-0 w-px bg-border" />
 
       <div
         v-for="log in logs"
@@ -36,7 +36,7 @@ function handleLogClick(id: number): void {
         class="relative pl-12"
       >
         <!-- 时间线节点 -->
-        <div class="absolute left-2 top-6 h-4 w-4 rounded-full border-2 border-white bg-blue-500 shadow" />
+        <div class="absolute left-2 top-6 h-4 w-4 rounded-full border-2 border-surface-secondary bg-primary shadow" />
         <DailyLogCard :log="log" @click="handleLogClick" />
       </div>
     </div>

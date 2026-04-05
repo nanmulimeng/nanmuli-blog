@@ -1,12 +1,21 @@
 <script setup lang="ts">
 // ref not used in this component
-import MdEditor from 'md-editor-v3'
+import { computed } from 'vue'
+import { MdEditor } from 'md-editor-v3'
+import type { ToolbarNames } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
+import { isDarkMode } from '@/styles/themes'
 
-const props = defineProps<{
-  modelValue: string
-  height?: string
-}>()
+const props = withDefaults(
+  defineProps<{
+    modelValue: string
+    height?: string
+  }>(),
+  {
+    modelValue: '',
+    height: '500px'
+  }
+)
 
 const emit = defineEmits<{
   'update:modelValue': [value: string]
@@ -14,7 +23,7 @@ const emit = defineEmits<{
   save: [value: string]
 }>()
 
-const editorHeight = props.height || '500px'
+const editorHeight = computed(() => props.height)
 
 function handleChange(value: string): void {
   emit('update:modelValue', value)
@@ -25,7 +34,7 @@ function handleSave(value: string): void {
   emit('save', value)
 }
 
-const toolbars = [
+const toolbars: ToolbarNames[] = [
   'bold',
   'underline',
   'italic',
@@ -51,7 +60,7 @@ const toolbars = [
     :model-value="modelValue"
     :height="editorHeight"
     :toolbars="toolbars"
-    :theme="'light'"
+    :theme="isDarkMode() ? 'dark' : 'light'"
     language="zh-CN"
     @change="handleChange"
     @on-save="handleSave"

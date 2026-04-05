@@ -60,6 +60,9 @@ public class TagAppService {
         TagDTO dto = new TagDTO();
         BeanUtils.copyProperties(tag, dto);
         dto.setId(tag.getId());
+        // 显式映射时间字段（字段名不一致）
+        dto.setCreateTime(tag.getCreatedAt());
+        dto.setUpdateTime(tag.getUpdatedAt());
         return dto;
     }
 }

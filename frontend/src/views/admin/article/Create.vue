@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { createArticle } from '@/api/article'
 import { getLeafCategoryList } from '@/api/category'
+import MarkdownEditor from '@/components/editor/MarkdownEditor.vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import type { Category } from '@/types/category'
 
@@ -69,7 +70,7 @@ onMounted(() => {
 <template>
   <div>
     <div class="mb-6 flex items-center justify-between">
-      <h2 class="text-xl font-bold text-gray-900">新建文章</h2>
+      <h2 class="text-xl font-bold text-content-primary">新建文章</h2>
     </div>
 
     <el-form
@@ -112,12 +113,7 @@ onMounted(() => {
       </el-form-item>
 
       <el-form-item label="内容" prop="content">
-        <!-- 使用 md-editor-v3 -->
-        <md-editor-v3
-          v-model="form.content"
-          :theme="'light'"
-          style="height: 500px"
-        />
+        <MarkdownEditor v-model="form.content" height="500px" />
       </el-form-item>
 
       <el-form-item>

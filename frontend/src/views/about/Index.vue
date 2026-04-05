@@ -59,7 +59,7 @@ onMounted(() => {
       <div class="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 text-center">
         <!-- Avatar -->
         <div class="relative inline-block">
-          <div class="w-28 h-28 md:w-32 md:h-32 rounded-full overflow-hidden border-4 border-white shadow-lg bg-primary-100 flex items-center justify-center">
+          <div class="w-28 h-28 md:w-32 md:h-32 rounded-full overflow-hidden border-4 border-surface-secondary shadow-lg bg-primary-100 flex items-center justify-center">
             <img
               v-if="configStore.siteAvatar"
               :src="configStore.siteAvatar"
@@ -121,7 +121,7 @@ onMounted(() => {
               <div
                 v-for="skill in skills.filter(s => s.category === cat.key)"
                 :key="skill.id"
-                class="flex items-center gap-3 bg-white rounded-lg p-3"
+                class="flex items-center gap-3 bg-surface-secondary rounded-lg p-3 border border-border"
               >
                 <img v-if="skill.icon" :src="skill.icon" class="w-6 h-6" :alt="skill.name">
                 <span class="flex-1 font-medium text-content-primary">{{ skill.name }}</span>
@@ -131,7 +131,7 @@ onMounted(() => {
                     v-for="i in 5"
                     :key="i"
                     class="w-2 h-2 rounded-full"
-                    :class="i <= skill.proficiency ? 'bg-primary-500' : 'bg-surface-tertiary'"
+                    :class="i <= skill.proficiency ? 'bg-primary' : 'bg-surface-tertiary'"
                   />
                 </div>
               </div>
@@ -148,9 +148,9 @@ onMounted(() => {
 
         <div class="relative border-l-2 border-border ml-3 space-y-8">
           <div v-for="(exp, index) in experiences" :key="index" class="relative pl-8">
-            <div class="absolute -left-2 top-1 w-4 h-4 rounded-full bg-primary-500 border-2 border-white" />
+            <div class="absolute -left-2 top-1 w-4 h-4 rounded-full bg-primary border-2 border-border" />
 
-            <div class="text-sm text-primary-600 font-medium">{{ exp.period }}</div>
+            <div class="text-sm text-primary font-medium">{{ exp.period }}</div>
             <h3 class="mt-1 text-lg font-semibold text-content-primary">{{ exp.title }}</h3>
             <div class="text-content-tertiary">{{ exp.company }}</div>
             <p class="mt-2 text-content-secondary">{{ exp.description }}</p>

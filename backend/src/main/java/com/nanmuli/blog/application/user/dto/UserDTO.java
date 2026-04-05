@@ -1,5 +1,6 @@
 package com.nanmuli.blog.application.user.dto;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -16,5 +17,10 @@ public class UserDTO {
     private Integer status;
     private String loginIp;
     private LocalDateTime loginTime;
-    private LocalDateTime createdAt;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime createTime;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime updateTime;
 }

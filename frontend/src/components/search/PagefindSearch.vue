@@ -105,9 +105,9 @@ onMounted(() => {
     <!-- 搜索结果下拉框 -->
     <div
       v-if="showResults && searchResults.length > 0"
-      class="absolute top-full z-50 mt-2 w-96 rounded-xl border bg-white p-4 shadow-lg"
+      class="absolute top-full z-50 mt-2 w-96 rounded-xl border border-border bg-surface-secondary p-4 shadow-lg"
     >
-      <div class="mb-2 text-sm text-gray-500">
+      <div class="mb-2 text-sm text-content-tertiary">
         找到 {{ searchResults.length }} 个结果
       </div>
       <div class="max-h-96 space-y-3 overflow-y-auto">
@@ -115,10 +115,10 @@ onMounted(() => {
           v-for="result in searchResults"
           :key="result.url"
           :href="result.url"
-          class="block rounded-lg p-3 transition-colors hover:bg-gray-50"
+          class="block rounded-lg p-3 transition-colors hover:bg-surface-tertiary"
         >
-          <div class="mb-1 font-medium text-gray-900">{{ result.title }}</div>
-          <div class="line-clamp-2 text-sm text-gray-600" v-html="result.excerpt" />
+          <div class="mb-1 font-medium text-content-primary">{{ result.title }}</div>
+          <div class="line-clamp-2 text-sm text-content-secondary" v-html="result.excerpt" />
         </a>
       </div>
     </div>
@@ -126,9 +126,9 @@ onMounted(() => {
     <!-- 无结果提示 -->
     <div
       v-else-if="showResults && !isSearching && searchQuery"
-      class="absolute top-full z-50 mt-2 w-96 rounded-xl border bg-white p-4 shadow-lg"
+      class="absolute top-full z-50 mt-2 w-96 rounded-xl border border-border bg-surface-secondary p-4 shadow-lg"
     >
-      <div class="text-center text-gray-500">未找到相关结果</div>
+      <div class="text-center text-content-tertiary">未找到相关结果</div>
     </div>
   </div>
 </template>

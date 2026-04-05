@@ -1,85 +1,146 @@
 package com.nanmuli.blog.application.category;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.nanmuli.blog.application.category.command.CreateCategoryCommand;
+import com.nanmuli.blog.application.category.command.UpdateCategoryCommand;
 import com.nanmuli.blog.application.category.dto.CategoryDTO;
+import com.nanmuli.blog.application.category.query.CategoryPageQuery;
 import com.nanmuli.blog.domain.article.ArticleRepository;
 import com.nanmuli.blog.domain.category.Category;
 import com.nanmuli.blog.domain.category.CategoryRepository;
 import com.nanmuli.blog.shared.exception.BusinessException;
+import com.nanmuli.blog.shared.result.PageResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
+/**
+ * 分类应用服务
+ */
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class CategoryAppService {
 
     private final CategoryRepository categoryRepository;
     private final ArticleRepository articleRepository;
 
+    /**
+     * 创建分类
+     */
     @Transactional
-    public Long create(CategoryDTO dto) {
+    public Long create(CreateCategoryCommand command) {
+        // 检查slug唯一性
+        if (categoryRepository.existsBySlug(command.getSlug())) {
+            throw new BusinessException("分类标识已存在");
+        }
+
         Category category = new Category();
-        BeanUtils.copyProperties(dto, category);
-        // 默认设置为叶子节点（原标签概念）
-        if (category.getIsLeaf() == null) {
-            category.setIsLeaf(true);
-        }
-        // 父分类不能设置为叶子节点
-        if (category.getParentId() != null) {
-            Category parent = categoryRepository.findById(category.getParentId())
-                    .orElseThrow(() -> new BusinessException("父分类不存在"));
-            if (parent.isLeaf()) {
-                throw new BusinessException("叶子分类不能作为父分类");
-            }
-        }
+        BeanUtils.copyProperties(command, category);
+
+        // 验证父分类合法性
+        validateParentCategory(category.getParentId(), null);
+
         categoryRepository.save(category);
         return category.getId();
     }
 
+    /**
+     * 更新分类
+     */
     @Transactional
-    public void update(Long id, CategoryDTO dto) {
+    public void update(Long id, UpdateCategoryCommand command) {
         Category category = categoryRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("分类不存在"));
+
+        // 检查slug唯一性（排除自身）
+        if (!command.getSlug().equals(category.getSlug()) && categoryRepository.existsBySlug(command.getSlug())) {
+            throw new BusinessException("分类标识已存在");
+        }
+
         // 检查是否将父分类改为叶子分类（有子分类时不允许）
-        if (Boolean.TRUE.equals(dto.getIsLeaf()) && hasChildren(id)) {
+        if (Boolean.TRUE.equals(command.getIsLeaf()) && hasChildren(id)) {
             throw new BusinessException("该分类下有子分类，不能设置为叶子分类");
         }
-        // 检查父分类是否合法
-        if (dto.getParentId() != null) {
-            Category parent = categoryRepository.findById(dto.getParentId())
-                    .orElseThrow(() -> new BusinessException("父分类不存在"));
-            if (parent.isLeaf()) {
-                throw new BusinessException("叶子分类不能作为父分类");
-            }
-            // 防止循环引用
-            if (dto.getParentId().equals(id)) {
-                throw new BusinessException("不能将自身设置为父分类");
-            }
-        }
-        BeanUtils.copyProperties(dto, category);
+
+        // 验证父分类合法性
+        validateParentCategory(command.getParentId(), id);
+
+        BeanUtils.copyProperties(command, category);
         category.setId(id);
         categoryRepository.save(category);
     }
 
-    @Transactional(readOnly = true)
+    /**
+     * 获取启用的分类树（前台展示）
+     */
     public List<CategoryDTO> listAllActive() {
         List<Category> categories = categoryRepository.findAllActive();
         return buildTree(categories);
     }
 
-    @Transactional(readOnly = true)
+    /**
+     * 获取所有分类树（管理后台）
+     */
     public List<CategoryDTO> listAll() {
         List<Category> categories = categoryRepository.findAll();
         return buildTree(categories);
     }
 
-    @Transactional(readOnly = true)
+    /**
+     * 分页查询分类列表（平铺结构，支持筛选）
+     */
+    public PageResult<CategoryDTO> listPage(CategoryPageQuery query) {
+        IPage<Category> page = new Page<>(query.getCurrent(), query.getSize());
+        IPage<Category> result = categoryRepository.findPage(
+                page,
+                query.getParentId(),
+                query.getIsLeaf(),
+                query.getStatus(),
+                query.getKeyword()
+        );
+
+        List<CategoryDTO> records = result.getRecords().stream()
+                .map(this::toDTO)
+                .toList();
+
+        return new PageResult<>(result.getTotal(), result.getCurrent(), result.getSize(), records);
+    }
+
+    /**
+     * 获取分类路径（从根到当前分类）
+     */
+    public List<CategoryDTO> getCategoryPath(Long categoryId) {
+        List<CategoryDTO> path = new ArrayList<>();
+        if (categoryId == null) {
+            return path;
+        }
+
+        Category current = categoryRepository.findById(categoryId).orElse(null);
+        while (current != null) {
+            path.add(0, toDTO(current));
+            if (current.getParentId() == null) {
+                break;
+            }
+            current = categoryRepository.findById(current.getParentId()).orElse(null);
+        }
+
+        return path;
+    }
+
+    /**
+     * 获取叶子分类列表（可关联文章）
+     */
     public List<CategoryDTO> listLeafCategories() {
         return categoryRepository.findAllActive().stream()
                 .filter(Category::isLeaf)
@@ -87,13 +148,18 @@ public class CategoryAppService {
                 .toList();
     }
 
-    @Transactional(readOnly = true)
+    /**
+     * 根据ID获取分类详情
+     */
     public CategoryDTO getById(Long id) {
         Category category = categoryRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("分类不存在"));
         return toDTO(category);
     }
 
+    /**
+     * 删除分类
+     */
     @Transactional
     public void delete(Long id) {
         Category category = categoryRepository.findById(id)
@@ -113,6 +179,76 @@ public class CategoryAppService {
         }
 
         categoryRepository.deleteById(id);
+    }
+
+    /**
+     * 刷新指定分类的文章数量
+     * 在文章创建、更新分类、删除时调用
+     */
+    @Transactional
+    public void refreshArticleCount(Long categoryId) {
+        if (categoryId == null) {
+            return;
+        }
+        Category category = categoryRepository.findById(categoryId).orElse(null);
+        if (category == null) {
+            return;
+        }
+        Long count = articleRepository.countByCategoryId(categoryId);
+        category.setArticleCount(count.intValue());
+        categoryRepository.save(category);
+    }
+
+    /**
+     * 验证父分类的合法性
+     * 包含直接循环检测（A->A）和间接循环检测（A->B->C->A）
+     */
+    private void validateParentCategory(Long parentId, Long currentId) {
+        if (parentId == null) {
+            return;
+        }
+
+        // 不能将自身设置为父分类（直接循环检测）
+        if (currentId != null && parentId.equals(currentId)) {
+            throw new BusinessException("不能将自身设置为父分类");
+        }
+
+        // 验证父分类存在性
+        Category parent = categoryRepository.findById(parentId)
+                .orElseThrow(() -> new BusinessException("父分类不存在"));
+
+        if (parent.isLeaf()) {
+            throw new BusinessException("叶子分类不能作为父分类");
+        }
+
+        // 间接循环检测：检查父分类链是否包含当前分类（避免 A->B->C->A）
+        if (currentId != null) {
+            detectCircularReference(currentId, parentId);
+        }
+    }
+
+    /**
+     * 检测分类循环引用
+     * 使用Set记录已访问的分类ID，遍历父分类链
+     */
+    private void detectCircularReference(Long categoryId, Long parentId) {
+        Set<Long> visited = new HashSet<>();
+        visited.add(categoryId);
+
+        Long currentParentId = parentId;
+        while (currentParentId != null) {
+            if (visited.contains(currentParentId)) {
+                throw new BusinessException("检测到分类循环引用，请检查父分类设置");
+            }
+            visited.add(currentParentId);
+
+            Category currentParent = categoryRepository.findById(currentParentId)
+                    .orElse(null);
+            if (currentParent == null) {
+                break;
+            }
+            currentParentId = currentParent.getParentId();
+        }
     }
 
     /**
@@ -154,6 +290,9 @@ public class CategoryAppService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * 转换为DTO
+     */
     private CategoryDTO toDTO(Category category) {
         CategoryDTO dto = new CategoryDTO();
         BeanUtils.copyProperties(category, dto);

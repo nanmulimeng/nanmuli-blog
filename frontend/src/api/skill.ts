@@ -16,3 +16,7 @@ export function updateSkill(id: number, data: Partial<Skill>): Promise<void> {
 export function deleteSkill(id: number): Promise<void> {
   return del<void>(`/admin/skill/${id}`)
 }
+
+export function getSkillById(id: number): Promise<Skill> {
+  return get<Skill>(`/skill/${id}`)
+}

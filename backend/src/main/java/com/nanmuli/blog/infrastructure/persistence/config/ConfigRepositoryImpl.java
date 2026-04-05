@@ -48,6 +48,11 @@ public class ConfigRepositoryImpl implements ConfigRepository {
     }
 
     @Override
+    public List<Config> findAll() {
+        return configMapper.selectList(null);
+    }
+
+    @Override
     public void deleteById(Long id) {
         configMapper.deleteById(id);
     }

@@ -16,3 +16,7 @@ export function updateProject(id: number, data: Partial<Project>): Promise<void>
 export function deleteProject(id: number): Promise<void> {
   return del<void>(`/admin/project/${id}`)
 }
+
+export function getProjectById(id: number): Promise<Project> {
+  return get<Project>(`/project/${id}`)
+}

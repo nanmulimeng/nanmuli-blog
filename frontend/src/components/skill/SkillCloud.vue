@@ -30,7 +30,7 @@ const categoryLabels: Record<string, string> = {
 <template>
   <div class="space-y-8">
     <div v-for="(skills, category) in groupedSkills" :key="category">
-      <h4 class="mb-4 text-lg font-semibold text-gray-900">
+      <h4 class="mb-4 text-lg font-semibold text-content-primary">
         {{ categoryLabels[category] || category }}
       </h4>
       <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

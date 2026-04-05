@@ -9,6 +9,7 @@ const loading = ref(false)
 const dialogVisible = ref(false)
 const isEdit = ref(false)
 const projects = ref<Project[]>([])
+const formRef = ref()
 const form = ref<Partial<Project>>({
   name: '',
   slug: '',
@@ -21,6 +22,11 @@ const form = ref<Partial<Project>>({
   sort: 0,
   status: 1,
 })
+
+const rules = {
+  name: [{ required: true, message: '请输入项目名称', trigger: 'blur' }],
+  slug: [{ required: true, message: '请输入项目别名', trigger: 'blur' }],
+}
 
 async function fetchData(): Promise<void> {
   loading.value = true
@@ -68,19 +74,25 @@ async function handleDelete(row: Project): Promise<void> {
 }
 
 async function handleSubmit(): Promise<void> {
-  try {
-    if (isEdit.value && form.value.id) {
-      await updateProject(form.value.id, form.value)
-      ElMessage.success('更新成功')
-    } else {
-      await createProject(form.value)
-      ElMessage.success('创建成功')
+  if (!formRef.value) return
+
+  await formRef.value.validate(async (valid: boolean) => {
+    if (!valid) return
+
+    try {
+      if (isEdit.value && form.value.id) {
+        await updateProject(form.value.id, form.value)
+        ElMessage.success('更新成功')
+      } else {
+        await createProject(form.value)
+        ElMessage.success('创建成功')
+      }
+      dialogVisible.value = false
+      fetchData()
+    } catch {
+      ElMessage.error('操作失败')
     }
-    dialogVisible.value = false
-    fetchData()
-  } catch {
-    ElMessage.error('操作失败')
-  }
+  })
 }
 
 onMounted(fetchData)
@@ -89,13 +101,15 @@ onMounted(fetchData)
 <template>
   <div>
     <div class="mb-6 flex items-center justify-between">
-      <h2 class="text-xl font-bold text-gray-900">项目管理</h2>
+      <h2 class="text-xl font-bold text-content-primary">项目管理</h2>
       <el-button type="primary" :icon="Plus" @click="handleCreate">
         新建项目
       </el-button>
     </div>
 
-    <el-table v-loading="loading" :data="projects" border>
+    <el-empty v-if="!loading && projects.length === 0" description="暂无项目" />
+
+    <el-table v-if="projects.length > 0" v-loading="loading" :data="projects" border>
       <el-table-column prop="id" label="ID" width="80" />
       <el-table-column prop="name" label="名称" />
       <el-table-column prop="description" label="描述" show-overflow-tooltip />
@@ -112,8 +126,13 @@ onMounted(fetchData)
       </el-table-column>
     </el-table>
 
-    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑项目' : '新建项目'" width="600px">
-      <el-form :model="form" label-width="100px">
+    <el-dialog
+      v-model="dialogVisible"
+      :title="isEdit ? '编辑项目' : '新建项目'"
+      width="600px"
+      class="theme-dialog"
+    >
+      <el-form :model="form" label-width="100px" class="theme-form" :rules="rules" ref="formRef">
         <el-form-item label="名称">
           <el-input v-model="form.name" />
         </el-form-item>
@@ -143,3 +162,7 @@ onMounted(fetchData)
     </el-dialog>
   </div>
 </template>
+
+<style scoped>
+/* 表格样式已由全局样式处理 */
+</style>

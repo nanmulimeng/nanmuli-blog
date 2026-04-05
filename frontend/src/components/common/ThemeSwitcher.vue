@@ -18,8 +18,8 @@ onMounted(() => {
   <button
     class="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200"
     :class="isDarkMode()
-      ? 'bg-blue-500/10 text-blue-400 hover:bg-blue-500/20'
-      : 'bg-blue-50 text-blue-600 hover:bg-blue-100'"
+      ? 'bg-primary/10 text-primary-light hover:bg-primary/20'
+      : 'bg-primary/5 text-primary hover:bg-primary/10'"
     @click="handleToggle"
     aria-label="切换明暗主题"
     :title="isDarkMode() ? '切换到亮色模式' : '切换到暗色模式'"

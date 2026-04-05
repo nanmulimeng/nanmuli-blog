@@ -1,5 +1,6 @@
 package com.nanmuli.blog.interfaces.rest;
 
+import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.nanmuli.blog.application.dailylog.DailyLogAppService;
 import com.nanmuli.blog.application.dailylog.command.CreateDailyLogCommand;
 import com.nanmuli.blog.application.dailylog.dto.DailyLogDTO;
@@ -30,17 +31,20 @@ public class DailyLogController {
         return Result.success(dailyLogAppService.getById(id));
     }
 
+    @SaCheckPermission("dailyLog:create")
     @PostMapping("/admin/daily-log")
     public Result<Long> create(@Valid @RequestBody CreateDailyLogCommand command) {
         return Result.success(dailyLogAppService.create(command));
     }
 
+    @SaCheckPermission("dailyLog:update")
     @PutMapping("/admin/daily-log/{id}")
     public Result<Void> update(@PathVariable Long id, @Valid @RequestBody CreateDailyLogCommand command) {
         dailyLogAppService.update(id, command);
         return Result.success();
     }
 
+    @SaCheckPermission("dailyLog:delete")
     @DeleteMapping("/admin/daily-log/{id}")
     public Result<Void> delete(@PathVariable Long id) {
         dailyLogAppService.delete(id);

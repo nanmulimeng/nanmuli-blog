@@ -52,6 +52,9 @@ public class UserAppService {
                 .orElseThrow(() -> new BusinessException("用户不存在"));
         UserDTO dto = new UserDTO();
         BeanUtils.copyProperties(user, dto);
+        // 显式映射时间字段（字段名不一致）
+        dto.setCreateTime(user.getCreatedAt());
+        dto.setUpdateTime(user.getUpdatedAt());
         return dto;
     }
 

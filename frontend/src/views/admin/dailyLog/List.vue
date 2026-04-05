@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { Plus, Edit, Delete } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getDailyLogList, deleteDailyLog } from '@/api/dailyLog'
-import { formatDate } from '@/utils/format'
+import { formatDateCN } from '@/utils/format'
 import type { DailyLog } from '@/types/dailyLog'
 
 const router = useRouter()
@@ -14,11 +14,11 @@ const total = ref(0)
 const currentPage = ref(1)
 const pageSize = ref(10)
 
-const moodMap: Record<string, string> = {
-  happy: '😊 开心',
-  excited: '🤩 兴奋',
-  normal: '😐 平静',
-  tired: '😴 疲惫',
+const moodMap: Record<string, { label: string; color: string }> = {
+  happy: { label: '开心', color: '#f59e0b' },
+  excited: { label: '兴奋', color: '#ef4444' },
+  normal: { label: '平静', color: '#64748B' },
+  tired: { label: '疲惫', color: '#3B82F6' },
 }
 
 async function fetchData(): Promise<void> {
@@ -67,7 +67,7 @@ onMounted(fetchData)
 <template>
   <div>
     <div class="mb-6 flex items-center justify-between">
-      <h2 class="text-xl font-bold text-gray-900">日志管理</h2>
+      <h2 class="text-xl font-bold text-content-primary">日志管理</h2>
       <el-button type="primary" :icon="Plus" @click="handleCreate">
         新建日志
       </el-button>
@@ -77,12 +77,21 @@ onMounted(fetchData)
       <el-table-column prop="id" label="ID" width="80" />
       <el-table-column prop="logDate" label="日期" width="120">
         <template #default="{ row }">
-          {{ formatDate(row.logDate) }}
+          {{ formatDateCN(row.logDate) }}
         </template>
       </el-table-column>
       <el-table-column prop="mood" label="心情" width="100">
         <template #default="{ row }">
-          {{ moodMap[row.mood] || row.mood }}
+          <span
+            v-if="row.mood"
+            class="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs"
+            :style="{
+              backgroundColor: moodMap[row.mood]?.color + '20' || '#64748B20',
+              color: moodMap[row.mood]?.color || '#64748B'
+            }"
+          >
+            {{ moodMap[row.mood]?.label || row.mood }}
+          </span>
         </template>
       </el-table-column>
       <el-table-column prop="weather" label="天气" width="100" />
@@ -110,3 +119,7 @@ onMounted(fetchData)
     </div>
   </div>
 </template>
+
+<style scoped>
+/* 表格样式已由全局样式处理 */
+</style>

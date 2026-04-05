@@ -12,5 +12,7 @@ public interface ConfigRepository {
 
     List<Config> findAllPublic();
 
+    List<Config> findAll();
+
     void deleteById(Long id);
 }

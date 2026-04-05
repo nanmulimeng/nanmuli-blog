@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.time.LocalDate;
+import java.util.List;
 
 @Data
 public class CreateDailyLogCommand {
@@ -12,7 +13,7 @@ public class CreateDailyLogCommand {
     private String content;
     private String mood;
     private String weather;
-    private String tags;
+    private List<String> tags;
     @NotNull(message = "日期不能为空")
     private LocalDate logDate;
 }

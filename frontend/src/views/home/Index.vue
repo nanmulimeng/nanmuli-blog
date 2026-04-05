@@ -136,15 +136,15 @@ onMounted(() => {
   <div class="home-page">
     <!-- Hero Section -->
     <section class="relative min-h-[90vh] overflow-hidden">
-      <!-- 动态背景 -->
-      <div class="absolute inset-0 bg-gradient-to-br from-blue-100/50 via-cyan-50/30 to-blue-50/40 dark:from-cyan-900/20 dark:via-blue-900/10 dark:to-cyan-800/20">
+      <!-- 动态背景 - 使用主题变量 -->
+      <div class="absolute inset-0 bg-gradient-to-br from-primary/10 via-surface-tertiary to-primary/5 dark:from-primary/10 dark:via-surface-secondary dark:to-primary/5">
         <!-- 动画网格 -->
         <div class="absolute inset-0 bg-grid-pattern opacity-30 dark:opacity-20" />
 
         <!-- 浮动光球 - 使用主题蓝色系 -->
-        <div class="absolute left-10 top-20 h-72 w-72 rounded-full bg-blue-400/20 blur-3xl animate-float dark:bg-cyan-500/15" />
-        <div class="animation-delay-500 absolute right-20 top-40 h-96 w-96 rounded-full bg-cyan-300/15 blur-3xl animate-float dark:bg-blue-500/10" />
-        <div class="animation-delay-700 absolute bottom-20 left-1/3 h-64 w-64 rounded-full bg-blue-300/20 blur-3xl animate-float dark:bg-cyan-400/15" />
+        <div class="absolute left-10 top-20 h-72 w-72 rounded-full bg-primary/20 blur-3xl animate-float dark:bg-primary-light/10" />
+        <div class="animation-delay-500 absolute right-20 top-40 h-96 w-96 rounded-full bg-primary/15 blur-3xl animate-float dark:bg-primary/10" />
+        <div class="animation-delay-700 absolute bottom-20 left-1/3 h-64 w-64 rounded-full bg-primary/20 blur-3xl animate-float dark:bg-primary-light/10" />
       </div>
 
       <!-- Hero 内容 -->
@@ -224,9 +224,9 @@ onMounted(() => {
             <div class="glass-card relative mx-auto max-w-md p-6 animate-fade-in-up">
               <div class="mb-4 flex items-center justify-between">
                 <div class="flex gap-2">
-                  <div class="h-3 w-3 rounded-full bg-red-500" />
-                  <div class="h-3 w-3 rounded-full bg-yellow-500" />
-                  <div class="h-3 w-3 rounded-full bg-green-500" />
+                  <div class="h-3 w-3 rounded-full bg-error" />
+                  <div class="h-3 w-3 rounded-full bg-warning" />
+                  <div class="h-3 w-3 rounded-full bg-success" />
                 </div>
                 <span class="text-xs text-content-tertiary">blog.vue</span>
               </div>
@@ -246,11 +246,11 @@ watch(experience, (newVal) => {
             </div>
 
             <!-- 装饰元素 - 使用主题蓝色系 -->
-            <div class="absolute -right-4 top-1/2 -translate-y-1/2 transform rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-400 p-4 shadow-xl animate-float dark:from-blue-500 dark:to-blue-500">
+            <div class="absolute -right-4 top-1/2 -translate-y-1/2 transform rounded-2xl bg-gradient-to-br from-primary to-primary-light p-4 shadow-xl animate-float">
               <el-icon class="text-3xl text-white"><Code /></el-icon>
             </div>
 
-            <div class="absolute -left-8 bottom-10 transform rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-500 p-4 shadow-xl animation-delay-500 animate-float dark:from-blue-500 dark:to-blue-500">
+            <div class="absolute -left-8 bottom-10 transform rounded-2xl bg-gradient-to-br from-primary-light to-primary p-4 shadow-xl animation-delay-500 animate-float">
               <el-icon class="text-3xl text-white"><Coffee /></el-icon>
             </div>
           </div>
@@ -286,7 +286,7 @@ watch(experience, (newVal) => {
           <div class="text-3xl font-bold text-content-primary sm:text-4xl">
             {{ animatedStats.dayCount }}
           </div>
-          <div class="mt-1 text-sm text-content-tertiary">天运行</div>
+          <div class="mt-1 text-sm text-content-tertiary">篇日志</div>
         </div>
       </div>
     </section>
@@ -308,7 +308,7 @@ watch(experience, (newVal) => {
         <div class="flex flex-wrap gap-2">
           <button
             class="pill"
-            :class="!activeCategory ? 'pill-gradient' : 'pill-glass'"
+            :class="!activeCategory ? 'pill-primary' : 'pill-secondary'"
             @click="activeCategory = null"
           >
             全部
@@ -317,7 +317,7 @@ watch(experience, (newVal) => {
             v-for="cat in aggregated?.categories?.slice(0, 5)"
             :key="cat.id"
             class="pill"
-            :class="activeCategory === cat.id ? 'pill-gradient' : 'pill-glass'"
+            :class="activeCategory === cat.id ? 'pill-primary' : 'pill-secondary'"
             @click="activeCategory = cat.id"
           >
             {{ cat.name }}
@@ -354,7 +354,7 @@ watch(experience, (newVal) => {
 
             <!-- 置顶标签 -->
             <div v-if="article.isTop" class="absolute left-4 top-4">
-              <span class="flex items-center gap-1 rounded-full bg-amber-500 px-3 py-1 text-xs font-medium text-white shadow-lg">
+              <span class="flex items-center gap-1 rounded-full bg-warning px-3 py-1 text-xs font-medium text-white shadow-lg">
                 <el-icon><StarFilled /></el-icon>
                 置顶
               </span>
@@ -362,7 +362,7 @@ watch(experience, (newVal) => {
 
             <!-- 分类标签 -->
             <div class="absolute bottom-4 left-4">
-              <span class="rounded-full bg-surface-secondary/90 px-3 py-1 text-xs font-medium text-content-secondary shadow-sm backdrop-blur-sm">
+              <span class="pill pill-secondary text-xs shadow-sm backdrop-blur-sm">
                 {{ article.categoryName }}
               </span>
             </div>
@@ -431,7 +431,7 @@ watch(experience, (newVal) => {
             @click="navigateToCategory(cat.id)"
           >
             <!-- 装饰背景 -->
-            <div class="absolute -right-4 -top-4 h-20 w-20 rounded-full bg-gradient-to-br from-primary/20 to-cyan-400/20 opacity-0 transition-opacity group-hover:opacity-100" />
+            <div class="absolute -right-4 -top-4 h-20 w-20 rounded-full bg-gradient-to-br from-primary/20 to-primary-light/20 opacity-0 transition-opacity group-hover:opacity-100" />
 
             <div class="relative">
               <h3 class="text-lg font-semibold text-content-primary">

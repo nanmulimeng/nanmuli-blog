@@ -22,7 +22,7 @@ function handleProjectClick(id: number): void {
       <el-skeleton v-for="i in 6" :key="i" animated :rows="4" />
     </div>
 
-    <div v-else-if="projects.length === 0" class="py-12 text-center text-gray-500">
+    <div v-else-if="projects.length === 0" class="py-12 text-center text-content-tertiary">
       暂无项目
     </div>
 

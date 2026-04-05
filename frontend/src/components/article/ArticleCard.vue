@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { formatDateCN } from '@/utils/format'
 import type { Article } from '@/types/article'
 
 const props = defineProps<{
@@ -57,7 +58,7 @@ function handleClick(): void {
       <span v-else class="rounded-full bg-surface-tertiary px-2 py-1 text-primary">
         {{ article.categoryName }}
       </span>
-      <span>{{ article.publishTime?.split('T')[0] }}</span>
+      <span>{{ formatDateCN(article.publishTime) }}</span>
       <span v-if="article.isTop" class="text-warning">置顶</span>
     </div>
 

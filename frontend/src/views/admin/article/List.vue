@@ -2,7 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getAdminArticleList, deleteArticle } from '@/api/article'
-import { formatDate } from '@/utils/format'
+import { formatDateCN } from '@/utils/format'
 import { ArticleStatusMap } from '@/constants'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Edit, Delete } from '@element-plus/icons-vue'
@@ -61,7 +61,7 @@ onMounted(fetchData)
 <template>
   <div>
     <div class="mb-6 flex items-center justify-between">
-      <h2 class="text-xl font-bold text-gray-900">文章管理</h2>
+      <h2 class="text-xl font-bold text-content-primary">文章管理</h2>
       <el-button type="primary" :icon="Plus" @click="handleCreate">
         新建文章
       </el-button>
@@ -85,7 +85,7 @@ onMounted(fetchData)
       <el-table-column prop="viewCount" label="阅读量" width="100" />
       <el-table-column label="发布时间" width="180">
         <template #default="{ row }">
-          {{ formatDate(row.publishTime) }}
+          {{ formatDateCN(row.publishTime) }}
         </template>
       </el-table-column>
       <el-table-column label="操作" width="150" fixed="right">
@@ -111,3 +111,7 @@ onMounted(fetchData)
     </div>
   </div>
 </template>
+
+<style scoped>
+/* 表格样式已由全局样式处理 */
+</style>

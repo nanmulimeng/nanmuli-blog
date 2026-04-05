@@ -12,6 +12,19 @@ const emit = defineEmits<{
 function handleClick(): void {
   emit('click', props.project.id)
 }
+
+/**
+ * 验证URL协议是否安全（只允许http/https）
+ */
+function isSafeUrl(url: string | undefined): boolean {
+  if (!url) return false
+  try {
+    const urlObj = new URL(url)
+    return urlObj.protocol === 'http:' || urlObj.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
 </script>
 
 <template>
@@ -54,27 +67,30 @@ function handleClick(): void {
 
       <div class="flex items-center gap-4">
         <a
-          v-if="project.githubUrl"
+          v-if="isSafeUrl(project.githubUrl)"
           :href="project.githubUrl"
           target="_blank"
+          rel="noopener noreferrer"
           class="text-sm text-content-tertiary hover:text-primary"
           @click.stop
         >
           GitHub
         </a>
         <a
-          v-if="project.demoUrl"
+          v-if="isSafeUrl(project.demoUrl)"
           :href="project.demoUrl"
           target="_blank"
+          rel="noopener noreferrer"
           class="text-sm text-content-tertiary hover:text-primary"
           @click.stop
         >
           演示
         </a>
         <a
-          v-if="project.docUrl"
+          v-if="isSafeUrl(project.docUrl)"
           :href="project.docUrl"
           target="_blank"
+          rel="noopener noreferrer"
           class="text-sm text-content-tertiary hover:text-primary"
           @click.stop
         >

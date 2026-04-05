@@ -8,6 +8,7 @@ import com.nanmuli.blog.application.article.command.UpdateArticleCommand;
 import com.nanmuli.blog.application.article.dto.ArticleArchiveDTO;
 import com.nanmuli.blog.application.article.dto.ArticleDTO;
 import com.nanmuli.blog.application.article.query.ArticlePageQuery;
+import com.nanmuli.blog.application.category.CategoryAppService;
 import com.nanmuli.blog.application.category.dto.CategoryDTO;
 import com.nanmuli.blog.domain.article.Article;
 import com.nanmuli.blog.domain.article.ArticleId;
@@ -22,6 +23,7 @@ import com.nanmuli.blog.shared.util.MarkdownUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
+import org.springframework.util.StringUtils;
 import org.springframework.cache.annotation.CacheConfig;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
@@ -40,21 +42,35 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 @CacheConfig(cacheNames = "article")
+@Transactional(readOnly = true)
 public class ArticleAppService {
 
     private final ArticleRepository articleRepository;
     private final CategoryRepository categoryRepository;
+    private final CategoryAppService categoryAppService;
     private final ApplicationEventPublisher eventPublisher;
     private final MarkdownUtil markdownUtil;
 
     @Transactional
     @CacheEvict(cacheNames = "article:list", allEntries = true)
     public Long create(CreateArticleCommand command) {
+        // 验证slug唯一性
+        if (command.getSlug() != null && !command.getSlug().isEmpty()) {
+            if (articleRepository.existsBySlug(command.getSlug())) {
+                throw new BusinessException("文章别名已存在");
+            }
+        }
+
         // 验证分类是否为叶子节点
         validateLeafCategory(command.getCategoryId());
 
         Article article = new Article();
         BeanUtils.copyProperties(command, article);
+
+        // 如果没有提供slug，自动生成
+        if (!StringUtils.hasText(article.getSlug())) {
+            article.setSlug(generateSlug(article.getTitle()));
+        }
         article.calculateWordCount();
 
         // 设置当前登录用户
@@ -85,6 +101,11 @@ public class ArticleAppService {
 
         articleRepository.save(article);
 
+        // 更新分类文章数
+        if (article.getCategoryId() != null) {
+            categoryAppService.refreshArticleCount(article.getCategoryId());
+        }
+
         // 发布文章创建事件
         eventPublisher.publishEvent(new ArticleCreatedEvent(article.getId(), article.getTitle()));
 
@@ -105,11 +126,21 @@ public class ArticleAppService {
     @Transactional
     @CacheEvict(allEntries = true)
     public void update(UpdateArticleCommand command) {
+        // 验证slug唯一性（排除自身）
+        if (command.getSlug() != null && !command.getSlug().isEmpty()) {
+            if (articleRepository.existsBySlugAndIdNot(command.getSlug(), command.getArticleId())) {
+                throw new BusinessException("文章别名已存在");
+            }
+        }
+
         // 验证分类是否为叶子节点
         validateLeafCategory(command.getCategoryId());
 
         Article article = articleRepository.findById(new ArticleId(command.getArticleId()))
                 .orElseThrow(() -> new BusinessException("文章不存在"));
+
+        // 保存原有分类ID，用于后续更新文章数
+        Long oldCategoryId = article.getCategoryId();
 
         // 保存原有状态
         boolean wasPublished = article.isPublished();
@@ -139,6 +170,17 @@ public class ArticleAppService {
         }
 
         articleRepository.save(article);
+
+        // 更新分类文章数（新旧分类都更新）
+        Long newCategoryId = article.getCategoryId();
+        if (!java.util.Objects.equals(oldCategoryId, newCategoryId)) {
+            if (oldCategoryId != null) {
+                categoryAppService.refreshArticleCount(oldCategoryId);
+            }
+            if (newCategoryId != null) {
+                categoryAppService.refreshArticleCount(newCategoryId);
+            }
+        }
     }
 
     @Transactional(readOnly = true)
@@ -190,7 +232,17 @@ public class ArticleAppService {
     @Transactional
     @CacheEvict(allEntries = true)
     public void delete(Long id) {
+        Article article = articleRepository.findById(new ArticleId(id))
+                .orElseThrow(() -> new BusinessException("文章不存在或已被删除"));
+
+        Long categoryId = article.getCategoryId();
+
         articleRepository.deleteById(new ArticleId(id));
+
+        // 更新分类文章数
+        if (categoryId != null) {
+            categoryAppService.refreshArticleCount(categoryId);
+        }
     }
 
     @Async
@@ -294,5 +346,32 @@ public class ArticleAppService {
         }
 
         return path;
+    }
+
+    /**
+     * 生成文章slug
+     * 将标题转换为小写，替换空格为连字符，移除特殊字符
+     */
+    private String generateSlug(String title) {
+        if (!StringUtils.hasText(title)) {
+            return "untitled-" + System.currentTimeMillis();
+        }
+        // 转换为小写，替换空格和特殊字符
+        String slug = title.toLowerCase()
+                .replaceAll("[^\\w\\s-]", "")  // 移除非字母数字空格连字符
+                .replaceAll("\\s+", "-")        // 空格替换为连字符
+                .replaceAll("-+", "-")          // 多个连字符合并
+                .trim();
+        // 限制长度
+        if (slug.length() > 50) {
+            slug = slug.substring(0, 50);
+        }
+        // 确保不以连字符开头或结尾
+        slug = slug.replaceAll("^-+", "").replaceAll("-+$", "");
+        // 如果为空，使用时间戳
+        if (!StringUtils.hasText(slug)) {
+            slug = "article-" + System.currentTimeMillis();
+        }
+        return slug;
     }
 }

@@ -134,7 +134,7 @@ onMounted(() => {
   <div class="article-detail-page">
     <!-- Reading Progress Bar -->
     <div
-      class="fixed top-0 left-0 right-0 h-[3px] z-50 bg-gradient-to-r from-blue-600 via-cyan-500 to-blue-400 transition-all duration-150 dark:from-blue-500 dark:via-blue-500 dark:to-blue-400"
+      class="fixed top-0 left-0 right-0 h-[3px] z-50 bg-gradient-to-r from-primary via-primary-light to-primary transition-all duration-150"
       :style="{ width: `${readingProgress}%` }"
     />
 
@@ -149,7 +149,7 @@ onMounted(() => {
       <!-- Article Hero Section -->
       <section class="relative pt-32 pb-16 overflow-hidden">
         <!-- Background Decoration -->
-        <div class="absolute inset-0 bg-gradient-to-b from-blue-500/10 via-transparent to-transparent dark:from-cyan-500/10" />
+        <div class="absolute inset-0 bg-gradient-to-b from-primary/10 via-transparent to-transparent" />
 
         <div class="relative mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
           <!-- Breadcrumb -->
@@ -179,7 +179,7 @@ onMounted(() => {
                   :to="`/article?categoryId=${cat.id}`"
                   class="text-sm transition-colors"
                   :class="index === article.categoryPath.length - 1
-                    ? 'inline-flex items-center px-4 py-1.5 rounded-full bg-gradient-to-r from-blue-600 to-cyan-500 text-white font-medium shadow-lg shadow-primary/30 dark:from-blue-500 dark:to-blue-500'
+                    ? 'inline-flex items-center px-4 py-1.5 rounded-full bg-gradient-to-r from-primary to-primary-light text-white font-medium shadow-lg shadow-primary/30'
                     : 'text-content-tertiary hover:text-primary'"
                 >
                   {{ cat.name }}
@@ -190,7 +190,7 @@ onMounted(() => {
             <router-link
               v-else
               :to="`/article?categoryId=${article.categoryId}`"
-              class="inline-flex items-center px-4 py-1.5 rounded-full bg-gradient-to-r from-blue-600 to-cyan-500 text-white font-medium shadow-lg shadow-primary/30 dark:from-blue-500 dark:to-blue-500"
+              class="inline-flex items-center px-4 py-1.5 rounded-full bg-gradient-to-r from-primary to-primary-light text-white font-medium shadow-lg shadow-primary/30"
             >
               {{ article.category?.name || article.categoryName }}
             </router-link>
