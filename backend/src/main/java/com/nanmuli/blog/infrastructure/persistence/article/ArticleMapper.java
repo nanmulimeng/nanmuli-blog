@@ -40,4 +40,7 @@ public interface ArticleMapper extends BaseMapper<Article> {
             ORDER BY a.is_top DESC, a.publish_time DESC
             """)
     IPage<Article> selectByTagId(IPage<Article> page, @Param("tagId") Long tagId);
+
+    @Select("SELECT COALESCE(SUM(view_count), 0) FROM article WHERE is_deleted = false")
+    Long sumViewCount();
 }

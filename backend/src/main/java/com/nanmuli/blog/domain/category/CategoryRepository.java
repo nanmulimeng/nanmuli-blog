@@ -16,6 +16,8 @@ public interface CategoryRepository {
 
     List<Category> findAll();
 
+    Long countAll();
+
     void deleteById(Long id);
 
     /**

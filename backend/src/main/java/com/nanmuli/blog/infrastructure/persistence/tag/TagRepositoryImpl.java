@@ -59,6 +59,12 @@ public class TagRepositoryImpl implements TagRepository {
     }
 
     @Override
+    public Long countAll() {
+        LambdaQueryWrapper<Tag> wrapper = Wrappers.lambdaQuery();
+        return tagMapper.selectCount(wrapper);
+    }
+
+    @Override
     public void deleteById(Long id) {
         tagMapper.deleteById(id);
     }

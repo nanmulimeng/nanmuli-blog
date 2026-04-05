@@ -17,5 +17,7 @@ public interface TagRepository {
 
     List<Tag> findAll();
 
+    Long countAll();
+
     void deleteById(Long id);
 }

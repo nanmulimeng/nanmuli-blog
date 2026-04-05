@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
-import { getConfigList, updateConfig } from '@/api/config'
+import { getAdminConfigList, updateConfig } from '@/api/config'
 import type { Config } from '@/types/config'
 
 const loading = ref(false)
@@ -11,7 +11,7 @@ const formData = ref<Record<string, string>>({})
 async function fetchData(): Promise<void> {
   loading.value = true
   try {
-    configs.value = await getConfigList()
+    configs.value = await getAdminConfigList()
     configs.value.forEach((config) => {
       formData.value[config.configKey] = config.configValue
     })

@@ -159,6 +159,18 @@ public class ArticleRepositoryImpl implements ArticleRepository {
     }
 
     @Override
+    public Long countAll() {
+        LambdaQueryWrapper<Article> wrapper = Wrappers.lambdaQuery();
+        wrapper.eq(Article::getIsDeleted, false);
+        return articleMapper.selectCount(wrapper);
+    }
+
+    @Override
+    public Long sumViewCount() {
+        return articleMapper.sumViewCount();
+    }
+
+    @Override
     public IPage<Article> findByTagId(Long tagId, IPage<Article> page) {
         return articleMapper.selectByTagId(page, tagId);
     }

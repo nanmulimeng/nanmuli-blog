@@ -59,6 +59,13 @@ public class CategoryRepositoryImpl implements CategoryRepository {
     }
 
     @Override
+    public Long countAll() {
+        LambdaQueryWrapper<Category> wrapper = Wrappers.lambdaQuery();
+        wrapper.eq(Category::getIsDeleted, false);
+        return categoryMapper.selectCount(wrapper);
+    }
+
+    @Override
     public void deleteById(Long id) {
         categoryMapper.deleteById(id);
     }

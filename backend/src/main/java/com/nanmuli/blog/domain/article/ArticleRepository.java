@@ -33,6 +33,10 @@ public interface ArticleRepository {
 
     Long countPublished();
 
+    Long countAll();
+
+    Long sumViewCount();
+
     void deleteById(ArticleId id);
 
     void increaseViewCount(ArticleId id);
