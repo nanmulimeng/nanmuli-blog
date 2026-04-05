@@ -28,3 +28,6 @@ frontend/package-lock.json
 
 # Backup files
 *.bak
+
+# Build output
+frontend/dist/
