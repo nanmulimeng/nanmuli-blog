@@ -12,5 +12,7 @@ public interface CategoryRepository {
 
     List<Category> findAllActive();
 
+    List<Category> findAll();
+
     void deleteById(Long id);
 }

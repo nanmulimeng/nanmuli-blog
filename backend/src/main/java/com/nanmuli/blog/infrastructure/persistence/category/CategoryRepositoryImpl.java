@@ -46,6 +46,13 @@ public class CategoryRepositoryImpl implements CategoryRepository {
     }
 
     @Override
+    public List<Category> findAll() {
+        LambdaQueryWrapper<Category> wrapper = Wrappers.lambdaQuery();
+        wrapper.orderByAsc(Category::getSort);
+        return categoryMapper.selectList(wrapper);
+    }
+
+    @Override
     public void deleteById(Long id) {
         categoryMapper.deleteById(id);
     }

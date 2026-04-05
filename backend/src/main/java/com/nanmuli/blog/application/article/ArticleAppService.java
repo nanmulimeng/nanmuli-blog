@@ -108,6 +108,14 @@ public class ArticleAppService {
     }
 
     @Transactional(readOnly = true)
+    public PageResult<ArticleDTO> listAll(ArticlePageQuery query) {
+        IPage<Article> page = new Page<>(query.getCurrent(), query.getSize());
+        IPage<Article> result = articleRepository.findAllPage(page);
+        List<ArticleDTO> records = result.getRecords().stream().map(this::toDTO).toList();
+        return new PageResult<>(result.getTotal(), result.getCurrent(), result.getSize(), records);
+    }
+
+    @Transactional(readOnly = true)
     @Cacheable(cacheNames = "article:list", key = "#query.current + '-' + #query.size")
     public PageResult<ArticleDTO> listPublished(ArticlePageQuery query) {
         IPage<Article> page = new Page<>(query.getCurrent(), query.getSize());

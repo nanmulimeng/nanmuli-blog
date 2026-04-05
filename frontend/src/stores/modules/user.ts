@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { login, logout } from '@/api/auth'
+import { login, logout, getCurrentUser } from '@/api/auth'
 import type { LoginForm, UserInfo } from '@/types/user'
 import router from '@/router'
 
@@ -13,10 +13,24 @@ export const useUserStore = defineStore(
     const isLoggedIn = computed(() => !!token.value)
 
     async function loginAction(form: LoginForm): Promise<void> {
-      const result = await login(form)
-      token.value = result.token
-      userInfo.value = result.userInfo
-      localStorage.setItem('token', result.token)
+      console.log('[Login] 开始登录...')
+      const tokenValue = await login(form)
+      console.log('[Login] 获取token成功:', tokenValue.substring(0, 10) + '...')
+
+      token.value = tokenValue
+      localStorage.setItem('token', tokenValue)
+      console.log('[Login] token已保存到localStorage')
+
+      // 登录成功后获取用户信息
+      try {
+        console.log('[Login] 获取用户信息...')
+        const user = await getCurrentUser()
+        userInfo.value = user
+        console.log('[Login] 获取用户信息成功:', user.username)
+      } catch (e) {
+        console.error('[Login] 获取用户信息失败:', e)
+        // 即使获取用户信息失败，也不影响登录本身
+      }
     }
 
     async function logoutAction(): Promise<void> {

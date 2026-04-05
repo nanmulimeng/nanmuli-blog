@@ -23,6 +23,11 @@ public class CategoryController {
         return Result.success(categoryAppService.listAllActive());
     }
 
+    @GetMapping("/admin/category/list")
+    public Result<List<CategoryDTO>> adminList() {
+        return Result.success(categoryAppService.listAll());
+    }
+
     @PostMapping("/admin/category")
     public Result<Long> create(@Valid @RequestBody CategoryDTO dto) {
         return Result.success(categoryAppService.create(dto));

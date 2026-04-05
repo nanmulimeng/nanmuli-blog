@@ -62,6 +62,11 @@ public class ArticleController {
         return Result.success();
     }
 
+    @GetMapping("/admin/article/list")
+    public Result<PageResult<ArticleDTO>> adminList(ArticlePageQuery query) {
+        return Result.success(articleAppService.listAll(query));
+    }
+
     @GetMapping("/article/archive")
     public Result<List<ArticleArchiveDTO>> archive() {
         return Result.success(articleAppService.getArchive());

@@ -129,4 +129,11 @@ public class ArticleRepositoryImpl implements ArticleRepository {
     public IPage<Article> findByTagId(Long tagId, IPage<Article> page) {
         return articleMapper.selectByTagId(page, tagId);
     }
+
+    @Override
+    public IPage<Article> findAllPage(IPage<Article> page) {
+        LambdaQueryWrapper<Article> wrapper = Wrappers.lambdaQuery();
+        wrapper.orderByDesc(Article::getCreatedAt);
+        return articleMapper.selectPage(page, wrapper);
+    }
 }

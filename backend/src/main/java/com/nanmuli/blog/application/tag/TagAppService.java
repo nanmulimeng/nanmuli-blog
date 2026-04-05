@@ -40,6 +40,11 @@ public class TagAppService {
     }
 
     @Transactional(readOnly = true)
+    public List<TagDTO> listAll() {
+        return tagRepository.findAll().stream().map(this::toDTO).toList();
+    }
+
+    @Transactional(readOnly = true)
     public TagDTO getById(Long id) {
         Tag tag = tagRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("标签不存在"));

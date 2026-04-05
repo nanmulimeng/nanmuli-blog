@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { User, Lock } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/modules/user'
 import type { FormInstance, FormRules } from 'element-plus'
 
 const router = useRouter()
+const route = useRoute()
 const userStore = useUserStore()
 const loading = ref(false)
 const formRef = ref<FormInstance>()
@@ -24,23 +25,28 @@ const rules: FormRules = {
 async function handleSubmit(): Promise<void> {
   if (!formRef.value) return
 
-  await formRef.value.validate(async (valid) => {
-    if (!valid) return
+  const valid = await formRef.value.validate().catch(() => false)
+  if (!valid) return
 
-    loading.value = true
-    try {
-      await userStore.loginAction({
-        username: form.username,
-        password: form.password,
-      })
-      ElMessage.success('登录成功')
-      router.push('/admin')
-    } catch (error) {
-      ElMessage.error('登录失败，请检查用户名和密码')
-    } finally {
-      loading.value = false
-    }
-  })
+  loading.value = true
+  console.log('[Login] 提交登录:', form.username)
+  try {
+    await userStore.loginAction({
+      username: form.username,
+      password: form.password,
+    })
+    ElMessage.success('登录成功')
+    console.log('[Login] 准备跳转...')
+    // 支持重定向：优先跳转到 redirect 参数指定的页面，否则默认到 /admin
+    const redirect = route.query.redirect as string
+    await router.push(redirect || '/admin')
+    console.log('[Login] 跳转完成')
+  } catch (error: any) {
+    console.error('[Login] 登录失败:', error)
+    ElMessage.error(error?.message || '登录失败，请检查用户名和密码')
+  } finally {
+    loading.value = false
+  }
 }
 </script>
 

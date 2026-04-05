@@ -11,8 +11,3 @@ export interface UserInfo {
   email: string
   role: string
 }
-
-export interface LoginResult {
-  token: string
-  userInfo: UserInfo
-}

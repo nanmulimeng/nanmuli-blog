@@ -23,6 +23,11 @@ public class TagController {
         return Result.success(tagAppService.listAllActive());
     }
 
+    @GetMapping("/admin/tag/list")
+    public Result<List<TagDTO>> adminList() {
+        return Result.success(tagAppService.listAll());
+    }
+
     @PostMapping("/admin/tag")
     public Result<Long> create(@Valid @RequestBody TagDTO dto) {
         return Result.success(tagAppService.create(dto));

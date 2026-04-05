@@ -44,12 +44,6 @@ export const publicRoutes: RouteRecordRaw[] = [
     meta: { layout: DefaultLayout, title: '日志详情' },
   },
   {
-    path: '/category',
-    name: 'Category',
-    component: () => import('@/views/category/Index.vue'),
-    meta: { layout: DefaultLayout, title: '分类' },
-  },
-  {
     path: '/tag',
     name: 'Tag',
     component: () => import('@/views/tag/Index.vue'),
@@ -120,12 +114,6 @@ export const adminRoutes: RouteRecordRaw[] = [
     name: 'AdminDailyLogEdit',
     component: () => import('@/views/admin/dailyLog/Edit.vue'),
     meta: { layout: AdminLayout, title: '编辑日志', requiresAuth: true },
-  },
-  {
-    path: '/admin/category',
-    name: 'AdminCategory',
-    component: () => import('@/views/admin/category/Index.vue'),
-    meta: { layout: AdminLayout, title: '分类管理', requiresAuth: true },
   },
   {
     path: '/admin/tag',

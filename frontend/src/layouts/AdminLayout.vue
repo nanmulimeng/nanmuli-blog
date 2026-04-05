@@ -1,17 +1,29 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/modules/user'
+import { getCurrentUser } from '@/api/auth'
 import AppSidebar from '@/components/common/AppSidebar.vue'
 
 const route = useRoute()
-const router = useRouter()
 const userStore = useUserStore()
 const isCollapsed = ref(false)
+const isLoading = ref(false)
 
-onMounted(() => {
-  if (!userStore.isLoggedIn) {
-    router.push('/login')
+onMounted(async () => {
+  // 路由守卫已处理登录检查，这里只负责获取用户信息
+  // 如果已有token但没有用户信息，获取用户信息
+  if (userStore.isLoggedIn && !userStore.userInfo) {
+    isLoading.value = true
+    try {
+      const userInfo = await getCurrentUser()
+      userStore.setUserInfo(userInfo)
+    } catch {
+      // 获取失败，清除登录状态并跳转登录页
+      userStore.logoutAction()
+    } finally {
+      isLoading.value = false
+    }
   }
 })
 </script>

@@ -21,6 +21,8 @@ public interface ArticleRepository {
 
     IPage<Article> findByTagId(Long tagId, IPage<Article> page);
 
+    IPage<Article> findAllPage(IPage<Article> page);
+
     List<Article> findTopArticles(int limit);
 
     List<Article> findLatestArticles(int limit);

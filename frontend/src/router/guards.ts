@@ -1,4 +1,5 @@
 import type { Router, NavigationGuardNext, RouteLocationNormalized } from 'vue-router'
+import { useUserStore } from '@/stores/modules/user'
 
 /**
  * 设置路由守卫
@@ -11,17 +12,21 @@ export function setupRouterGuards(router: Router): void {
     _from: RouteLocationNormalized,
     next: NavigationGuardNext
   ) => {
-    const token = localStorage.getItem('token')
+    // 使用 store 获取登录状态，确保与组件层状态一致
+    const userStore = useUserStore()
+    const isLoggedIn = userStore.isLoggedIn
 
     // 需要登录的页面
-    if (to.meta.requiresAuth && !token) {
-      next('/login')
+    if (to.meta.requiresAuth && !isLoggedIn) {
+      // 保存目标路径，登录后跳转回去
+      next({ path: '/login', query: { redirect: to.fullPath } })
       return
     }
 
-    // 已登录用户访问登录页，重定向到后台
-    if (to.path === '/login' && token) {
-      next('/admin')
+    // 已登录用户访问登录页，重定向到后台（或原目标页）
+    if (to.path === '/login' && isLoggedIn) {
+      const redirect = to.query.redirect as string
+      next(redirect || '/admin')
       return
     }
 

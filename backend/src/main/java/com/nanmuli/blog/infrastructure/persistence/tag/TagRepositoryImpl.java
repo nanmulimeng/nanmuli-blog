@@ -52,6 +52,13 @@ public class TagRepositoryImpl implements TagRepository {
     }
 
     @Override
+    public List<Tag> findAll() {
+        LambdaQueryWrapper<Tag> wrapper = Wrappers.lambdaQuery();
+        wrapper.orderByDesc(Tag::getArticleCount);
+        return tagMapper.selectList(wrapper);
+    }
+
+    @Override
     public void deleteById(Long id) {
         tagMapper.deleteById(id);
     }

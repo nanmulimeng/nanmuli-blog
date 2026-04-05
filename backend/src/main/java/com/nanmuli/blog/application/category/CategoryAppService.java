@@ -40,6 +40,11 @@ public class CategoryAppService {
     }
 
     @Transactional(readOnly = true)
+    public List<CategoryDTO> listAll() {
+        return categoryRepository.findAll().stream().map(this::toDTO).toList();
+    }
+
+    @Transactional(readOnly = true)
     public CategoryDTO getById(Long id) {
         Category category = categoryRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("分类不存在"));
