@@ -22,9 +22,15 @@ async function fetchArticles(): Promise<void> {
 const groupedArticles = computed(() => {
   const groups: Record<string, Article[]> = {}
   articles.value.forEach((article) => {
-    const year = new Date(article.publishTime).getFullYear().toString()
-    if (!groups[year]) groups[year] = []
-    groups[year].push(article)
+    const year = article.publishTime ? new Date(article.publishTime).getFullYear().toString() : ''
+    if (!year) return
+    if (!groups[year]) {
+      groups[year] = []
+    }
+    const arr = groups[year]
+    if (arr) {
+      arr.push(article)
+    }
   })
   return Object.entries(groups).sort((a, b) => Number(b[0]) - Number(a[0]))
 })

@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
 import { getArticleList } from '@/api/article'
 import { getCategoryList } from '@/api/category'
 import { formatDateCN } from '@/utils/format'
 import type { Article } from '@/types/article'
 import type { Category } from '@/types/category'
 
-const route = useRoute()
 const router = useRouter()
 
 const loading = ref(false)

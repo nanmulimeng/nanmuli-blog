@@ -24,11 +24,15 @@ const moodMap: Record<string, { icon: string; label: string; color: string }> = 
 const groupedLogs = computed(() => {
   const groups: Record<string, DailyLog[]> = {}
   logs.value.forEach((log: DailyLog) => {
-    const month = log.logDate.substring(0, 7)
+    const month = log.logDate?.substring(0, 7) || ''
+    if (!month) return
     if (!groups[month]) {
       groups[month] = []
     }
-    groups[month].push(log)
+    const arr = groups[month]
+    if (arr) {
+      arr.push(log)
+    }
   })
   return groups
 })

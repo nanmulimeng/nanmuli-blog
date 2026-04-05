@@ -22,7 +22,9 @@ async function fetchData(): Promise<void> {
 
 async function handleSave(key: string): Promise<void> {
   try {
-    await updateConfig(key, formData.value[key])
+    const value = formData.value[key]
+    if (value === undefined) return
+    await updateConfig(key, value)
     ElMessage.success('保存成功')
   } catch {
     ElMessage.error('保存失败')
@@ -38,8 +40,12 @@ const groupedConfigs = computed(() => {
   const groups: Record<string, Config[]> = {}
   configs.value.forEach((config) => {
     const group = config.groupName || 'other'
-    if (!groups[group]) groups[group] = []
-    groups[group].push(config)
+    if (!groups[group]) {
+      groups[group] = []
+    }
+    const arr = groups[group] || []
+    arr.push(config)
+    groups[group] = arr
   })
   return groups
 })

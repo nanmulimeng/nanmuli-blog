@@ -9,7 +9,6 @@ const stats = ref([
 ])
 
 const recentArticles = ref([])
-const loading = ref(false)
 
 onMounted(async () => {
   // TODO: 加载统计数据

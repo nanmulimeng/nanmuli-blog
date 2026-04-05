@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { Skill } from '@/types/skill'
 
 const props = defineProps<{
@@ -13,7 +14,7 @@ const groupedSkills = computed(() => {
     if (!groups[category]) {
       groups[category] = []
     }
-    groups[category].push(skill)
+    groups[category]!.push(skill)
   })
   return groups
 })

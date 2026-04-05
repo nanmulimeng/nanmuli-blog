@@ -36,7 +36,7 @@ onMounted(() => {
             <el-avatar :size="32" :src="userStore.userInfo?.avatar" />
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item @click="userStore.logout()">退出登录</el-dropdown-item>
+                <el-dropdown-item @click="userStore.logoutAction()">退出登录</el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>

@@ -3,7 +3,7 @@ import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { getDailyLogById, updateDailyLog } from '@/api/dailyLog'
-import type { DailyLogForm } from '@/types/dailyLog'
+import type { DailyLog, DailyLogForm } from '@/types/dailyLog'
 
 const route = useRoute()
 const router = useRouter()
@@ -44,13 +44,13 @@ async function fetchLog(): Promise<void> {
 
   loading.value = true
   try {
-    const log = await getDailyLogById(id)
+    const log: DailyLog = await getDailyLogById(id)
     form.value = {
       logDate: log.logDate,
       mood: log.mood,
       weather: log.weather || '',
       content: log.content,
-      tagIds: log.tagIds || [],
+      tagIds: log.tags || [],
     }
   } catch {
     router.push('/admin/daily-log')

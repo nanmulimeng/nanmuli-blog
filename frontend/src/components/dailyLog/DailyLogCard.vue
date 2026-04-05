@@ -2,7 +2,7 @@
 import type { DailyLog } from '@/types/dailyLog'
 import { formatDate } from '@/utils/format'
 
-defineProps<{
+const props = defineProps<{
   log: DailyLog
 }>()
 
@@ -18,7 +18,7 @@ const moodMap: Record<string, { emoji: string; label: string; color: string }> =
 }
 
 function handleClick(): void {
-  emit('click', log.id)
+  emit('click', props.log.id)
 }
 </script>
 

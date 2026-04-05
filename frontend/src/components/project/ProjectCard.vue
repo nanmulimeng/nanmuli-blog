@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Project } from '@/types/project'
 
-defineProps<{
+const props = defineProps<{
   project: Project
 }>()
 
@@ -10,7 +10,7 @@ const emit = defineEmits<{
 }>()
 
 function handleClick(): void {
-  emit('click', project.id)
+  emit('click', props.project.id)
 }
 </script>
 

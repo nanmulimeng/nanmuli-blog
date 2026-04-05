@@ -43,7 +43,7 @@ async function fetchArticle(): Promise<void> {
     Object.assign(form, article)
     // 提取标签ID列表
     if (article.tags) {
-      form.tagIds = article.tags.map((tag: Tag) => tag.id)
+      form.tagIds = article.tags.map((tag) => tag.id)
     }
   } catch {
     ElMessage.error('加载文章失败')

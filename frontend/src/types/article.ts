@@ -23,6 +23,7 @@ export interface Article {
   createTime: string
   updateTime: string
   tags: Tag[]
+  tagIds?: number[]
 }
 
 export interface ArticleQuery extends PageQuery {

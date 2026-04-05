@@ -8,7 +8,7 @@ export function setupRouterGuards(router: Router): void {
   // 全局前置守卫
   router.beforeEach((
     to: RouteLocationNormalized,
-    from: RouteLocationNormalized,
+    _from: RouteLocationNormalized,
     next: NavigationGuardNext
   ) => {
     const token = localStorage.getItem('token')

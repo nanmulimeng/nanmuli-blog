@@ -28,9 +28,10 @@ let pagefind: PagefindInstance | null = null
 async function initPagefind(): Promise<void> {
   try {
     // 动态导入 Pagefind
+    // @ts-expect-error Pagefind是构建时生成的模块
     const module = await import('/pagefind/pagefind.js')
     pagefind = module.default || module
-    await pagefind.init()
+    await pagefind?.init()
   } catch (error) {
     console.warn('Pagefind 初始化失败:', error)
   }

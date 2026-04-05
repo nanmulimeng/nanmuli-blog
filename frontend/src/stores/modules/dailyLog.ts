@@ -34,11 +34,15 @@ export const useDailyLogStore = defineStore(
     const groupedLogs = computed(() => {
       const groups: Record<string, DailyLog[]> = {}
       logs.value.forEach((log) => {
-        const date = log.logDate.split('T')[0]
+        const date = log.logDate?.split('T')[0] || ''
+        if (!date) return
         if (!groups[date]) {
           groups[date] = []
         }
-        groups[date].push(log)
+        const arr = groups[date]
+        if (arr) {
+          arr.push(log)
+        }
       })
       // 按日期降序排列
       return Object.entries(groups).sort((a, b) => b[0].localeCompare(a[0]))

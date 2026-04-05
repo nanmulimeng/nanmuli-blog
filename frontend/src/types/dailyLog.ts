@@ -17,3 +17,11 @@ export interface DailyLogQuery extends PageQuery {
   startDate?: string
   endDate?: string
 }
+
+export interface DailyLogForm {
+  logDate: string
+  mood: 'happy' | 'excited' | 'normal' | 'tired'
+  weather: string
+  content: string
+  tagIds: string[]
+}

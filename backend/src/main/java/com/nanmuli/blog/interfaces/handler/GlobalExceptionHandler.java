@@ -1,5 +1,7 @@
 package com.nanmuli.blog.interfaces.handler;
 
+import cn.dev33.satoken.exception.NotLoginException;
+import cn.dev33.satoken.exception.NotPermissionException;
 import com.nanmuli.blog.shared.exception.BusinessException;
 import com.nanmuli.blog.shared.result.Result;
 import jakarta.servlet.http.HttpServletRequest;
@@ -27,6 +29,18 @@ public class GlobalExceptionHandler {
                 .map(error -> error.getDefaultMessage())
                 .orElse("请求参数错误");
         return Result.error(400, message);
+    }
+
+    @ExceptionHandler(NotLoginException.class)
+    public Result<Void> handleNotLoginException(NotLoginException e) {
+        log.warn("未登录访问: {}", e.getMessage());
+        return Result.error(401, "请先登录");
+    }
+
+    @ExceptionHandler(NotPermissionException.class)
+    public Result<Void> handleNotPermissionException(NotPermissionException e) {
+        log.warn("无权限访问: {}", e.getMessage());
+        return Result.error(403, "权限不足");
     }
 
     @ExceptionHandler(Exception.class)
