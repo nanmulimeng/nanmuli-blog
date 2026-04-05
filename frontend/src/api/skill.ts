@@ -5,6 +5,10 @@ export function getSkillList(): Promise<Skill[]> {
   return get<Skill[]>('/skill/list')
 }
 
+export function getAdminSkillList(): Promise<Skill[]> {
+  return get<Skill[]>('/admin/skill/list')
+}
+
 export function createSkill(data: Partial<Skill>): Promise<string> {
   return post<string>('/admin/skill', data)
 }

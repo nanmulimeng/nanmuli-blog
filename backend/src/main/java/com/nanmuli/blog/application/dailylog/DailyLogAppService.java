@@ -4,6 +4,9 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.nanmuli.blog.application.dailylog.command.CreateDailyLogCommand;
 import com.nanmuli.blog.application.dailylog.dto.DailyLogDTO;
+import com.nanmuli.blog.application.category.dto.CategoryDTO;
+import com.nanmuli.blog.domain.category.Category;
+import com.nanmuli.blog.domain.category.CategoryRepository;
 import com.nanmuli.blog.domain.dailylog.DailyLog;
 import com.nanmuli.blog.domain.dailylog.DailyLogRepository;
 import com.nanmuli.blog.shared.exception.BusinessException;
@@ -21,13 +24,18 @@ import java.util.List;
 public class DailyLogAppService {
 
     private final DailyLogRepository dailyLogRepository;
+    private final CategoryRepository categoryRepository;
     private final MarkdownUtil markdownUtil;
 
     @Transactional
     public Long create(CreateDailyLogCommand command) {
         DailyLog dailyLog = new DailyLog();
         BeanUtils.copyProperties(command, dailyLog);
-        dailyLog.setTags(parseListToString(command.getTags()));
+
+        // 默认为私有日志
+        if (dailyLog.getIsPublic() == null) {
+            dailyLog.setIsPublic(false);
+        }
 
         // 生成HTML内容和字数统计
         dailyLog.setContentHtml(markdownUtil.toHtml(command.getContent()));
@@ -42,7 +50,6 @@ public class DailyLogAppService {
         DailyLog dailyLog = dailyLogRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("日志不存在"));
         BeanUtils.copyProperties(command, dailyLog);
-        dailyLog.setTags(parseListToString(command.getTags()));
         dailyLog.setId(id);
 
         // 重新生成HTML内容和字数统计
@@ -67,6 +74,21 @@ public class DailyLogAppService {
         return new PageResult<>(result.getTotal(), result.getCurrent(), result.getSize(), records);
     }
 
+    @Transactional(readOnly = true)
+    public PageResult<DailyLogDTO> listPublicPage(int current, int size) {
+        IPage<DailyLog> page = new Page<>(current, size);
+        IPage<DailyLog> result = dailyLogRepository.findPublicPage(page);
+        List<DailyLogDTO> records = result.getRecords().stream().map(this::toDTO).toList();
+        return new PageResult<>(result.getTotal(), result.getCurrent(), result.getSize(), records);
+    }
+
+    @Transactional(readOnly = true)
+    public DailyLogDTO getPublicById(Long id) {
+        DailyLog dailyLog = dailyLogRepository.findPublicById(id)
+                .orElseThrow(() -> new BusinessException("日志不存在或未公开"));
+        return toDTO(dailyLog);
+    }
+
     @Transactional
     public void delete(Long id) {
         dailyLogRepository.deleteById(id);
@@ -79,28 +101,22 @@ public class DailyLogAppService {
         // 显式映射时间字段（字段名不一致）
         dto.setCreateTime(dailyLog.getCreatedAt());
         dto.setUpdateTime(dailyLog.getUpdatedAt());
-        // 将逗号分隔的字符串转换为列表
-        dto.setTags(parseStringToList(dailyLog.getTags()));
+        // 设置公开状态
+        dto.setIsPublic(dailyLog.isPublic());
+        // 填充分类信息
+        if (dailyLog.getCategoryId() != null) {
+            categoryRepository.findById(dailyLog.getCategoryId())
+                    .ifPresent(category -> dto.setCategory(toCategoryDTO(category)));
+        }
         return dto;
     }
 
-    /**
-     * 将逗号分隔的字符串转换为列表
-     */
-    private List<String> parseStringToList(String str) {
-        if (str == null || str.isEmpty()) {
-            return java.util.Collections.emptyList();
-        }
-        return java.util.Arrays.asList(str.split(","));
-    }
-
-    /**
-     * 将列表转换为逗号分隔的字符串
-     */
-    private String parseListToString(List<String> list) {
-        if (list == null || list.isEmpty()) {
-            return "";
-        }
-        return String.join(",", list);
+    private CategoryDTO toCategoryDTO(Category category) {
+        CategoryDTO dto = new CategoryDTO();
+        BeanUtils.copyProperties(category, dto);
+        dto.setId(category.getId());
+        dto.setCreateTime(category.getCreatedAt());
+        dto.setUpdateTime(category.getUpdatedAt());
+        return dto;
     }
 }

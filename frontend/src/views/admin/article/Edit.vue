@@ -18,7 +18,6 @@ const articleId = route.params.id as string
 
 const form = reactive<Partial<Article>>({
   title: '',
-  slug: '',
   content: '',
   summary: '',
   cover: '',
@@ -39,7 +38,6 @@ async function fetchArticle(): Promise<void> {
     const article = await getArticleById(articleId)
     // 确保 content 不为 null/undefined
     form.title = article.title || ''
-    form.slug = article.slug || ''
     form.content = article.content || ''
     form.summary = article.summary || ''
     form.cover = article.cover || ''
@@ -109,10 +107,6 @@ onMounted(async () => {
     >
       <el-form-item label="标题" prop="title">
         <el-input v-model="form.title" placeholder="请输入文章标题" />
-      </el-form-item>
-
-      <el-form-item label="别名 (slug)">
-        <el-input v-model="form.slug" placeholder="用于URL" />
       </el-form-item>
 
       <el-form-item label="分类">

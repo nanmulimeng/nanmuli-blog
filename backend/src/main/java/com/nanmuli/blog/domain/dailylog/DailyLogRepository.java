@@ -14,6 +14,16 @@ public interface DailyLogRepository {
 
     IPage<DailyLog> findPage(IPage<DailyLog> page);
 
+    /**
+     * 查询公开的日志列表（仅isPublic=true）
+     */
+    IPage<DailyLog> findPublicPage(IPage<DailyLog> page);
+
+    /**
+     * 根据ID查询公开的日志
+     */
+    Optional<DailyLog> findPublicById(Long id);
+
     Long count();
 
     void deleteById(Long id);

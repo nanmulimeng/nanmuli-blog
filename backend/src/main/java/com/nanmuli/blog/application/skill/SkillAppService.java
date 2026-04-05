@@ -40,6 +40,11 @@ public class SkillAppService {
     }
 
     @Transactional(readOnly = true)
+    public List<SkillDTO> listAll() {
+        return skillRepository.findAll().stream().map(this::toDTO).toList();
+    }
+
+    @Transactional(readOnly = true)
     public SkillDTO getById(Long id) {
         Skill skill = skillRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("技能不存在"));

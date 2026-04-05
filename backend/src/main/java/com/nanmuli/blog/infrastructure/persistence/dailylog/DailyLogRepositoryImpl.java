@@ -47,6 +47,22 @@ public class DailyLogRepositoryImpl implements DailyLogRepository {
     }
 
     @Override
+    public IPage<DailyLog> findPublicPage(IPage<DailyLog> page) {
+        LambdaQueryWrapper<DailyLog> wrapper = Wrappers.lambdaQuery();
+        wrapper.eq(DailyLog::getIsPublic, true);
+        wrapper.orderByDesc(DailyLog::getLogDate);
+        return dailyLogMapper.selectPage(page, wrapper);
+    }
+
+    @Override
+    public Optional<DailyLog> findPublicById(Long id) {
+        LambdaQueryWrapper<DailyLog> wrapper = Wrappers.lambdaQuery();
+        wrapper.eq(DailyLog::getId, id);
+        wrapper.eq(DailyLog::getIsPublic, true);
+        return Optional.ofNullable(dailyLogMapper.selectOne(wrapper));
+    }
+
+    @Override
     public void deleteById(Long id) {
         dailyLogMapper.deleteById(id);
     }

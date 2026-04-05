@@ -24,7 +24,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.util.StringUtils;
-import cn.hutool.extra.pinyin.PinyinUtil;
 import org.springframework.cache.annotation.CacheConfig;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
@@ -55,23 +54,14 @@ public class ArticleAppService {
     @Transactional
     @CacheEvict(cacheNames = "article:list", allEntries = true)
     public Long create(CreateArticleCommand command) {
-        // 验证slug唯一性
-        if (command.getSlug() != null && !command.getSlug().isEmpty()) {
-            if (articleRepository.existsBySlug(command.getSlug())) {
-                throw new BusinessException("文章别名已存在");
-            }
-        }
-
         // 验证分类是否为叶子节点
         validateLeafCategory(command.getCategoryId());
 
         Article article = new Article();
         BeanUtils.copyProperties(command, article);
 
-        // 如果没有提供slug，自动生成
-        if (!StringUtils.hasText(article.getSlug())) {
-            article.setSlug(generateSlug(article.getTitle()));
-        }
+        // slug 由文章ID生成，先设置临时值，保存后再更新
+        article.setSlug("temp-" + System.currentTimeMillis());
         article.calculateWordCount();
 
         // 设置当前登录用户
@@ -102,6 +92,10 @@ public class ArticleAppService {
 
         articleRepository.save(article);
 
+        // 使用文章ID作为slug，确保唯一性
+        article.setSlug(String.valueOf(article.getId()));
+        articleRepository.save(article);
+
         // 更新分类文章数
         if (article.getCategoryId() != null) {
             categoryAppService.refreshArticleCount(article.getCategoryId());
@@ -127,13 +121,6 @@ public class ArticleAppService {
     @Transactional
     @CacheEvict(allEntries = true)
     public void update(UpdateArticleCommand command) {
-        // 验证slug唯一性（排除自身）
-        if (command.getSlug() != null && !command.getSlug().isEmpty()) {
-            if (articleRepository.existsBySlugAndIdNot(command.getSlug(), command.getArticleId())) {
-                throw new BusinessException("文章别名已存在");
-            }
-        }
-
         // 验证分类是否为叶子节点
         validateLeafCategory(command.getCategoryId());
 
@@ -347,59 +334,5 @@ public class ArticleAppService {
         }
 
         return path;
-    }
-
-    /**
-     * 生成文章slug
-     * 将标题转换为URL友好的格式，支持中文转拼音
-     */
-    private String generateSlug(String title) {
-        if (!StringUtils.hasText(title)) {
-            return "untitled-" + System.currentTimeMillis();
-        }
-
-        // 中文转拼音
-        String pinyin = PinyinUtil.getPinyin(title, "-");
-
-        // 转换为小写，替换空格和特殊字符
-        String slug = pinyin.toLowerCase()
-                .replaceAll("[^\\w\\s-]", "")  // 移除非字母数字空格连字符
-                .replaceAll("\\s+", "-")        // 空格替换为连字符
-                .replaceAll("-+", "-")          // 多个连字符合并
-                .trim();
-
-        // 限制长度
-        if (slug.length() > 50) {
-            slug = slug.substring(0, 50).replaceAll("-+$", "");
-        }
-
-        // 确保不以连字符开头或结尾
-        slug = slug.replaceAll("^-+", "").replaceAll("-+$", "");
-
-        // 如果为空，使用拼音首字母
-        if (!StringUtils.hasText(slug)) {
-            slug = "article-" + System.currentTimeMillis();
-        }
-
-        // 确保唯一性
-        return ensureUniqueSlug(slug);
-    }
-
-    /**
-     * 确保slug唯一性，如果已存在则添加数字后缀
-     */
-    private String ensureUniqueSlug(String baseSlug) {
-        if (!articleRepository.existsBySlug(baseSlug)) {
-            return baseSlug;
-        }
-
-        // 如果已存在，添加数字后缀
-        int suffix = 1;
-        String slug = baseSlug + "-" + suffix;
-        while (articleRepository.existsBySlug(slug)) {
-            suffix++;
-            slug = baseSlug + "-" + suffix;
-        }
-        return slug;
     }
 }

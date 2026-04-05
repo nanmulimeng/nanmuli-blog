@@ -56,7 +56,7 @@ public class UpdateCategoryCommand implements Serializable {
      * 颜色
      */
     @Pattern(regexp = "^#[0-9A-Fa-f]{6}$", message = "颜色格式必须为十六进制，如#FF6B6B")
-    private String color;
+    private String color = "#409EFF";  // 默认蓝色
 
     /**
      * 排序号

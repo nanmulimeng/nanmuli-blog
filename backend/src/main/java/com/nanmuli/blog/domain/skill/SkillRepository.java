@@ -12,5 +12,7 @@ public interface SkillRepository {
 
     List<Skill> findAllVisible();
 
+    List<Skill> findAll();
+
     void deleteById(Long id);
 }

@@ -1,21 +1,37 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { reactive, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { createDailyLog } from '@/api/dailyLog'
+import { getLeafCategoryList } from '@/api/category'
 import MarkdownEditor from '@/components/editor/MarkdownEditor.vue'
 import type { FormInstance, FormRules } from 'element-plus'
+import type { Category } from '@/types/category'
 
 const router = useRouter()
 const formRef = ref<FormInstance>()
 const loading = ref(false)
+const categories = ref<Category[]>([])
 
 const form = reactive({
   content: '',
   mood: 'normal' as const,
   weather: '',
-  tags: [] as string[],
   logDate: new Date().toISOString().split('T')[0],
+  isPublic: false,
+  categoryId: undefined as string | undefined,
+})
+
+async function fetchCategories() {
+  try {
+    categories.value = await getLeafCategoryList()
+  } catch {
+    ElMessage.error('加载分类失败')
+  }
+}
+
+onMounted(() => {
+  fetchCategories()
 })
 
 const rules: FormRules = {
@@ -98,18 +114,35 @@ function handleCancel(): void {
         <el-input v-model="form.weather" placeholder="例如：晴天 25°C" />
       </el-form-item>
 
-      <el-form-item label="标签" prop="tags">
+      <el-form-item label="分类">
         <el-select
-          v-model="form.tags"
-          multiple
-          filterable
-          allow-create
-          placeholder="添加标签"
-        />
+          v-model="form.categoryId"
+          placeholder="选择分类"
+          clearable
+          class="w-full"
+        >
+          <el-option
+            v-for="cat in categories"
+            :key="cat.id"
+            :label="cat.name"
+            :value="cat.id"
+          />
+        </el-select>
       </el-form-item>
 
       <el-form-item label="内容" prop="content">
         <MarkdownEditor v-model="form.content" height="400px" />
+      </el-form-item>
+
+      <el-form-item label="分享设置">
+        <el-switch
+          v-model="form.isPublic"
+          active-text="公开分享"
+          inactive-text="私有"
+        />
+        <span class="ml-2 text-xs text-content-tertiary">
+          {{ form.isPublic ? '其他人可以通过链接查看此日志' : '仅管理员可见' }}
+        </span>
       </el-form-item>
 
       <el-form-item>

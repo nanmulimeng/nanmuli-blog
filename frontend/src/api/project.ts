@@ -5,6 +5,10 @@ export function getProjectList(): Promise<Project[]> {
   return get<Project[]>('/project/list')
 }
 
+export function getAdminProjectList(): Promise<Project[]> {
+  return get<Project[]>('/admin/project/list')
+}
+
 export function createProject(data: Partial<Project>): Promise<string> {
   return post<string>('/admin/project', data)
 }

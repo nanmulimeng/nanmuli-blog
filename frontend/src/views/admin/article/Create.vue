@@ -15,7 +15,6 @@ const categories = ref<Category[]>([])
 
 const form = reactive({
   title: '',
-  slug: '',
   content: '',
   summary: '',
   cover: '',
@@ -82,10 +81,6 @@ onMounted(() => {
     >
       <el-form-item label="标题" prop="title">
         <el-input v-model="form.title" placeholder="请输入文章标题" />
-      </el-form-item>
-
-      <el-form-item label="别名 (slug)">
-        <el-input v-model="form.slug" placeholder="用于URL，留空自动生成" />
       </el-form-item>
 
       <el-form-item label="分类">

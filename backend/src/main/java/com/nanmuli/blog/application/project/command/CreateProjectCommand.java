@@ -22,7 +22,7 @@ public class CreateProjectCommand implements Serializable {
     private String name;
 
     /**
-     * 项目标识（URL别名）
+     * 项目标识（URL别名）- 自动生成，无需填写
      */
     @Pattern(regexp = "^[a-z0-9-]+$", message = "项目标识只能包含小写字母、数字和连字符")
     @Size(max = 100, message = "项目标识长度不能超过100字符")

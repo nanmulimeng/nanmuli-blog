@@ -1,5 +1,7 @@
 package com.nanmuli.blog.application.project;
 
+import com.nanmuli.blog.application.project.command.CreateProjectCommand;
+import com.nanmuli.blog.application.project.command.UpdateProjectCommand;
 import com.nanmuli.blog.application.project.dto.ProjectDTO;
 import com.nanmuli.blog.domain.project.Project;
 import com.nanmuli.blog.domain.project.ProjectRepository;
@@ -33,37 +35,57 @@ public class ProjectAppService {
     /**
      * 验证所有URL字段
      */
-    private void validateUrls(ProjectDTO dto) {
-        validateUrlProtocol(dto.getGithubUrl(), "GitHub链接");
-        validateUrlProtocol(dto.getDemoUrl(), "演示链接");
-        validateUrlProtocol(dto.getDocUrl(), "文档链接");
+    private void validateUrls(CreateProjectCommand command) {
+        validateUrlProtocol(command.getGithubUrl(), "GitHub链接");
+        validateUrlProtocol(command.getDemoUrl(), "演示链接");
+        validateUrlProtocol(command.getDocUrl(), "文档链接");
     }
 
     @Transactional
-    public Long create(ProjectDTO dto) {
+    public Long create(CreateProjectCommand command) {
         // 防御纵深：后端再次校验URL协议
-        validateUrls(dto);
+        validateUrls(command);
 
         Project project = new Project();
-        BeanUtils.copyProperties(dto, project);
+        BeanUtils.copyProperties(command, project);
         // 将列表转换为逗号分隔的字符串
-        project.setScreenshots(parseListToString(dto.getScreenshots()));
-        project.setTechStack(parseListToString(dto.getTechStack()));
+        project.setScreenshots(parseListToString(command.getScreenshots()));
+        project.setTechStack(parseListToString(command.getTechStack()));
         projectRepository.save(project);
+
+        // 如果没有提供slug，使用ID自动生成
+        if (project.getSlug() == null || project.getSlug().isEmpty()) {
+            project.setSlug(String.valueOf(project.getId()));
+            projectRepository.save(project);
+        } else {
+            // 检查slug唯一性
+            if (projectRepository.existsBySlug(project.getSlug())) {
+                throw new BusinessException("项目标识已存在");
+            }
+        }
+
         return project.getId();
     }
 
     @Transactional
-    public void update(Long id, ProjectDTO dto) {
+    public void update(Long id, UpdateProjectCommand command) {
         // 防御纵深：后端再次校验URL协议
-        validateUrls(dto);
+        validateUrls(command);
 
         Project project = projectRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("项目不存在"));
-        BeanUtils.copyProperties(dto, project);
+
+        // 检查slug唯一性（排除自身）
+        if (command.getSlug() != null && !command.getSlug().isEmpty()) {
+            if (!command.getSlug().equals(project.getSlug()) && projectRepository.existsBySlug(command.getSlug())) {
+                throw new BusinessException("项目标识已存在");
+            }
+        }
+
+        BeanUtils.copyProperties(command, project);
         // 将列表转换为逗号分隔的字符串
-        project.setScreenshots(parseListToString(dto.getScreenshots()));
-        project.setTechStack(parseListToString(dto.getTechStack()));
+        project.setScreenshots(parseListToString(command.getScreenshots()));
+        project.setTechStack(parseListToString(command.getTechStack()));
         project.setId(id);
         projectRepository.save(project);
     }
@@ -71,6 +93,11 @@ public class ProjectAppService {
     @Transactional(readOnly = true)
     public List<ProjectDTO> listAllVisible() {
         return projectRepository.findAllVisible().stream().map(this::toDTO).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProjectDTO> listAll() {
+        return projectRepository.findAll().stream().map(this::toDTO).toList();
     }
 
     @Transactional(readOnly = true)

@@ -8,7 +8,6 @@ import lombok.Data;
 import java.io.Serializable;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.List;
 
 @Data
 public class DailyLogDTO implements Serializable {
@@ -20,7 +19,6 @@ public class DailyLogDTO implements Serializable {
     private String contentHtml;
     private String mood;
     private String weather;
-    private List<String> tags;
     private Integer wordCount;
 
     @JsonFormat(pattern = "yyyy-MM-dd")
@@ -31,4 +29,11 @@ public class DailyLogDTO implements Serializable {
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime updateTime;
+
+    private Boolean isPublic;
+
+    @JsonSerialize(using = ToStringSerializer.class)
+    private Long categoryId;
+
+    private com.nanmuli.blog.application.category.dto.CategoryDTO category;
 }

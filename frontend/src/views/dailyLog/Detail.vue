@@ -86,18 +86,6 @@ onMounted(fetchLog)
           <article class="bg-surface-secondary rounded-xl p-8 shadow-sm border border-border">
             <div class="prose prose-gray max-w-none" v-html="log.contentHtml" />
 
-            <!-- Tags -->
-            <div v-if="log.tags?.length" class="mt-8 pt-6 border-t border-border">
-              <div class="flex flex-wrap gap-2">
-                <span
-                  v-for="tag in log.tags"
-                  :key="tag"
-                  class="px-3 py-1 rounded-full bg-surface-tertiary text-sm text-content-secondary"
-                >
-                  #{{ tag }}
-                </span>
-              </div>
-            </div>
           </article>
 
           <!-- Footer -->

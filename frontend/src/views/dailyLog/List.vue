@@ -148,16 +148,6 @@ onMounted(fetchLogs)
                     class="prose prose-sm max-w-none text-content-secondary line-clamp-3"
                     v-html="log.contentHtml"
                   />
-
-                  <div v-if="log.tags?.length" class="mt-4 flex flex-wrap gap-2">
-                    <span
-                      v-for="tag in log.tags"
-                      :key="tag"
-                      class="px-2 py-0.5 bg-surface-tertiary rounded text-xs text-content-secondary"
-                    >
-                      #{{ tag }}
-                    </span>
-                  </div>
                 </div>
               </div>
             </div>

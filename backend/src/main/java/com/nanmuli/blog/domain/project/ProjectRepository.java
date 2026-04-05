@@ -10,7 +10,11 @@ public interface ProjectRepository {
 
     Optional<Project> findBySlug(String slug);
 
+    boolean existsBySlug(String slug);
+
     List<Project> findAllVisible();
+
+    List<Project> findAll();
 
     void deleteById(Long id);
 }

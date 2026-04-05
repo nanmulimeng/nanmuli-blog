@@ -23,6 +23,11 @@ public class SkillController {
         return Result.success(skillAppService.listAllVisible());
     }
 
+    @GetMapping("/admin/skill/list")
+    public Result<List<SkillDTO>> adminList() {
+        return Result.success(skillAppService.listAll());
+    }
+
     @GetMapping("/skill/{id}")
     public Result<SkillDTO> detail(@PathVariable Long id) {
         return Result.success(skillAppService.getById(id));

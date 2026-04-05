@@ -59,16 +59,7 @@ function handleClick(): void {
       {{ log.content.replace(/[#*`_\[\]]/g, '').slice(0, 200) }}
     </p>
 
-    <div class="flex items-center justify-between">
-      <div v-if="log.tags?.length" class="flex flex-wrap gap-1">
-        <span
-          v-for="tag in log.tags.slice(0, 3)"
-          :key="tag"
-          class="rounded bg-surface-tertiary px-2 py-0.5 text-xs text-content-secondary"
-        >
-          #{{ tag }}
-        </span>
-      </div>
+    <div class="flex items-center justify-end">
       <div class="text-xs text-content-tertiary">{{ log.wordCount }} 字</div>
     </div>
   </article>

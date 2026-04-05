@@ -6,8 +6,16 @@ export function getDailyLogList(params: DailyLogQuery): Promise<PageResult<Daily
   return get<PageResult<DailyLog>>('/daily-log/list', { params })
 }
 
+export function getAdminDailyLogList(params: DailyLogQuery): Promise<PageResult<DailyLog>> {
+  return get<PageResult<DailyLog>>('/admin/daily-log/list', { params })
+}
+
 export function getDailyLogById(id: string): Promise<DailyLog> {
   return get<DailyLog>(`/daily-log/${id}`)
+}
+
+export function getAdminDailyLogById(id: string): Promise<DailyLog> {
+  return get<DailyLog>(`/admin/daily-log/${id}`)
 }
 
 export function createDailyLog(data: Partial<DailyLog>): Promise<string> {

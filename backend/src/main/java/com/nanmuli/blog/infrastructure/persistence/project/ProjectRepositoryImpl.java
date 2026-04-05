@@ -39,9 +39,23 @@ public class ProjectRepositoryImpl implements ProjectRepository {
     }
 
     @Override
+    public boolean existsBySlug(String slug) {
+        LambdaQueryWrapper<Project> wrapper = Wrappers.lambdaQuery();
+        wrapper.eq(Project::getSlug, slug);
+        return projectMapper.selectCount(wrapper) > 0;
+    }
+
+    @Override
     public List<Project> findAllVisible() {
         LambdaQueryWrapper<Project> wrapper = Wrappers.lambdaQuery();
         wrapper.eq(Project::getStatus, 1).orderByAsc(Project::getSort);
+        return projectMapper.selectList(wrapper);
+    }
+
+    @Override
+    public List<Project> findAll() {
+        LambdaQueryWrapper<Project> wrapper = Wrappers.lambdaQuery();
+        wrapper.orderByAsc(Project::getSort);
         return projectMapper.selectList(wrapper);
     }
 

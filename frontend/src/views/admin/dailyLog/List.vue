@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { Plus, Edit, Delete } from '@element-plus/icons-vue'
+import { Plus, Edit, Delete, Share, Link } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getDailyLogList, deleteDailyLog } from '@/api/dailyLog'
+import { getAdminDailyLogList, deleteDailyLog } from '@/api/dailyLog'
 import { formatDateCN } from '@/utils/format'
 import type { DailyLog } from '@/types/dailyLog'
 
@@ -24,7 +24,7 @@ const moodMap: Record<string, { label: string; color: string }> = {
 async function fetchData(): Promise<void> {
   loading.value = true
   try {
-    const res = await getDailyLogList({
+    const res = await getAdminDailyLogList({
       current: currentPage.value,
       size: pageSize.value,
     })
@@ -60,6 +60,19 @@ async function handleDelete(row: DailyLog): Promise<void> {
   }
 }
 
+function handleShare(row: DailyLog): void {
+  if (!row.isPublic) {
+    ElMessage.warning('请先编辑日志设置为公开分享')
+    return
+  }
+  const shareUrl = `${window.location.origin}/daily-log/${row.id}`
+  navigator.clipboard.writeText(shareUrl).then(() => {
+    ElMessage.success('分享链接已复制到剪贴板')
+  }).catch(() => {
+    ElMessage.error('复制失败，请手动复制链接')
+  })
+}
+
 function handlePageChange(page: number): void {
   currentPage.value = page
   fetchData()
@@ -78,13 +91,29 @@ onMounted(fetchData)
     </div>
 
     <el-table v-loading="loading" :data="logs" border>
-      <el-table-column prop="id" label="ID" width="80" />
+      <el-table-column type="index" label="序号" width="60" />
       <el-table-column prop="logDate" label="日期" width="120">
         <template #default="{ row }">
           {{ formatDateCN(row.logDate) }}
         </template>
       </el-table-column>
-      <el-table-column prop="mood" label="心情" width="100">
+      <el-table-column label="分类" width="120">
+        <template #default="{ row }">
+          <el-tag v-if="row.category" size="small" :style="{ backgroundColor: row.category.color + '20', color: row.category.color, borderColor: row.category.color }"
+            >{{ row.category.name }}</el-tag
+          >
+          <span v-else class="text-content-tertiary">-</span>
+        </template>
+      </el-table-column>
+
+      <el-table-column label="内容预览" min-width="200" show-overflow-tooltip>
+        <template #default="{ row }">
+          <span class="text-content-secondary">
+            {{ row.content?.replace(/[#*`\[\]]/g, '').slice(0, 50) || '无内容' }}
+          </span>
+        </template>
+      </el-table-column>
+      <el-table-column prop="mood" label="心情" width="90">
         <template #default="{ row }">
           <span
             v-if="row.mood"
@@ -98,10 +127,25 @@ onMounted(fetchData)
           </span>
         </template>
       </el-table-column>
-      <el-table-column prop="weather" label="天气" width="100" />
-      <el-table-column prop="wordCount" label="字数" width="100" />
-      <el-table-column label="操作" width="150" fixed="right">
+      <el-table-column prop="weather" label="天气" width="90" />
+      <el-table-column prop="wordCount" label="字数" width="80" />
+      <el-table-column label="状态" width="80">
         <template #default="{ row }">
+          <el-tag v-if="row.isPublic" type="success" size="small">公开</el-tag>
+          <el-tag v-else type="info" size="small">私有</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="操作" width="200" fixed="right">
+        <template #default="{ row }">
+          <el-button
+            type="success"
+            link
+            :icon="Share"
+            :disabled="!row.isPublic"
+            @click="handleShare(row)"
+          >
+            分享
+          </el-button>
           <el-button type="primary" link :icon="Edit" @click="handleEdit(row)">
             编辑
           </el-button>

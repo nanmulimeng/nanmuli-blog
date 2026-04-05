@@ -17,7 +17,15 @@ public class DailyLog extends BaseAggregateRoot<Long> {
     private String contentHtml;
     private String mood;
     private String weather;
-    private String tags;
     private Integer wordCount;
     private LocalDate logDate;
+    private Boolean isPublic;
+    private Long categoryId;
+
+    /**
+     * 是否公开分享
+     */
+    public boolean isPublic() {
+        return isPublic != null && isPublic;
+    }
 }

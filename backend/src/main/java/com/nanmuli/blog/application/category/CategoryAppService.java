@@ -48,6 +48,11 @@ public class CategoryAppService {
         Category category = new Category();
         BeanUtils.copyProperties(command, category);
 
+        // 设置颜色默认值
+        if (category.getColor() == null || category.getColor().isBlank()) {
+            category.setColor("#409EFF");
+        }
+
         // 验证父分类合法性
         validateParentCategory(category.getParentId(), null);
 
@@ -78,6 +83,12 @@ public class CategoryAppService {
 
         BeanUtils.copyProperties(command, category);
         category.setId(id);
+
+        // 设置颜色默认值
+        if (category.getColor() == null || category.getColor().isBlank()) {
+            category.setColor("#409EFF");
+        }
+
         categoryRepository.save(category);
     }
 

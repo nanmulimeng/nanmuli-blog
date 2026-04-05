@@ -48,6 +48,13 @@ public class SkillRepositoryImpl implements SkillRepository {
     }
 
     @Override
+    public List<Skill> findAll() {
+        LambdaQueryWrapper<Skill> wrapper = Wrappers.lambdaQuery();
+        wrapper.orderByDesc(Skill::getSort);
+        return skillMapper.selectList(wrapper);
+    }
+
+    @Override
     public void deleteById(Long id) {
         skillMapper.deleteById(id);
     }

@@ -2,21 +2,25 @@
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { getDailyLogById, updateDailyLog } from '@/api/dailyLog'
+import { getAdminDailyLogById, updateDailyLog } from '@/api/dailyLog'
+import { getLeafCategoryList } from '@/api/category'
 import MarkdownEditor from '@/components/editor/MarkdownEditor.vue'
 import type { DailyLog, DailyLogForm } from '@/types/dailyLog'
+import type { Category } from '@/types/category'
 
 const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
 const saving = ref(false)
+const categories = ref<Category[]>([])
 
 const form = ref<DailyLogForm>({
   logDate: '',
   mood: 'normal',
   weather: '',
   content: '',
-  tagIds: [],
+  isPublic: false,
+  categoryId: undefined,
 })
 
 const moodOptions = [
@@ -45,13 +49,14 @@ async function fetchLog(): Promise<void> {
 
   loading.value = true
   try {
-    const log: DailyLog = await getDailyLogById(id)
+    const log: DailyLog = await getAdminDailyLogById(id)
     form.value = {
       logDate: log.logDate,
       mood: log.mood,
       weather: log.weather || '',
       content: log.content || '',
-      tagIds: log.tags || [],
+      isPublic: log.isPublic ?? false,
+      categoryId: log.categoryId,
     }
   } catch {
     router.push('/admin/daily-log')
@@ -78,7 +83,18 @@ function handleCancel(): void {
   router.push('/admin/daily-log')
 }
 
-onMounted(fetchLog)
+async function fetchCategories() {
+  try {
+    categories.value = await getLeafCategoryList()
+  } catch {
+    ElMessage.error('加载分类失败')
+  }
+}
+
+onMounted(() => {
+  fetchLog()
+  fetchCategories()
+})
 </script>
 
 <template>
@@ -96,7 +112,7 @@ onMounted(fetchLog)
         label-position="top"
         @submit.prevent
       >
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <el-form-item label="日期" prop="logDate">
             <el-date-picker
               v-model="form.logDate"
@@ -107,6 +123,19 @@ onMounted(fetchLog)
             />
           </el-form-item>
 
+          <el-form-item label="分类">
+            <el-select v-model="form.categoryId" placeholder="选择分类" clearable class="w-full">
+              <el-option
+                v-for="cat in categories"
+                :key="cat.id"
+                :label="cat.name"
+                :value="cat.id"
+              />
+            </el-select>
+          </el-form-item>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <el-form-item label="心情" prop="mood">
             <el-select v-model="form.mood" placeholder="选择心情" class="w-full">
               <el-option
@@ -138,6 +167,19 @@ onMounted(fetchLog)
 
         <el-form-item label="内容" prop="content">
           <MarkdownEditor v-model="form.content" height="400px" />
+        </el-form-item>
+
+        <el-form-item label="分享设置">
+          <div class="flex items-center gap-4">
+            <el-switch
+              v-model="form.isPublic"
+              active-text="公开分享"
+              inactive-text="私有"
+            />
+            <span class="text-xs text-content-tertiary">
+              {{ form.isPublic ? '其他人可以通过链接查看此日志' : '仅管理员可见' }}
+            </span>
+          </div>
         </el-form-item>
 
         <el-form-item>
