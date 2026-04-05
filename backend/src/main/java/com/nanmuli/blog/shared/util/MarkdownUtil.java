@@ -17,7 +17,7 @@ public class MarkdownUtil {
 
     public MarkdownUtil() {
         MutableDataSet options = new MutableDataSet();
-        // 启用GitHub风格Markdown
+        // 启用GitHub风格Markdown扩展
         options.set(Parser.EXTENSIONS, java.util.Arrays.asList(
             com.vladsch.flexmark.ext.tables.TablesExtension.create(),
             com.vladsch.flexmark.ext.gfm.strikethrough.StrikethroughExtension.create(),
@@ -25,11 +25,6 @@ public class MarkdownUtil {
             com.vladsch.flexmark.ext.anchorlink.AnchorLinkExtension.create(),
             com.vladsch.flexmark.ext.toc.TocExtension.create()
         ));
-        // 启用自动链接
-        options.set(Parser.AUTOLINK_WWW_PREFIX, "http://");
-        // 启用表格
-        options.set(TablesExtension.TRIM_CELL_WHITESPACE, true);
-        options.set(TablesExtension.DISCARD_EXTRA_COLUMNS, true);
         // 代码高亮
         options.set(HtmlRenderer.FENCED_CODE_LANGUAGE_CLASS_PREFIX, "language-");
 

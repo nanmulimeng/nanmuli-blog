@@ -1,114 +1,509 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { useConfigStore } from '@/stores/modules/config'
 import { getArticleList } from '@/api/article'
+import { getHomeAggregated } from '@/api/home'
 import { formatDateCN } from '@/utils/format'
 import type { Article } from '@/types/article'
+import type { HomeAggregatedDTO } from '@/types/home'
 
 const router = useRouter()
-const loading = ref(false)
-const articles = ref<Article[]>([])
+const configStore = useConfigStore()
 
-async function fetchArticles(): Promise<void> {
+// 数据状态
+const loading = ref(true)
+const articles = ref<Article[]>([])
+const aggregated = ref<HomeAggregatedDTO | null>(null)
+const activeCategory = ref<number | null>(null)
+
+// 统计数据动画
+const animatedStats = ref({
+  articleCount: 0,
+  categoryCount: 0,
+  tagCount: 0,
+  dayCount: 0,
+})
+
+// 获取首页数据
+async function fetchData() {
   loading.value = true
   try {
-    const res = await getArticleList({ current: 1, size: 6 })
-    articles.value = res.records
+    const [articlesRes, aggRes] = await Promise.all([
+      getArticleList({ current: 1, size: 6 }),
+      getHomeAggregated(),
+    ])
+    articles.value = articlesRes.records
+    aggregated.value = aggRes
+
+    // 动画显示统计数据
+    animateStats()
   } finally {
     loading.value = false
   }
 }
 
-function navigateToArticle(slug: string): void {
+// 数字动画
+function animateStats() {
+  if (!aggregated.value) return
+
+  const targets = {
+    articleCount: aggregated.value.articleCount || 0,
+    categoryCount: aggregated.value.categoryCount || 0,
+    tagCount: aggregated.value.tagCount || 0,
+    dayCount: aggregated.value.runningDays || 0,
+  }
+
+  const duration = 1500
+  const steps = 60
+  const interval = duration / steps
+
+  let step = 0
+  const timer = setInterval(() => {
+    step++
+    const progress = step / steps
+    const easeOut = 1 - Math.pow(1 - progress, 3)
+
+    animatedStats.value = {
+      articleCount: Math.floor(targets.articleCount * easeOut),
+      categoryCount: Math.floor(targets.categoryCount * easeOut),
+      tagCount: Math.floor(targets.tagCount * easeOut),
+      dayCount: Math.floor(targets.dayCount * easeOut),
+    }
+
+    if (step >= steps) {
+      animatedStats.value = targets
+      clearInterval(timer)
+    }
+  }, interval)
+}
+
+// 导航到文章
+function navigateToArticle(slug: string) {
   router.push(`/article/${slug}`)
 }
 
-onMounted(fetchArticles)
+// 导航到分类
+function navigateToCategory(categoryId: number) {
+  router.push(`/article?categoryId=${categoryId}`)
+}
+
+// 过滤文章
+const filteredArticles = computed(() => {
+  if (!activeCategory.value) return articles.value
+  return articles.value.filter(a => a.categoryId === activeCategory.value)
+})
+
+// 打字机效果文字
+const heroTexts = ['记录技术成长', '探索代码世界', '分享学习心得']
+const currentText = ref('')
+const textIndex = ref(0)
+const charIndex = ref(0)
+const isDeleting = ref(false)
+
+function typeWriter() {
+  const text = heroTexts[textIndex.value]
+
+  if (isDeleting.value) {
+    currentText.value = text.substring(0, charIndex.value - 1)
+    charIndex.value--
+  } else {
+    currentText.value = text.substring(0, charIndex.value + 1)
+    charIndex.value++
+  }
+
+  let typeSpeed = isDeleting.value ? 50 : 100
+
+  if (!isDeleting.value && charIndex.value === text.length) {
+    typeSpeed = 2000
+    isDeleting.value = true
+  } else if (isDeleting.value && charIndex.value === 0) {
+    isDeleting.value = false
+    textIndex.value = (textIndex.value + 1) % heroTexts.length
+    typeSpeed = 500
+  }
+
+  setTimeout(typeWriter, typeSpeed)
+}
+
+onMounted(() => {
+  fetchData()
+  typeWriter()
+})
 </script>
 
 <template>
   <div class="home-page">
     <!-- Hero Section -->
-    <section class="bg-gradient-to-b from-primary-50 to-white py-20">
-      <div class="mx-auto max-w-7xl px-4 text-center sm:px-6 lg:px-8">
-        <h1 class="text-4xl font-bold tracking-tight text-gray-900 sm:text-5xl">
-          记录技术成长
-        </h1>
-        <p class="mx-auto mt-6 max-w-2xl text-lg text-gray-600">
-          分享学习心得，探索技术边界，在代码的世界里不断前行
-        </p>
-        <div class="mt-10 flex justify-center gap-4">
-          <router-link
-            to="/article"
-            class="inline-flex items-center justify-center h-12 px-8 rounded-lg bg-primary-600 text-white font-medium transition-all duration-150 hover:bg-primary-700 active:scale-[0.98]"
-          >
-            <el-icon class="mr-2"><Document /></el-icon>
-            浏览文章
-          </router-link>
-          <router-link
-            to="/daily-log"
-            class="inline-flex items-center justify-center h-12 px-8 rounded-lg border border-gray-300 bg-white text-gray-700 font-medium transition-all duration-150 hover:bg-gray-50 active:scale-[0.98]"
-          >
-            <el-icon class="mr-2"><Timer /></el-icon>
-            技术日志
-          </router-link>
+    <section class="relative min-h-[90vh] overflow-hidden">
+      <!-- 动态背景 -->
+      <div class="absolute inset-0 bg-gradient-to-br from-aurora-purple/20 via-aurora-pink/10 to-aurora-cyan/20">
+        <!-- 动画网格 -->
+        <div class="absolute inset-0 bg-grid-pattern opacity-50" />
+
+        <!-- 浮动光球 -->
+        <div class="absolute left-10 top-20 h-72 w-72 rounded-full bg-aurora-purple/30 blur-3xl animate-float" />
+        <div class="animation-delay-500 absolute right-20 top-40 h-96 w-96 rounded-full bg-aurora-pink/20 blur-3xl animate-float" />
+        <div class="animation-delay-700 absolute bottom-20 left-1/3 h-64 w-64 rounded-full bg-aurora-cyan/20 blur-3xl animate-float" />
+      </div>
+
+      <!-- Hero 内容 -->
+      <div class="relative z-10 mx-auto flex min-h-[90vh] max-w-7xl items-center px-4 sm:px-6 lg:px-8">
+        <div class="grid w-full gap-12 lg:grid-cols-2 lg:gap-8 items-center">
+          <!-- 左侧：文字内容 -->
+          <div class="space-y-8">
+            <!-- 标签 -->
+            <div class="inline-flex items-center gap-2 rounded-full bg-white/80 px-4 py-2 shadow-sm backdrop-blur-sm dark:bg-dark-800/80">
+              <span class="flex h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+              <span class="text-sm font-medium text-gray-600 dark:text-gray-400">持续更新中</span>
+            </div>
+
+            <!-- 主标题 -->
+            <div class="space-y-4">
+              <h1 class="text-5xl font-bold leading-tight text-gray-900 dark:text-white sm:text-6xl lg:text-7xl">
+                <span class="block">欢迎来到</span>
+                <span class="gradient-text">{{ configStore.siteName || '我的博客' }}</span>
+              </h1>
+
+              <!-- 打字机效果副标题 -->
+              <p class="h-10 text-xl text-gray-600 dark:text-gray-400 sm:text-2xl">
+                {{ currentText }}<span class="animate-pulse">|</span>
+              </p>
+            </div>
+
+            <!-- 描述 -->
+            <p class="max-w-lg text-lg text-gray-600 dark:text-gray-400">
+              {{ configStore.siteDescription || '分享技术学习心得，记录编程成长历程，探索代码世界的无限可能' }}
+            </p>
+
+            <!-- CTA 按钮 -->
+            <div class="flex flex-wrap gap-4">
+              <router-link
+                to="/article"
+                class="btn-gradient group inline-flex items-center gap-2"
+              >
+                <el-icon class="text-lg"><Document /></el-icon>
+                <span>浏览文章</span>
+                <el-icon class="transition-transform group-hover:translate-x-1"><ArrowRight /></el-icon>
+              </router-link>
+
+              <router-link
+                to="/daily-log"
+                class="btn-glass inline-flex items-center gap-2 text-gray-700 dark:text-gray-300"
+              >
+                <el-icon class="text-lg"><Timer /></el-icon>
+                <span>技术日志</span>
+              </router-link>
+            </div>
+
+            <!-- 社交链接 -->
+            <div class="flex items-center gap-4 pt-4">
+              <a
+                v-if="configStore.siteGithub"
+                :href="configStore.siteGithub"
+                target="_blank"
+                class="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-100 text-gray-600 transition-all hover:bg-gray-200 hover:text-gray-900 dark:bg-dark-700 dark:text-gray-400 dark:hover:bg-dark-600 dark:hover:text-white"
+              >
+                <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                </svg>
+              </a>
+              <a
+                v-if="configStore.siteEmail"
+                :href="`mailto:${configStore.siteEmail}`"
+                class="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-100 text-gray-600 transition-all hover:bg-gray-200 hover:text-gray-900 dark:bg-dark-700 dark:text-gray-400 dark:hover:bg-dark-600 dark:hover:text-white"
+              >
+                <el-icon class="text-lg"><Message /></el-icon>
+              </a>
+            </div>
+          </div>
+
+          <!-- 右侧：装饰卡片 -->
+          <div class="relative hidden lg:block">
+            <!-- 浮动代码卡片 -->
+            <div class="glass-card relative mx-auto max-w-md p-6 animate-fade-in-up">
+              <div class="mb-4 flex items-center justify-between">
+                <div class="flex gap-2">
+                  <div class="h-3 w-3 rounded-full bg-red-500" />
+                  <div class="h-3 w-3 rounded-full bg-yellow-500" />
+                  <div class="h-3 w-3 rounded-full bg-green-500" />
+                </div>
+                <span class="text-xs text-gray-400">blog.vue</span>
+              </div>
+              <pre class="overflow-x-auto text-sm leading-relaxed text-gray-700 dark:text-gray-300"><code>&lt;script setup&gt;
+const passion = ref('Coding')
+const dream = computed(() => {
+  return `Build with ${passion.value}`
+})
+
+// 每一天都在进步
+watch(experience, (newVal) => {
+  if (newVal > yesterday) {
+    console.log('成长了！')
+  }
+})
+&lt;/script&gt;</code></pre>
+            </div>
+
+            <!-- 装饰元素 -->
+            <div class="absolute -right-4 top-1/2 -translate-y-1/2 transform rounded-2xl bg-gradient-to-br from-aurora-purple to-aurora-pink p-4 shadow-xl animate-float">
+              <el-icon class="text-3xl text-white"><Code /></el-icon>
+            </div>
+
+            <div class="absolute -left-8 bottom-10 transform rounded-2xl bg-gradient-to-br from-aurora-cyan to-aurora-blue p-4 shadow-xl animation-delay-500 animate-float">
+              <el-icon class="text-3xl text-white"><Coffee /></el-icon>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 底部渐变过渡 -->
+      <div class="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-[var(--bg-primary)] to-transparent" />
+    </section>
+
+    <!-- Stats Bar -->
+    <section class="relative z-20 -mt-16 mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
+      <div class="glass-card grid grid-cols-2 gap-8 rounded-3xl p-8 md:grid-cols-4">
+        <div class="text-center">
+          <div class="text-3xl font-bold text-gray-900 dark:text-white sm:text-4xl">
+            {{ animatedStats.articleCount }}
+          </div>
+          <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">篇文章</div>
+        </div>
+        <div class="text-center">
+          <div class="text-3xl font-bold text-gray-900 dark:text-white sm:text-4xl">
+            {{ animatedStats.categoryCount }}
+          </div>
+          <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">个分类</div>
+        </div>
+        <div class="text-center">
+          <div class="text-3xl font-bold text-gray-900 dark:text-white sm:text-4xl">
+            {{ animatedStats.tagCount }}
+          </div>
+          <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">个标签</div>
+        </div>
+        <div class="text-center">
+          <div class="text-3xl font-bold text-gray-900 dark:text-white sm:text-4xl">
+            {{ animatedStats.dayCount }}
+          </div>
+          <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">天运行</div>
         </div>
       </div>
     </section>
 
-    <!-- Latest Articles Section -->
-    <section class="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
-      <div class="mb-8 flex items-center justify-between">
+    <!-- Featured Articles Section -->
+    <section class="mx-auto max-w-7xl px-4 py-24 sm:px-6 lg:px-8">
+      <!-- Section Header -->
+      <div class="mb-12 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 class="text-2xl font-bold text-gray-900">最新文章</h2>
-          <p class="mt-1 text-sm text-gray-500">探索技术的无限可能</p>
+          <h2 class="text-3xl font-bold text-gray-900 dark:text-white sm:text-4xl">
+            最新文章
+          </h2>
+          <p class="mt-2 text-gray-600 dark:text-gray-400">
+            探索技术的无限可能，分享学习的点滴收获
+          </p>
         </div>
+
+        <!-- 分类筛选 -->
+        <div class="flex flex-wrap gap-2">
+          <button
+            class="pill"
+            :class="!activeCategory ? 'pill-gradient' : 'pill-glass'"
+            @click="activeCategory = null"
+          >
+            全部
+          </button>
+          <button
+            v-for="cat in aggregated?.categories?.slice(0, 5)"
+            :key="cat.id"
+            class="pill"
+            :class="activeCategory === cat.id ? 'pill-gradient' : 'pill-glass'"
+            @click="activeCategory = cat.id"
+          >
+            {{ cat.name }}
+          </button>
+        </div>
+      </div>
+
+      <!-- Articles Grid -->
+      <div v-if="loading" class="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <div v-for="i in 6" :key="i" class="glass-card h-80 p-6">
+          <el-skeleton :rows="5" animated />
+        </div>
+      </div>
+
+      <div v-else-if="filteredArticles.length" class="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <article
+          v-for="(article, index) in filteredArticles"
+          :key="article.id"
+          class="group cursor-pointer overflow-hidden rounded-3xl bg-white shadow-card transition-all duration-500 hover:shadow-card-hover hover:-translate-y-2 dark:bg-dark-800"
+          :style="{ animationDelay: `${index * 100}ms` }"
+          @click="navigateToArticle(article.slug)"
+        >
+          <!-- 封面图 -->
+          <div class="relative aspect-video overflow-hidden">
+            <img
+              v-if="article.cover"
+              :src="article.cover"
+              :alt="article.title"
+              class="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
+            />
+            <div v-else class="flex h-full w-full items-center justify-center bg-gradient-to-br from-aurora-purple/20 to-aurora-pink/20">
+              <el-icon class="text-4xl text-aurora-purple/50"><Document /></el-icon>
+            </div>
+
+            <!-- 置顶标签 -->
+            <div v-if="article.isTop" class="absolute left-4 top-4">
+              <span class="flex items-center gap-1 rounded-full bg-amber-500 px-3 py-1 text-xs font-medium text-white shadow-lg">
+                <el-icon><StarFilled /></el-icon>
+                置顶
+              </span>
+            </div>
+
+            <!-- 分类标签 -->
+            <div class="absolute bottom-4 left-4">
+              <span class="rounded-full bg-white/90 px-3 py-1 text-xs font-medium text-gray-700 shadow-sm backdrop-blur-sm dark:bg-dark-900/90 dark:text-gray-300">
+                {{ article.categoryName }}
+              </span>
+            </div>
+          </div>
+
+          <!-- 内容 -->
+          <div class="p-6">
+            <h3 class="mb-3 text-lg font-semibold text-gray-900 line-clamp-2 transition-colors group-hover:text-aurora-purple dark:text-white dark:group-hover:text-aurora-pink">
+              {{ article.title }}
+            </h3>
+            <p class="mb-4 text-sm text-gray-600 line-clamp-2 leading-relaxed dark:text-gray-400">
+              {{ article.summary }}
+            </p>
+            <div class="flex items-center gap-4 text-xs text-gray-400">
+              <span class="flex items-center gap-1">
+                <el-icon><Calendar /></el-icon>
+                {{ formatDateCN(article.publishTime) }}
+              </span>
+              <span class="flex items-center gap-1">
+                <el-icon><View /></el-icon>
+                {{ article.viewCount }}
+              </span>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <!-- Empty State -->
+      <div v-else class="flex flex-col items-center justify-center py-20 text-center">
+        <el-icon class="mb-4 text-6xl text-gray-300 dark:text-gray-600"><Document /></el-icon>
+        <p class="text-gray-500 dark:text-gray-400">暂无文章</p>
+      </div>
+
+      <!-- View All Button -->
+      <div class="mt-12 text-center">
         <router-link
           to="/article"
-          class="inline-flex items-center text-primary-600 font-medium hover:text-primary-700 transition-colors"
+          class="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-6 py-3 text-sm font-medium text-gray-700 transition-all hover:border-aurora-purple hover:text-aurora-purple dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-aurora-pink dark:hover:text-aurora-pink"
+        >
+          查看全部文章
+          <el-icon><ArrowRight /></el-icon>
+        </router-link>
+      </div>
+    </section>
+
+    <!-- Categories Section -->
+    <section class="relative overflow-hidden py-24">
+      <!-- 背景装饰 -->
+      <div class="absolute inset-0 bg-gradient-to-b from-transparent via-aurora-purple/5 to-transparent" />
+
+      <div class="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div class="mb-12 text-center">
+          <h2 class="text-3xl font-bold text-gray-900 dark:text-white sm:text-4xl">
+            探索分类
+          </h2>
+          <p class="mt-2 text-gray-600 dark:text-gray-400">
+            按主题浏览感兴趣的内容
+          </p>
+        </div>
+
+        <div class="flex flex-wrap justify-center gap-4">
+          <button
+            v-for="cat in aggregated?.categories"
+            :key="cat.id"
+            class="group relative overflow-hidden rounded-2xl bg-white p-6 text-left shadow-card transition-all duration-300 hover:shadow-card-hover hover:-translate-y-1 dark:bg-dark-800"
+            @click="navigateToCategory(cat.id)"
+          >
+            <!-- 装饰背景 -->
+            <div class="absolute -right-4 -top-4 h-20 w-20 rounded-full bg-gradient-to-br from-aurora-purple/20 to-aurora-pink/20 opacity-0 transition-opacity group-hover:opacity-100" />
+
+            <div class="relative">
+              <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ cat.name }}
+              </h3>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ cat.articleCount || 0 }} 篇文章
+              </p>
+            </div>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Archive Preview Section -->
+    <section v-if="aggregated?.archive?.length" class="mx-auto max-w-7xl px-4 py-24 sm:px-6 lg:px-8">
+      <div class="mb-12 flex items-end justify-between">
+        <div>
+          <h2 class="text-3xl font-bold text-gray-900 dark:text-white sm:text-4xl">
+            文章归档
+          </h2>
+          <p class="mt-2 text-gray-600 dark:text-gray-400">
+            按时间线回顾过往文章
+          </p>
+        </div>
+        <router-link
+          to="/article/archive"
+          class="flex items-center gap-1 text-sm font-medium text-aurora-purple transition-colors hover:text-aurora-pink dark:text-aurora-pink dark:hover:text-aurora-cyan"
         >
           查看全部
-          <el-icon class="ml-1"><ArrowRight /></el-icon>
+          <el-icon><ArrowRight /></el-icon>
         </router-link>
       </div>
 
-      <div v-if="loading" class="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        <div v-for="i in 6" :key="i" class="bg-white rounded-xl p-6 border border-gray-100">
-          <el-skeleton :rows="3" animated />
-        </div>
-      </div>
-
-      <div v-else class="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        <article
-          v-for="article in articles"
-          :key="article.id"
-          class="group cursor-pointer bg-white rounded-xl border border-gray-100 p-6 shadow-sm transition-all duration-150 hover:shadow-lg hover:-translate-y-0.5"
-          @click="navigateToArticle(article.slug)"
+      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div
+          v-for="item in aggregated.archive.slice(0, 8)"
+          :key="`${item.year}-${item.month}`"
+          class="glass-card group cursor-pointer p-6"
+          @click="router.push(`/article?year=${item.year}&month=${item.month}`)"
         >
-          <div class="mb-4 flex items-center gap-3">
-            <span class="rounded-full bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-600">
-              {{ article.categoryName }}
-            </span>
-            <span v-if="article.isTop" class="text-amber-500 text-xs font-medium">置顶</span>
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="text-2xl font-bold text-gray-900 dark:text-white">
+                {{ item.year }}年{{ item.month }}月
+              </div>
+              <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ item.count }} 篇文章
+              </div>
+            </div>
+            <div class="flex h-10 w-10 items-center justify-center rounded-full bg-aurora-purple/10 text-aurora-purple transition-all group-hover:bg-aurora-purple group-hover:text-white dark:bg-aurora-pink/10 dark:text-aurora-pink dark:group-hover:bg-aurora-pink">
+              <el-icon><ArrowRight /></el-icon>
+            </div>
           </div>
-          <h3 class="mb-3 text-lg font-semibold text-gray-900 line-clamp-2 group-hover:text-primary-600 transition-colors">
-            {{ article.title }}
-          </h3>
-          <p class="mb-4 text-sm text-gray-600 line-clamp-2 leading-relaxed">
-            {{ article.summary }}
-          </p>
-          <div class="flex items-center gap-4 text-sm text-gray-400">
-            <span class="flex items-center gap-1">
-              <el-icon><Calendar /></el-icon>
-              {{ formatDateCN(article.publishTime) }}
-            </span>
-            <span class="flex items-center gap-1">
-              <el-icon><View /></el-icon>
-              {{ article.viewCount }}
-            </span>
-          </div>
-        </article>
+        </div>
       </div>
     </section>
   </div>
 </template>
+
+<style scoped>
+/* 额外的动画样式 */
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-20px) rotate(5deg);
+  }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+</style>

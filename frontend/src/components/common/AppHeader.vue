@@ -84,8 +84,9 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <header
-    class="fixed left-0 right-0 top-0 z-50 transition-all duration-500 ease-smooth"
+  <div>
+    <header
+      class="fixed left-0 right-0 top-0 z-50 transition-all duration-500 ease-smooth"
     :class="{
       'py-3': !isScrolled,
       'py-2': isScrolled,
