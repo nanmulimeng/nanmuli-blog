@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useConfigStore } from '@/stores/modules/config'
 import { getArticleList } from '@/api/article'
@@ -16,6 +16,9 @@ const loading = ref(true)
 const articles = ref<Article[]>([])
 const aggregated = ref<HomeAggregated | null>(null)
 const activeCategory = ref<string | null>(null)
+
+// 防抖定时器
+let categoryChangeTimeout: ReturnType<typeof setTimeout> | null = null
 
 // 统计数据动画
 const animatedStats = ref({
@@ -42,9 +45,13 @@ async function fetchData() {
   }
 }
 
-// 数字动画
+// 数字动画状态
+let statsAnimated = false
+let statsAnimationTimer: ReturnType<typeof setInterval> | null = null
+
+// 数字动画（只执行一次）
 function animateStats() {
-  if (!aggregated.value) return
+  if (!aggregated.value || statsAnimated) return
 
   const targets = {
     articleCount: aggregated.value.stats.articleCount || 0,
@@ -57,7 +64,14 @@ function animateStats() {
   const interval = duration / steps
 
   let step = 0
-  const timer = setInterval(() => {
+  statsAnimated = true
+
+  // 清理之前的定时器
+  if (statsAnimationTimer) {
+    clearInterval(statsAnimationTimer)
+  }
+
+  statsAnimationTimer = setInterval(() => {
     step++
     const progress = step / steps
     const easeOut = 1 - Math.pow(1 - progress, 3)
@@ -70,7 +84,10 @@ function animateStats() {
 
     if (step >= steps) {
       animatedStats.value = targets
-      clearInterval(timer)
+      if (statsAnimationTimer) {
+        clearInterval(statsAnimationTimer)
+        statsAnimationTimer = null
+      }
     }
   }, interval)
 }
@@ -80,10 +97,16 @@ function navigateToArticle(slug: string) {
   router.push(`/article/${slug}`)
 }
 
-// 导航到分类
+// 导航到分类（带防抖）
 function navigateToCategory(categoryId: string) {
-  router.push(`/article?categoryId=${categoryId}`)
+  if (categoryChangeTimeout) {
+    clearTimeout(categoryChangeTimeout)
+  }
+  categoryChangeTimeout = setTimeout(() => {
+    router.push(`/article?categoryId=${categoryId}`)
+  }, 150)
 }
+
 
 // 处理探索分类点击
 function handleCategoryClick(cat: any) {
@@ -151,6 +174,9 @@ const textIndex = ref(0)
 const charIndex = ref(0)
 const isDeleting = ref(false)
 
+// 打字机定时器
+let typeWriterTimeout: ReturnType<typeof setTimeout> | null = null
+
 function typeWriter() {
   const text = heroTexts[textIndex.value] as string
 
@@ -173,12 +199,25 @@ function typeWriter() {
     typeSpeed = 500
   }
 
-  setTimeout(typeWriter, typeSpeed)
+  typeWriterTimeout = setTimeout(typeWriter, typeSpeed)
 }
 
 onMounted(() => {
   fetchData()
   typeWriter()
+})
+
+// 组件卸载时清理定时器
+onUnmounted(() => {
+  if (categoryChangeTimeout) {
+    clearTimeout(categoryChangeTimeout)
+  }
+  if (typeWriterTimeout) {
+    clearTimeout(typeWriterTimeout)
+  }
+  if (statsAnimationTimer) {
+    clearInterval(statsAnimationTimer)
+  }
 })
 </script>
 
@@ -289,7 +328,7 @@ const dream = computed(() => {
 // 每一天都在进步
 watch(experience, (newVal) => {
   if (newVal > yesterday) {
-    console.log('成长了！')
+    
   }
 })
 &lt;/script&gt;</code></pre>

@@ -1,11 +1,15 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, watch, nextTick, markRaw } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useConfigStore } from '@/stores/modules/config'
 import { useTheme } from '@/composables/useTheme'
 import { getArticleList } from '@/api/article'
 import type { Article } from '@/types/article'
 import ThemeSwitcher from './ThemeSwitcher.vue'
+import {
+  HomeFilled, Document, OfficeBuilding, Timer, UserFilled,
+  Search, Menu, Close, ArrowRight, Loading, Calendar, View, DocumentDelete, Setting
+} from '@element-plus/icons-vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -29,11 +33,11 @@ const searchInputRef = ref<HTMLInputElement | null>(null)
 
 // 导航项
 const navItems = [
-  { path: '/', label: '首页', icon: 'HomeFilled' },
-  { path: '/article', label: '文章', icon: 'Document' },
-  { path: '/project', label: '项目', icon: 'OfficeBuilding' },
-  { path: '/daily-log', label: '日志', icon: 'Timer' },
-  { path: '/about', label: '关于', icon: 'UserFilled' },
+  { path: '/', label: '首页', icon: markRaw(HomeFilled) },
+  { path: '/article', label: '文章', icon: markRaw(Document) },
+  { path: '/project', label: '项目', icon: markRaw(OfficeBuilding) },
+  { path: '/daily-log', label: '日志', icon: markRaw(Timer) },
+  { path: '/about', label: '关于', icon: markRaw(UserFilled) },
 ]
 
 // 计算滚动进度和状态
@@ -117,7 +121,7 @@ const handleKeydown = (e: KeyboardEvent) => {
     case 'Enter':
       e.preventDefault()
       if (selectedIndex.value >= 0 && searchResults.value[selectedIndex.value]) {
-        goToArticle(searchResults.value[selectedIndex.value])
+        goToArticle(searchResults.value[selectedIndex.value]!)
       } else if (searchQuery.value.trim()) {
         router.push(`/article?keyword=${encodeURIComponent(searchQuery.value.trim())}`)
         closeSearch()
@@ -130,6 +134,14 @@ const handleKeydown = (e: KeyboardEvent) => {
 const goToArticle = (article: Article) => {
   router.push(`/article/${article.slug}`)
   closeSearch()
+}
+
+// 高亮搜索关键词
+function highlightKeyword(text: string, keyword: string): string {
+  if (!keyword || !text) return text
+  const escapedKeyword = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const regex = new RegExp(`(${escapedKeyword})`, 'gi')
+  return text.replace(regex, '<mark class="bg-yellow-200 dark:bg-yellow-800 px-0.5 rounded">$1</mark>')
 }
 
 // 关闭搜索
@@ -246,7 +258,18 @@ onUnmounted(() => {
           <div class="flex items-center gap-2">
             <!-- 搜索按钮 -->
             <button
-              class="flex h-10 w-10 items-center justify-center rounded-xl text-content-tertiary transition-all duration-200 hover:bg-surface-tertiary hover:text-content-primary"
+              class="hidden sm:flex items-center gap-2 h-10 px-3 rounded-xl text-content-tertiary transition-all duration-200 hover:bg-surface-tertiary hover:text-content-primary border border-transparent hover:border-border"
+              aria-label="搜索"
+              @click="isSearchOpen = true"
+            >
+              <el-icon class="text-lg"><Search /></el-icon>
+              <span class="text-sm hidden md:inline">搜索</span>
+              <kbd class="hidden lg:inline-block px-1.5 py-0.5 text-xs bg-surface-tertiary rounded border border-border font-mono">Ctrl K</kbd>
+            </button>
+
+            <!-- 移动端搜索按钮 -->
+            <button
+              class="flex sm:hidden h-10 w-10 items-center justify-center rounded-xl text-content-tertiary transition-all duration-200 hover:bg-surface-tertiary hover:text-content-primary"
               aria-label="搜索"
               @click="isSearchOpen = true"
             >
@@ -365,11 +388,9 @@ onUnmounted(() => {
                     </div>
                     <!-- Article Info -->
                     <div class="flex-1 min-w-0">
-                      <h4 class="font-medium text-content-primary truncate">
-                        {{ article.title }}
+                      <h4 class="font-medium text-content-primary truncate" v-html="highlightKeyword(article.title, searchQuery)">
                       </h4>
-                      <p class="mt-1 text-sm text-content-secondary line-clamp-1">
-                        {{ article.summary || '暂无摘要' }}
+                      <p class="mt-1 text-sm text-content-secondary line-clamp-1" v-html="highlightKeyword(article.summary || '暂无摘要', searchQuery)">
                       </p>
                       <div class="mt-1.5 flex items-center gap-3 text-xs text-content-tertiary">
                         <span class="flex items-center gap-1">

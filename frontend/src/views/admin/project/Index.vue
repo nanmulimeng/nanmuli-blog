@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { Plus, Edit, Delete, Calendar } from '@element-plus/icons-vue'
+import { Plus, Edit, Delete } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getAdminProjectList, createProject, updateProject, deleteProject } from '@/api/project'
 import type { Project } from '@/types/project'

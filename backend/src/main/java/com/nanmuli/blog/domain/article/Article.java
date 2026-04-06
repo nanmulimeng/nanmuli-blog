@@ -1,5 +1,7 @@
 package com.nanmuli.blog.domain.article;
 
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.Version;
 import com.nanmuli.blog.shared.domain.BaseAggregateRoot;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
@@ -30,6 +32,10 @@ public class Article extends BaseAggregateRoot<Long> {
     private Boolean isOriginal;
     private String originalUrl;
     private LocalDateTime publishTime;
+
+    @Version
+    @TableField("version")
+    private Integer version;
 
     public ArticleId articleId() {
         return new ArticleId(this.id);

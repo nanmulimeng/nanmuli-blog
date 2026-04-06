@@ -18,8 +18,14 @@ const form = reactive({
 })
 
 const rules: FormRules = {
-  username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
-  password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
+  username: [
+    { required: true, message: '请输入用户名', trigger: 'blur' },
+    { min: 3, max: 20, message: '用户名长度应为3-20个字符', trigger: 'blur' }
+  ],
+  password: [
+    { required: true, message: '请输入密码', trigger: 'blur' },
+    { min: 6, max: 32, message: '密码长度应为6-32个字符', trigger: 'blur' }
+  ],
 }
 
 async function handleSubmit(): Promise<void> {
@@ -29,20 +35,16 @@ async function handleSubmit(): Promise<void> {
   if (!valid) return
 
   loading.value = true
-  console.log('[Login] 提交登录:', form.username)
   try {
     await userStore.loginAction({
       username: form.username,
       password: form.password,
     })
     ElMessage.success('登录成功')
-    console.log('[Login] 准备跳转...')
     // 支持重定向：优先跳转到 redirect 参数指定的页面，否则默认到 /admin
     const redirect = route.query.redirect as string
     await router.push(redirect || '/admin')
-    console.log('[Login] 跳转完成')
   } catch (error: any) {
-    console.error('[Login] 登录失败:', error)
     ElMessage.error(error?.message || '登录失败，请检查用户名和密码')
   } finally {
     loading.value = false

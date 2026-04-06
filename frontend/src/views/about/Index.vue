@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import { useConfigStore } from '@/stores/modules/config'
 import { getSkillList } from '@/api/skill'
 import type { Skill } from '@/types/skill'
+import { UserFilled, Promotion, Message, Monitor, Collection, DataLine, Ship, Cpu, Lock } from '@element-plus/icons-vue'
 
 const configStore = useConfigStore()
 const skills = ref<Skill[]>([])
@@ -154,15 +155,15 @@ onMounted(() => {
             <p class="text-sm text-content-secondary">Docker / CI/CD / 云原生部署</p>
           </div>
           <div class="bg-surface-primary rounded-xl p-5 border border-border hover:border-primary transition-colors">
-            <div class="w-10 h-10 rounded-lg bg-purple/10 flex items-center justify-center mb-3">
-              <el-icon class="text-purple"><Cpu /></el-icon>
+            <div class="w-10 h-10 rounded-lg bg-info/10 flex items-center justify-center mb-3">
+              <el-icon class="text-info"><Cpu /></el-icon>
             </div>
             <h3 class="font-semibold text-content-primary mb-1">人工智能</h3>
             <p class="text-sm text-content-secondary">LLM应用 / AI工程化 / 智能助手</p>
           </div>
           <div class="bg-surface-primary rounded-xl p-5 border border-border hover:border-primary transition-colors">
-            <div class="w-10 h-10 rounded-lg bg-danger/10 flex items-center justify-center mb-3">
-              <el-icon class="text-danger"><Lock /></el-icon>
+            <div class="w-10 h-10 rounded-lg bg-error/10 flex items-center justify-center mb-3">
+              <el-icon class="text-error"><Lock /></el-icon>
             </div>
             <h3 class="font-semibold text-content-primary mb-1">安全技术</h3>
             <p class="text-sm text-content-secondary">安全研究 / 代码审计 / 漏洞分析</p>

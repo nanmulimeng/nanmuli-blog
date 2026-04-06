@@ -9,6 +9,7 @@ import com.nanmuli.blog.domain.category.CategoryRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -120,14 +121,39 @@ public class CategoryRepositoryImpl implements CategoryRepository {
 
         // 关键词搜索（匹配名称或slug）
         if (StringUtils.isNotBlank(keyword)) {
-            wrapper.and(w -> w.like(Category::getName, keyword)
+            String escapedKeyword = escapeLikeKeyword(keyword);
+            wrapper.and(w -> w.like(Category::getName, escapedKeyword)
                               .or()
-                              .like(Category::getSlug, keyword));
+                              .like(Category::getSlug, escapedKeyword));
         }
 
         // 默认按排序号升序
         wrapper.orderByAsc(Category::getSort);
 
         return categoryMapper.selectPage(page, wrapper);
+    }
+
+    @Override
+    public List<Category> findAllById(Collection<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        LambdaQueryWrapper<Category> wrapper = Wrappers.lambdaQuery();
+        wrapper.in(Category::getId, ids)
+               .eq(Category::getIsDeleted, false);
+        return categoryMapper.selectList(wrapper);
+    }
+
+    /**
+     * 转义LIKE查询中的特殊字符，并添加通配符
+     */
+    private String escapeLikeKeyword(String keyword) {
+        if (keyword == null) {
+            return null;
+        }
+        String escaped = keyword.replace("\\", "\\\\")
+                                .replace("%", "\\%")
+                                .replace("_", "\\_");
+        return "%" + escaped + "%";
     }
 }

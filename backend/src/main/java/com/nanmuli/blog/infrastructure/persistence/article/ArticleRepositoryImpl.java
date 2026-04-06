@@ -9,6 +9,7 @@ import com.nanmuli.blog.domain.article.ArticleRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -151,6 +152,30 @@ public class ArticleRepositoryImpl implements ArticleRepository {
     }
 
     @Override
+    public Map<Long, Integer> countByCategoryIds(List<Long> categoryIds) {
+        if (categoryIds == null || categoryIds.isEmpty()) {
+            return Map.of();
+        }
+
+        // 批量查询文章数（使用IN语句，避免N+1问题）
+        List<Map<String, Object>> results = articleMapper.selectCategoryArticleCounts(categoryIds);
+
+        Map<Long, Integer> countMap = new HashMap<>();
+        // 初始化为0
+        for (Long id : categoryIds) {
+            countMap.put(id, 0);
+        }
+        // 填充实际计数
+        for (Map<String, Object> result : results) {
+            Long categoryId = ((Number) result.get("category_id")).longValue();
+            Integer count = ((Number) result.get("count")).intValue();
+            countMap.put(categoryId, count);
+        }
+
+        return countMap;
+    }
+
+    @Override
     public List<Article> findLatestArticles(int limit) {
         LambdaQueryWrapper<Article> wrapper = Wrappers.lambdaQuery();
         wrapper.eq(Article::getStatus, 1)
@@ -193,15 +218,24 @@ public class ArticleRepositoryImpl implements ArticleRepository {
 
     @Override
     public IPage<Article> findPublishedByKeyword(String keyword, List<Long> categoryIds, IPage<Article> page, String sort) {
+        // TODO: 优化建议 - 当前使用LIKE '%keyword%'全表扫描，大数据量时性能差
+        // 方案1: 添加PostgreSQL全文搜索（推荐）
+        //   - 添加tsvector列 + GIN索引
+        //   - 使用 plainto_tsquery('chinese', keyword) 查询
+        // 方案2: 使用Elasticsearch（复杂查询场景）
+        // 方案3: 限制搜索范围（仅搜索标题+摘要，不搜索content大字段）
+
+        // SQL通配符转义，防止意外匹配或全表扫描
+        String escapedKeyword = escapeLikeKeyword(keyword);
+
         LambdaQueryWrapper<Article> wrapper = Wrappers.lambdaQuery();
         wrapper.eq(Article::getStatus, 1)
                .eq(Article::getIsDeleted, false)
                .and(kw -> {
-                   kw.like(Article::getTitle, keyword)
+                   // 优先搜索标题（有索引）
+                   kw.like(Article::getTitle, escapedKeyword)
                      .or()
-                     .like(Article::getContent, keyword)
-                     .or()
-                     .like(Article::getSummary, keyword);
+                     .like(Article::getSummary, escapedKeyword);
                    // 如果有关键词匹配的分类，也加入搜索条件
                    if (categoryIds != null && !categoryIds.isEmpty()) {
                        kw.or().in(Article::getCategoryId, categoryIds);
@@ -235,5 +269,18 @@ public class ArticleRepositoryImpl implements ArticleRepository {
         wrapper.eq(Article::getIsDeleted, false)
                .orderByDesc(Article::getCreatedAt);
         return articleMapper.selectPage(page, wrapper);
+    }
+
+    /**
+     * SQL通配符转义，防止LIKE查询时意外匹配或全表扫描
+     * 转义 % _ \ 等特殊字符
+     */
+    private String escapeLikeKeyword(String keyword) {
+        if (keyword == null) {
+            return null;
+        }
+        return keyword.replace("\\", "\\\\")
+                      .replace("%", "\\%")
+                      .replace("_", "\\_");
     }
 }

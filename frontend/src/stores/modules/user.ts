@@ -7,28 +7,23 @@ import router from '@/router'
 export const useUserStore = defineStore(
   'user',
   () => {
-    const token = ref<string | null>(localStorage.getItem('token'))
+    // Cookie模式：Token由浏览器自动管理，不存储在localStorage
+    const isAuthenticated = ref<boolean>(false)
     const userInfo = ref<UserInfo | null>(null)
 
-    const isLoggedIn = computed(() => !!token.value)
+    const isLoggedIn = computed(() => isAuthenticated.value)
 
     async function loginAction(form: LoginForm): Promise<void> {
-      console.log('[Login] 开始登录...')
-      const tokenValue = await login(form)
-      console.log('[Login] 获取token成功:', tokenValue.substring(0, 10) + '...')
+      // Cookie模式：后端设置httpOnly Cookie，前端无需处理Token
+      await login(form)
 
-      token.value = tokenValue
-      localStorage.setItem('token', tokenValue)
-      console.log('[Login] token已保存到localStorage')
+      isAuthenticated.value = true
 
       // 登录成功后获取用户信息
       try {
-        console.log('[Login] 获取用户信息...')
         const user = await getCurrentUser()
         userInfo.value = user
-        console.log('[Login] 获取用户信息成功:', user.username)
-      } catch (e) {
-        console.error('[Login] 获取用户信息失败:', e)
+      } catch {
         // 即使获取用户信息失败，也不影响登录本身
       }
     }
@@ -37,9 +32,9 @@ export const useUserStore = defineStore(
       try {
         await logout()
       } finally {
-        token.value = null
+        isAuthenticated.value = false
         userInfo.value = null
-        localStorage.removeItem('token')
+        // Cookie模式下Token由后端清除，前端无需操作
         router.push('/login')
       }
     }
@@ -48,18 +43,33 @@ export const useUserStore = defineStore(
       userInfo.value = info
     }
 
+    // 检查登录状态（页面刷新时调用）
+    async function checkAuthStatus(): Promise<boolean> {
+      try {
+        const user = await getCurrentUser()
+        userInfo.value = user
+        isAuthenticated.value = true
+        return true
+      } catch {
+        isAuthenticated.value = false
+        userInfo.value = null
+        return false
+      }
+    }
+
     return {
-      token,
+      isAuthenticated,
       userInfo,
       isLoggedIn,
       loginAction,
       logoutAction,
       setUserInfo,
+      checkAuthStatus,
     }
   },
   {
     persist: {
-      paths: ['token'],
-    },
+      paths: ['isAuthenticated']
+    }
   }
 )

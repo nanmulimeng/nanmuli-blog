@@ -83,4 +83,11 @@ public class CategoryController {
         categoryAppService.delete(id);
         return Result.success();
     }
+
+    @Operation(summary = "刷新所有分类文章数")
+    @PostMapping("/admin/category/refresh-counts")
+    public Result<Void> refreshArticleCounts() {
+        categoryAppService.refreshAllCategoryArticleCounts();
+        return Result.success();
+    }
 }

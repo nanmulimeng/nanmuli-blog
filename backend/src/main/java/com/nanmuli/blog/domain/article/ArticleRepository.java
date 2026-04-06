@@ -50,6 +50,12 @@ public interface ArticleRepository {
     Long countByCategoryId(Long categoryId);
 
     /**
+     * 批量统计多个分类的文章数量
+     * @return Map<categoryId, count>
+     */
+    Map<Long, Integer> countByCategoryIds(List<Long> categoryIds);
+
+    /**
      * 检查slug是否存在
      */
     boolean existsBySlug(String slug);

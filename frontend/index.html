@@ -9,6 +9,32 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <script>
+      // ============================================
+      // Theme Anti-Flicker - Apply before render to prevent FOUC
+      // ============================================
+      (function() {
+        try {
+          const savedMode = localStorage.getItem('blog-theme-mode')
+          if (savedMode === 'dark') {
+            document.documentElement.classList.add('dark')
+          } else if (savedMode === 'light') {
+            document.documentElement.classList.remove('dark')
+          } else {
+            // Follow system preference
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+            if (prefersDark) {
+              document.documentElement.classList.add('dark')
+            }
+          }
+        } catch (e) {
+          // localStorage不可用（隐私模式/禁用），使用系统主题
+          if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            document.documentElement.classList.add('dark')
+          }
+        }
+      })()
+    </script>
     <style>
       /* ============================================
          Theme System - CSS Variables (Inline to prevent tree-shaking)
@@ -83,6 +109,36 @@
     </style>
   </head>
   <body>
+    <noscript>
+      <style>
+        .noscript-warning {
+          padding: 2rem;
+          text-align: center;
+          font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+          background: #0f172a;
+          color: #f8fafc;
+          min-height: 100vh;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+        }
+        .noscript-warning h1 {
+          color: #ef4444;
+          margin-bottom: 1rem;
+          font-size: 1.5rem;
+        }
+        .noscript-warning p {
+          color: #cbd5e1;
+          max-width: 500px;
+          line-height: 1.6;
+        }
+      </style>
+      <div class="noscript-warning">
+        <h1>需要启用 JavaScript</h1>
+        <p>本网站需要 JavaScript 才能正常运行。请启用 JavaScript 后刷新页面。</p>
+      </div>
+    </noscript>
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { getProjectList } from '@/api/project'
 import type { Project } from '@/types/project'
+import { OfficeBuilding, Link, Document, Calendar } from '@element-plus/icons-vue'
 
 const projects = ref<Project[]>([])
 const loading = ref(false)
@@ -42,6 +43,13 @@ function formatProjectDate(startDate?: string, endDate?: string): string {
   if (!endDate) return `${start} 至今`
   const end = new Date(endDate).getFullYear()
   return start === end ? `${start}` : `${start} - ${end}`
+}
+
+/**
+ * 在新窗口打开截图
+ */
+function openScreenshot(url: string): void {
+  window.open(url, "_blank")
 }
 
 /**
@@ -260,7 +268,7 @@ function openProjectDetail(project: Project): void {
               v-for="(screenshot, index) in selectedProject.screenshots"
               :key="index"
               class="aspect-video rounded-lg overflow-hidden bg-surface-secondary cursor-pointer hover:ring-2 hover:ring-primary transition-all"
-              @click="window.open(screenshot, '_blank')"
+              @click="openScreenshot(screenshot)"
             >
               <img :src="screenshot" class="w-full h-full object-cover" :alt="`截图 ${index + 1}`">
             </div>

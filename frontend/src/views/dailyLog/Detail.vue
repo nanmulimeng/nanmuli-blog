@@ -3,6 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getDailyLogById, getDailyLogList } from '@/api/dailyLog'
 import { formatDateCN, formatDateTimeCN, formatTimeAgoCN } from '@/utils/format'
+import { ArrowRight, Calendar, PartlyCloudy, Document, Clock, ArrowLeft } from '@element-plus/icons-vue'
 import type { DailyLog } from '@/types/dailyLog'
 
 const route = useRoute()
@@ -152,20 +153,13 @@ onMounted(fetchLog)
           </div>
 
           <!-- Navigation -->
-          <div class="mt-8 grid grid-cols-2 gap-4">
+          <div class="mt-8">
             <button
               class="flex items-center gap-2 px-4 py-3 rounded-xl bg-surface-secondary border border-border text-content-secondary hover:border-primary hover:text-primary transition-colors"
               @click="router.push('/daily-log')"
             >
               <el-icon><ArrowLeft /></el-icon>
               <span>返回日志列表</span>
-            </button>
-            <button
-              class="flex items-center justify-end gap-2 px-4 py-3 rounded-xl bg-surface-secondary border border-border text-content-secondary hover:border-primary hover:text-primary transition-colors"
-              @click="router.push('/daily-log')"
-            >
-              <span>查看更多</span>
-              <el-icon><ArrowRight /></el-icon>
             </button>
           </div>
         </div>

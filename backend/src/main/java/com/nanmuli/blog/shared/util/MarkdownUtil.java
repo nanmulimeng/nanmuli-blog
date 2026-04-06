@@ -4,6 +4,8 @@ import com.vladsch.flexmark.html.HtmlRenderer;
 import com.vladsch.flexmark.parser.Parser;
 import com.vladsch.flexmark.util.ast.Node;
 import com.vladsch.flexmark.util.data.MutableDataSet;
+import org.jsoup.Jsoup;
+import org.jsoup.safety.Safelist;
 import org.springframework.stereotype.Component;
 
 /**
@@ -39,7 +41,41 @@ public class MarkdownUtil {
             return "";
         }
         Node document = parser.parse(markdown);
-        return renderer.render(document);
+        String html = renderer.render(document);
+        return sanitizeHtml(html);
+    }
+
+    /**
+     * 净化HTML，过滤危险标签和属性（XSS防护）
+     */
+    public String sanitizeHtml(String html) {
+        if (html == null || html.isEmpty()) {
+            return html;
+        }
+        Safelist safelist = Safelist.basic()
+            // 链接只允许http/https/mailto，禁止javascript/data
+            .removeProtocols("a", "href", "ftp", "http", "https", "mailto")
+            .addProtocols("a", "href", "http", "https", "mailto")
+            // 只允许target和title属性，强制添加rel="noopener noreferrer"
+            .addAttributes("a", "target", "title")
+            .addEnforcedAttribute("a", "rel", "noopener noreferrer")
+            // 图片只允许http/https，禁止data:协议
+            .addAttributes("img", "src", "alt", "title", "loading", "width", "height")
+            .addProtocols("img", "src", "http", "https")
+            // 标题标签
+            .addTags("h1", "h2", "h3", "h4", "h5", "h6")
+            // 代码和引用
+            .addTags("pre", "code", "blockquote", "hr", "br")
+            // 表格
+            .addTags("table", "thead", "tbody", "tr", "th", "td")
+            // 列表
+            .addTags("ul", "ol", "li")
+            // 任务列表（Markdown任务列表生成）
+            .addTags("input")
+            .addAttributes("input", "type", "checked", "disabled")
+            .addAttributes("code", "class")
+            .addAttributes("pre", "class");
+        return Jsoup.clean(html, safelist);
     }
 
     /**

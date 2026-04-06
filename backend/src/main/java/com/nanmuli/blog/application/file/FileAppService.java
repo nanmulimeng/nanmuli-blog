@@ -17,6 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -25,6 +26,9 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class FileAppService {
+
+    // 最大文件大小：10MB
+    private static final long MAX_FILE_SIZE = 10 * 1024 * 1024;
 
     private static final Set<String> ALLOWED_EXTENSIONS = Set.of(
             "jpg", "jpeg", "png", "gif", "webp", "svg",
@@ -43,6 +47,16 @@ public class FileAppService {
     @Value("${blog.file.upload-path:./uploads}")
     private String uploadPath;
 
+    // 常见文件类型的Magic Number
+    private static final Map<String, byte[]> MAGIC_NUMBERS = Map.of(
+            "jpg", new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF},
+            "jpeg", new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF},
+            "png", new byte[]{(byte) 0x89, 0x50, 0x4E, 0x47},
+            "gif", new byte[]{0x47, 0x49, 0x46, 0x38},
+            "pdf", new byte[]{0x25, 0x50, 0x44, 0x46},
+            "webp", new byte[]{0x52, 0x49, 0x46, 0x46}
+    );
+
     @Transactional
     public FileDTO upload(UploadFileCommand command) {
         String originalName = command.getOriginalName();
@@ -53,6 +67,16 @@ public class FileAppService {
         String extension = getExtension(originalName).toLowerCase(Locale.ROOT);
         if (!ALLOWED_EXTENSIONS.contains(extension)) {
             throw new BusinessException("不支持的文件类型");
+        }
+
+        // 文件大小限制检查
+        if (command.getFileSize() > MAX_FILE_SIZE) {
+            throw new BusinessException("文件大小超过限制（最大10MB）");
+        }
+
+        // Magic Number校验：验证文件实际类型与扩展名是否一致
+        if (!isValidFileType(command.getContent(), extension)) {
+            throw new BusinessException("文件类型与扩展名不符，可能存在安全风险");
         }
 
         String contentType = command.getContentType();
@@ -95,6 +119,35 @@ public class FileAppService {
 
         log.info("文件上传成功, fileName={}, md5={}, size={}", fileName, md5, command.getFileSize());
         return convertToDTO(blogFile);
+    }
+
+    /**
+     * 校验文件Magic Number，验证文件实际类型与扩展名是否一致
+     */
+    private boolean isValidFileType(byte[] fileData, String extension) {
+        if (fileData == null || fileData.length < 4) {
+            return false;
+        }
+
+        byte[] expected = MAGIC_NUMBERS.get(extension.toLowerCase(Locale.ROOT));
+        if (expected == null) {
+            // 未知类型不做Magic Number校验（如txt、md、zip等）
+            return true;
+        }
+
+        // 特殊处理webp：需要检查文件偏移8处的WEBP标识
+        if ("webp".equals(extension.toLowerCase(Locale.ROOT))) {
+            return fileData.length >= 12 &&
+                   fileData[0] == 0x52 && fileData[1] == 0x49 && fileData[2] == 0x46 && fileData[3] == 0x46 &&
+                   fileData[8] == 0x57 && fileData[9] == 0x45 && fileData[10] == 0x42 && fileData[11] == 0x50;
+        }
+
+        for (int i = 0; i < expected.length; i++) {
+            if (fileData[i] != expected[i]) {
+                return false;
+            }
+        }
+        return true;
     }
 
     @Transactional(readOnly = true)

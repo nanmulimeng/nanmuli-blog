@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, nextTick, watch } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getArticleBySlug, recordArticleViewByVisitor, getArticleList, getArticleStats, type ArticleStats } from '@/api/article'
 import { generateVisitorId } from '@/utils/visitor'
 import { formatDateCN, formatDateTimeCN } from '@/utils/format'
 import type { Article } from '@/types/article'
 import hljs from 'highlight.js'
+import { ElMessage } from 'element-plus'
+import { ArrowUp } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -19,9 +21,37 @@ const copySuccess = ref(false)
 const contentRef = ref<HTMLElement | null>(null)
 const tocNavRef = ref<HTMLElement | null>(null)
 
+// 移动端目录控制
+const showMobileToc = ref(false)
+const isMobile = ref(false)
+
+// 检测是否为移动端
+function checkMobile() {
+  isMobile.value = window.innerWidth < 1024 // lg breakpoint
+}
+
+// 处理移动端目录选择
+function handleTocSelect(index: number): void {
+  scrollToHeading(index)
+  showMobileToc.value = false
+}
+
 // 访问统计
 const articleStats = ref<ArticleStats | null>(null)
 const statsLoading = ref(false)
+
+// UV统计定时器
+let uvRecordTimeout: ReturnType<typeof setTimeout> | null = null
+
+// 滚动监听清理函数
+let scrollHandler: (() => void) | null = null
+let resizeHandler: (() => void) | null = null
+
+// 图片点击事件处理器存储
+const imageClickHandlers: Array<{ element: HTMLElement; handler: () => void }> = []
+
+// 返回顶部按钮显示状态
+const showBackToTop = ref(false)
 
 // 生成安全的ID
 function generateHeadingId(text: string, index: number): string {
@@ -45,7 +75,7 @@ function generateTocFromHtml(htmlContent: string): void {
     return {
       id: generateHeadingId(text, index),
       text: text,
-      level: parseInt(heading.tagName[1]),
+      level: parseInt(heading.tagName[1] || "1"),
     }
   })
 }
@@ -54,19 +84,44 @@ function generateTocFromHtml(htmlContent: string): void {
 function processContent(): void {
   if (!contentRef.value) return
 
-  // 1. 代码高亮
+  // 1. 代码高亮 + 添加复制按钮
   contentRef.value.querySelectorAll('pre code').forEach((block) => {
     hljs.highlightElement(block as HTMLElement)
+
+    // 为代码块添加复制按钮
+    const pre = block.parentElement
+    if (pre && !pre.querySelector('.code-copy-btn')) {
+      const copyBtn = document.createElement('button')
+      copyBtn.className = 'code-copy-btn'
+      copyBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>'
+      copyBtn.title = '复制代码'
+      copyBtn.onclick = () => {
+        navigator.clipboard.writeText(block.textContent || '')
+        ElMessage.success('代码已复制')
+      }
+      pre.appendChild(copyBtn)
+    }
   })
 
-  // 2. 图片懒加载
+  // 2. 图片懒加载 + 占位符 + 淡入动画
   contentRef.value.querySelectorAll('img').forEach((img) => {
     if (!img.hasAttribute('loading')) {
       img.setAttribute('loading', 'lazy')
     }
+    // 添加骨架屏背景作为占位
+    img.style.backgroundColor = 'var(--surface-tertiary, #f0f0f0)'
+    img.style.minHeight = '200px'
+
+    // 添加淡入动画
+    img.style.opacity = '0'
+    img.style.transition = 'opacity 0.3s ease'
+    img.onload = () => {
+      img.style.opacity = '1'
+    }
+
     // 添加点击放大功能
     img.style.cursor = 'zoom-in'
-    img.addEventListener('click', () => {
+    const clickHandler = () => {
       // 简单的图片预览
       const modal = document.createElement('div')
       modal.style.cssText = `
@@ -85,7 +140,9 @@ function processContent(): void {
       modal.appendChild(imgClone)
       modal.addEventListener('click', () => modal.remove())
       document.body.appendChild(modal)
-    })
+    }
+    img.addEventListener('click', clickHandler)
+    imageClickHandlers.push({ element: img, handler: clickHandler })
   })
 
   // 3. 外部链接在新标签页打开
@@ -128,8 +185,19 @@ async function fetchArticle(): Promise<void> {
 
     fetchRelatedArticles(res.categoryId, res.id)
 
-    // 获取文章访问统计
-    fetchArticleStats(res.id)
+    // 获取文章访问统计 - 确保ID有效
+    const articleId = res.id?.toString()?.trim()
+    if (articleId && articleId !== 'undefined' && articleId !== 'null') {
+      fetchArticleStats(articleId)
+
+      // 5秒后记录阅读用户（UV统计）- 在文章加载成功后执行
+      uvRecordTimeout = setTimeout(() => {
+        const visitorId = generateVisitorId()
+        if (visitorId) {
+          recordArticleViewByVisitor(articleId, visitorId)
+        }
+      }, 5000)
+    }
 
     // processContent 将由 watch(article) 触发
   } catch {
@@ -154,11 +222,17 @@ async function fetchRelatedArticles(categoryId: string, excludeId: string): Prom
 
 // 获取文章访问统计
 async function fetchArticleStats(articleId: string): Promise<void> {
+  // 参数校验
+  if (!articleId || articleId === 'undefined' || articleId === 'null') {
+    return
+  }
+
   statsLoading.value = true
   try {
     articleStats.value = await getArticleStats(articleId)
-  } catch {
-    // ignore
+  } catch (error) {
+    // 静默失败，不显示错误提示（统计失败不影响主功能）
+    console.warn('获取文章统计失败:', error)
   } finally {
     statsLoading.value = false
   }
@@ -178,8 +252,9 @@ function scrollToHeading(index: number): void {
   } else {
     // 尝试通过索引查找
     const headings = document.querySelectorAll('h1, h2, h3')
-    if (headings[index]) {
-      headings[index].scrollIntoView({ behavior: 'smooth', block: 'start' })
+    const targetHeading = headings[index];
+    if (targetHeading) {
+      targetHeading.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
   }
 }
@@ -256,15 +331,52 @@ const readingProgress = computed(() => {
 
 onMounted(() => {
   fetchArticle()
-  // 5秒后记录阅读用户（UV统计）
-  setTimeout(() => {
-    const articleId = article.value?.id
-    if (articleId) {
-      const visitorId = generateVisitorId()
-      recordArticleViewByVisitor(articleId, visitorId)
-    }
-  }, 5000)
+  checkMobile()
+
+  // 保存处理器引用以便清理
+  resizeHandler = checkMobile
+  window.addEventListener('resize', resizeHandler)
+
+  // 监听滚动显示返回顶部按钮
+  scrollHandler = () => {
+    showBackToTop.value = window.scrollY > 500
+  }
+  window.addEventListener('scroll', scrollHandler, { passive: true })
 })
+
+// 组件卸载时清理资源
+onUnmounted(() => {
+  // 清理UV统计定时器
+  if (uvRecordTimeout) {
+    clearTimeout(uvRecordTimeout)
+    uvRecordTimeout = null
+  }
+
+  // 清理ScrollSpy观察者
+  if (scrollSpyObserver) {
+    scrollSpyObserver.disconnect()
+    scrollSpyObserver = null
+  }
+
+  // 清理事件监听器
+  if (resizeHandler) {
+    window.removeEventListener('resize', resizeHandler)
+  }
+  if (scrollHandler) {
+    window.removeEventListener('scroll', scrollHandler)
+  }
+
+  // 清理图片点击事件
+  imageClickHandlers.forEach(({ element, handler }) => {
+    element.removeEventListener('click', handler)
+  })
+  imageClickHandlers.length = 0
+})
+
+// 返回顶部
+function scrollToTop() {
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
 
 // 监听路由参数变化，当文章slug变化时重新加载
 watch(() => route.params.slug, (newSlug, oldSlug) => {
@@ -344,8 +456,8 @@ watch(activeHeading, (newId) => {
               文章
             </router-link>
             <el-icon><ArrowRight class="text-xs" /></el-icon>
-            <span class="text-content-primary font-medium truncate max-w-[200px]">
-              {{ article.title }}
+            <span class="text-content-primary font-medium truncate max-w-[150px] sm:max-w-[200px]" :title="article.title">
+              {{ article.title.length > 20 ? article.title.slice(0, 20) + '...' : article.title }}
             </span>
           </nav>
 
@@ -411,8 +523,8 @@ watch(activeHeading, (newId) => {
                 {{ articleStats.visitCount || 0 }}
               </span>
               <span class="flex items-center gap-2 text-content-tertiary" title="访客数">
-                <div class="flex h-8 w-8 items-center justify-center rounded-full bg-purple/10">
-                  <el-icon class="text-purple"><User /></el-icon>
+                <div class="flex h-8 w-8 items-center justify-center rounded-full bg-info/10">
+                  <el-icon class="text-info"><User /></el-icon>
                 </div>
                 {{ articleStats.visitorCount || 0 }}
               </span>
@@ -532,6 +644,44 @@ watch(activeHeading, (newId) => {
               </div>
             </div>
 
+            <!-- Mobile TOC Button -->
+            <button
+              v-if="isMobile && toc.length > 0"
+              class="fixed bottom-6 right-6 z-50 p-3 rounded-full bg-primary text-white shadow-lg shadow-primary/30 hover:bg-primary-light transition-all"
+              @click="showMobileToc = true"
+            >
+              <el-icon><List /></el-icon>
+            </button>
+
+            <!-- Mobile TOC Drawer -->
+            <el-drawer
+              v-model="showMobileToc"
+              title="目录"
+              direction="btt"
+              size="50%"
+              :with-header="true"
+            >
+              <nav class="space-y-1 max-h-[60vh] overflow-y-auto">
+                <a
+                  v-for="(item, index) in toc"
+                  :key="item.id"
+                  :href="`#${item.id}`"
+                  class="block py-3 text-sm transition-all rounded-lg px-3 border-b border-surface-tertiary last:border-0"
+                  :class="[
+                    item.level === 1 ? 'text-content-secondary font-medium' : 'text-content-tertiary',
+                    item.level === 2 ? 'pl-6' : '',
+                    item.level === 3 ? 'pl-9' : '',
+                    activeHeading === item.id
+                      ? 'bg-primary/10 text-primary'
+                      : 'hover:bg-surface-tertiary'
+                  ]"
+                  @click.prevent="handleTocSelect(index)"
+                >
+                  {{ item.text }}
+                </a>
+              </nav>
+            </el-drawer>
+
             <!-- Sidebar TOC -->
             <div class="hidden lg:block lg:col-span-4">
               <div class="sticky top-28 space-y-6">
@@ -590,6 +740,16 @@ watch(activeHeading, (newId) => {
         </div>
       </section>
     </template>
+
+    <!-- Back to Top Button -->
+    <button
+      v-show="showBackToTop"
+      @click="scrollToTop"
+      class="fixed bottom-8 right-8 z-50 p-3 rounded-full bg-primary text-white shadow-lg transition-all duration-300 hover:scale-110 hover:shadow-xl"
+      aria-label="返回顶部"
+    >
+      <el-icon class="text-xl"><ArrowUp /></el-icon>
+    </button>
   </div>
 </template>
 
@@ -600,5 +760,44 @@ watch(activeHeading, (newId) => {
 }
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
+}
+
+/* 代码块复制按钮样式 */
+:deep(pre) {
+  position: relative;
+}
+
+:deep(.code-copy-btn) {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 6px;
+  background: rgba(0, 0, 0, 0.5);
+  border: none;
+  border-radius: 4px;
+  color: white;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s, background 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+:deep(.code-copy-btn:hover) {
+  background: rgba(0, 0, 0, 0.7);
+}
+
+:deep(pre:hover .code-copy-btn) {
+  opacity: 1;
+}
+
+/* 暗色主题适配 */
+:deep(.dark .code-copy-btn) {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+:deep(.dark .code-copy-btn:hover) {
+  background: rgba(255, 255, 255, 0.3);
 }
 </style>

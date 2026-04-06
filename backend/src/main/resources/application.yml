@@ -13,6 +13,9 @@ spring:
     init:
       mode: always
       data-locations: classpath:data.sql
+  jackson:
+    time-zone: Asia/Shanghai
+    date-format: yyyy-MM-dd HH:mm:ss
 
 server:
   port: 8081
@@ -21,13 +24,19 @@ server:
 
 # Sa-Token 配置
 sa-token:
-  token-name: Authorization
+  token-name: satoken
   timeout: 2592000
-  active-timeout: -1
-  is-concurrent: true
+  active-timeout: 1800      # 30分钟无活动过期（从-1改为1800秒）
+  is-concurrent: false      # 单点登录（从true改为false）
   is-share: false
   token-style: uuid
   is-log: false
+  # Cookie模式配置 - 防止XSS盗取Token
+  token-from-cookie: true
+  cookie:
+    http-only: true
+    secure: false
+    same-site: Lax
   # Redis 持久化配置 - 与Spring Redis使用相同配置
   alone-redis:
     host: localhost

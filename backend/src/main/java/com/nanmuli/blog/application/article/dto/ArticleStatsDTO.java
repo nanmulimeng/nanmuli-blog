@@ -2,8 +2,11 @@ package com.nanmuli.blog.application.article.dto;
 
 import lombok.Data;
 
+import java.io.Serializable;
+
 @Data
-public class ArticleStatsDTO {
+public class ArticleStatsDTO implements Serializable {
+    private static final long serialVersionUID = 1L;
     private Long articleId;
     private String slug;
     private String title;

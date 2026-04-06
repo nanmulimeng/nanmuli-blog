@@ -31,4 +31,11 @@ public interface ArticleMapper extends BaseMapper<Article> {
 
     @Select("SELECT COALESCE(SUM(view_count), 0) FROM article WHERE is_deleted = false")
     Long sumViewCount();
+
+    /**
+     * 批量查询多个分类的文章数量
+     * 只统计已发布(status=1)且未删除的文章
+     */
+    @Select("<script>SELECT category_id, COUNT(*) as count FROM article WHERE category_id IN <foreach collection='categoryIds' item='id' open='(' separator=',' close=')'>#{id}</foreach> AND status = 1 AND is_deleted = false GROUP BY category_id</script>")
+    List<Map<String, Object>> selectCategoryArticleCounts(@Param("categoryIds") List<Long> categoryIds);
 }

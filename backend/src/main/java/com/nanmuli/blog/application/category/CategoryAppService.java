@@ -13,6 +13,10 @@ import com.nanmuli.blog.shared.exception.BusinessException;
 import com.nanmuli.blog.shared.result.PageResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
+import org.springframework.cache.annotation.CacheConfig;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,6 +33,7 @@ import java.util.stream.Collectors;
  */
 @Service
 @RequiredArgsConstructor
+@CacheConfig(cacheNames = "category")
 @Transactional(readOnly = true)
 public class CategoryAppService {
 
@@ -39,9 +44,14 @@ public class CategoryAppService {
      * 创建分类
      */
     @Transactional
+    @CacheEvict(allEntries = true)
     public Long create(CreateCategoryCommand command) {
+        // 清理slug（去除前后空格并转为小写）
+        String slug = command.getSlug() != null ? command.getSlug().trim().toLowerCase() : null;
+        command.setSlug(slug);
+
         // 检查slug唯一性
-        if (categoryRepository.existsBySlug(command.getSlug())) {
+        if (categoryRepository.existsBySlug(slug)) {
             throw new BusinessException("分类标识已存在");
         }
 
@@ -56,7 +66,14 @@ public class CategoryAppService {
         // 验证父分类合法性
         validateParentCategory(category.getParentId(), null);
 
-        categoryRepository.save(category);
+        try {
+            categoryRepository.save(category);
+        } catch (DataIntegrityViolationException e) {
+            if (e.getMessage() != null && e.getMessage().contains("category_slug_key")) {
+                throw new BusinessException("分类标识已存在");
+            }
+            throw e;
+        }
         return category.getId();
     }
 
@@ -64,12 +81,17 @@ public class CategoryAppService {
      * 更新分类
      */
     @Transactional
+    @CacheEvict(allEntries = true)
     public void update(Long id, UpdateCategoryCommand command) {
         Category category = categoryRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("分类不存在"));
 
+        // 清理slug（去除前后空格并转为小写）
+        String slug = command.getSlug() != null ? command.getSlug().trim().toLowerCase() : null;
+        command.setSlug(slug);
+
         // 检查slug唯一性（排除自身）
-        if (!command.getSlug().equals(category.getSlug()) && categoryRepository.existsBySlug(command.getSlug())) {
+        if (!slug.equals(category.getSlug()) && categoryRepository.existsBySlug(slug)) {
             throw new BusinessException("分类标识已存在");
         }
 
@@ -89,7 +111,14 @@ public class CategoryAppService {
             category.setColor("#409EFF");
         }
 
-        categoryRepository.save(category);
+        try {
+            categoryRepository.save(category);
+        } catch (DataIntegrityViolationException e) {
+            if (e.getMessage() != null && e.getMessage().contains("category_slug_key")) {
+                throw new BusinessException("分类标识已存在");
+            }
+            throw e;
+        }
     }
 
     /**
@@ -103,6 +132,7 @@ public class CategoryAppService {
     /**
      * 获取所有分类树（管理后台）
      */
+    @Cacheable(key = "'tree'")
     public List<CategoryDTO> listAll() {
         List<Category> categories = categoryRepository.findAll();
         return buildTree(categories);
@@ -110,9 +140,12 @@ public class CategoryAppService {
 
     /**
      * 批量刷新所有分类的文章数
+     * 先刷新叶子分类，然后重新计算父分类的文章数（包含子分类）
      */
     @Transactional
+    @CacheEvict(allEntries = true)
     public void refreshAllCategoryArticleCounts() {
+        // 第一步：刷新所有叶子分类的文章数
         List<Category> allCategories = categoryRepository.findAll();
         for (Category category : allCategories) {
             if (category.isLeaf()) {
@@ -120,6 +153,72 @@ public class CategoryAppService {
                 refreshArticleCount(category.getId());
             }
         }
+
+        // 第二步：重新计算父分类的文章数（从底层向上计算）
+        // 按层级深度降序排序，先处理最底层的分类，再处理上层
+        Map<Long, Category> categoryMap = allCategories.stream()
+                .collect(Collectors.toMap(Category::getId, c -> c));
+
+        // 获取所有父分类（非叶子分类），按深度降序排序
+        List<Category> parentCategories = allCategories.stream()
+                .filter(c -> !c.isLeaf())
+                .sorted((c1, c2) -> getCategoryDepth(c2, categoryMap) - getCategoryDepth(c1, categoryMap))
+                .toList();
+
+        // 计算每个父分类的文章数（包含所有子分类）
+        // 由于已经按深度降序排序，最深的分类会先被处理
+        for (Category parent : parentCategories) {
+            int totalCount = calculateTotalArticleCountForCategory(parent.getId(), categoryMap);
+            parent.setArticleCount(totalCount);
+            categoryRepository.save(parent);
+            // 更新Map中的值，以便上层分类计算时使用
+            categoryMap.get(parent.getId()).setArticleCount(totalCount);
+        }
+    }
+
+    /**
+     * 获取分类的层级深度
+     */
+    private int getCategoryDepth(Category category, Map<Long, Category> categoryMap) {
+        int depth = 0;
+        Long parentId = category.getParentId();
+        while (parentId != null) {
+            depth++;
+            Category parent = categoryMap.get(parentId);
+            if (parent == null) {
+                break;
+            }
+            parentId = parent.getParentId();
+        }
+        return depth;
+    }
+
+    /**
+     * 递归计算分类的总文章数（包含所有子分类）
+     */
+    private int calculateTotalArticleCountForCategory(Long categoryId, Map<Long, Category> categoryMap) {
+        Category category = categoryMap.get(categoryId);
+        if (category == null) {
+            return 0;
+        }
+
+        // 如果是叶子分类，直接返回文章数
+        if (category.isLeaf()) {
+            return category.getArticleCount() != null ? category.getArticleCount() : 0;
+        }
+
+        // 获取所有子分类
+        List<Category> children = categoryMap.values().stream()
+                .filter(c -> categoryId.equals(c.getParentId()))
+                .toList();
+
+        // 累加所有子分类的文章数
+        int totalCount = 0;
+        for (Category child : children) {
+            totalCount += calculateTotalArticleCountForCategory(child.getId(), categoryMap);
+        }
+
+        return totalCount;
     }
 
     /**
@@ -186,6 +285,7 @@ public class CategoryAppService {
      * 删除分类
      */
     @Transactional
+    @CacheEvict(allEntries = true)
     public void delete(Long id) {
         Category category = categoryRepository.findById(id)
                 .orElseThrow(() -> new BusinessException("分类不存在"));
@@ -224,6 +324,8 @@ public class CategoryAppService {
         categoryRepository.save(category);
     }
 
+    private static final int MAX_CATEGORY_DEPTH = 5;
+
     /**
      * 验证父分类的合法性
      * 包含直接循环检测（A->A）和间接循环检测（A->B->C->A）
@@ -249,6 +351,29 @@ public class CategoryAppService {
         // 间接循环检测：检查父分类链是否包含当前分类（避免 A->B->C->A）
         if (currentId != null) {
             detectCircularReference(currentId, parentId);
+        }
+
+        // 层数限制检测：防止嵌套过深导致性能问题
+        validateCategoryDepth(parentId);
+    }
+
+    /**
+     * 验证分类嵌套层数不超过最大限制
+     */
+    private void validateCategoryDepth(Long parentId) {
+        int depth = 1; // 当前要创建的分类算第1层
+        Long currentParentId = parentId;
+
+        while (currentParentId != null) {
+            depth++;
+            if (depth > MAX_CATEGORY_DEPTH) {
+                throw new BusinessException("分类嵌套层数不能超过" + MAX_CATEGORY_DEPTH + "层");
+            }
+            Category currentParent = categoryRepository.findById(currentParentId).orElse(null);
+            if (currentParent == null) {
+                break;
+            }
+            currentParentId = currentParent.getParentId();
         }
     }
 
@@ -287,9 +412,12 @@ public class CategoryAppService {
      * 构建树形结构
      */
     private List<CategoryDTO> buildTree(List<Category> categories) {
-        // 转换为DTO
+        // 批量获取文章数（避免N+1查询）
+        Map<Long, Integer> articleCountMap = batchGetArticleCounts(categories);
+
+        // 转换为DTO（使用预计算的文章数）
         List<CategoryDTO> dtoList = categories.stream()
-                .map(this::toDTO)
+                .map(cat -> toDTO(cat, articleCountMap))
                 .toList();
 
         // 按parentId分组，并对每个分组内的子节点按sort排序
@@ -342,7 +470,7 @@ public class CategoryAppService {
     }
 
     /**
-     * 转换为DTO
+     * 转换为DTO（实时查询文章数）
      */
     private CategoryDTO toDTO(Category category) {
         CategoryDTO dto = new CategoryDTO();
@@ -351,6 +479,41 @@ public class CategoryAppService {
         // 显式映射时间字段（字段名不一致）
         dto.setCreateTime(category.getCreatedAt());
         dto.setUpdateTime(category.getUpdatedAt());
+        // 实时统计文章数（只统计已发布且未删除的文章）
+        Long count = articleRepository.countByCategoryId(category.getId());
+        dto.setArticleCount(count.intValue());
         return dto;
+    }
+
+    /**
+     * 转换为DTO（使用预计算的批量文章数）
+     */
+    private CategoryDTO toDTO(Category category, Map<Long, Integer> articleCountMap) {
+        CategoryDTO dto = new CategoryDTO();
+        BeanUtils.copyProperties(category, dto);
+        dto.setId(category.getId());
+        // 显式映射时间字段（字段名不一致）
+        dto.setCreateTime(category.getCreatedAt());
+        dto.setUpdateTime(category.getUpdatedAt());
+        // 使用预计算的文章数（只统计已发布且未删除的文章）
+        dto.setArticleCount(articleCountMap.getOrDefault(category.getId(), 0));
+        return dto;
+    }
+
+    /**
+     * 批量获取分类文章数
+     * 只统计已发布(status=1)且未删除的文章
+     */
+    private Map<Long, Integer> batchGetArticleCounts(List<Category> categories) {
+        if (categories.isEmpty()) {
+            return Map.of();
+        }
+
+        List<Long> categoryIds = categories.stream()
+                .map(Category::getId)
+                .toList();
+
+        // 批量查询文章数
+        return articleRepository.countByCategoryIds(categoryIds);
     }
 }

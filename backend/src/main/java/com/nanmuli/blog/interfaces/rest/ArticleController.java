@@ -96,6 +96,9 @@ public class ArticleController {
     @GetMapping("/article/{articleId}/stats")
     @Operation(summary = "获取文章访问统计")
     public Result<ArticleStatsDTO> getArticleStats(@PathVariable Long articleId) {
+        if (articleId == null || articleId <= 0) {
+            return Result.error(400, "文章ID无效");
+        }
         return Result.success(articleAppService.getArticleStats(articleId));
     }
 

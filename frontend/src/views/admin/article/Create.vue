@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { reactive, ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { reactive, ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { useRouter, onBeforeRouteLeave } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { createArticle } from '@/api/article'
 import { getLeafCategoryList } from '@/api/category'
 import MarkdownEditor from '@/components/editor/MarkdownEditor.vue'
@@ -25,6 +25,75 @@ const form = reactive({
   status: 1,
 })
 
+// 自动保存相关
+const DRAFT_KEY = 'article_draft_create'
+const DRAFT_TIME_KEY = 'article_draft_create_time'
+let autoSaveInterval: number | null = null
+
+// 未保存修改标记
+const hasUnsavedChanges = ref(false)
+
+// 监听表单变化
+watch(form, () => {
+  hasUnsavedChanges.value = true
+}, { deep: true, flush: 'post' })
+
+// 浏览器原生离开提示
+function handleBeforeUnload(e: BeforeUnloadEvent) {
+  if (hasUnsavedChanges.value) {
+    e.preventDefault()
+    e.returnValue = ''
+  }
+}
+
+// 恢复草稿
+function restoreDraft() {
+  const draft = localStorage.getItem(DRAFT_KEY)
+  const draftTime = localStorage.getItem(DRAFT_TIME_KEY)
+  if (draft && draftTime) {
+    const hours = (Date.now() - parseInt(draftTime)) / 3600000
+    if (hours < 24) {
+      ElMessageBox.confirm('检测到有未提交的草稿，是否恢复？', '提示', {
+        confirmButtonText: '恢复',
+        cancelButtonText: '放弃',
+        type: 'info',
+      })
+        .then(() => {
+          const draftData = JSON.parse(draft)
+          Object.assign(form, draftData)
+          ElMessage.success('草稿已恢复')
+        })
+        .catch(() => {
+          localStorage.removeItem(DRAFT_KEY)
+          localStorage.removeItem(DRAFT_TIME_KEY)
+        })
+    } else {
+      localStorage.removeItem(DRAFT_KEY)
+      localStorage.removeItem(DRAFT_TIME_KEY)
+    }
+  }
+}
+
+// 自动保存
+function startAutoSave() {
+  autoSaveInterval = window.setInterval(() => {
+    if (form.title || form.content) {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(form))
+      localStorage.setItem(DRAFT_TIME_KEY, Date.now().toString())
+    }
+  }, 30000) // 每30秒保存一次
+}
+
+// 清除草稿
+function clearDraft() {
+  localStorage.removeItem(DRAFT_KEY)
+  localStorage.removeItem(DRAFT_TIME_KEY)
+  if (autoSaveInterval) {
+    clearInterval(autoSaveInterval)
+    autoSaveInterval = null
+  }
+}
+
 const rules: FormRules = {
   title: [{ required: true, message: '请输入标题', trigger: 'blur' }],
   content: [{ required: true, message: '请输入内容', trigger: 'blur' }],
@@ -39,7 +108,7 @@ async function fetchCategories() {
 }
 
 async function handleSubmit(): Promise<void> {
-  if (!formRef.value) return
+  if (!formRef.value || loading.value) return
 
   await formRef.value.validate(async (valid) => {
     if (!valid) return
@@ -47,6 +116,8 @@ async function handleSubmit(): Promise<void> {
     loading.value = true
     try {
       await createArticle(form)
+      hasUnsavedChanges.value = false // 重置未保存标记
+      clearDraft() // 发布成功后清除草稿
       ElMessage.success('创建成功')
       router.push('/admin/article')
     } catch {
@@ -63,6 +134,35 @@ function handleCancel(): void {
 
 onMounted(() => {
   fetchCategories()
+  restoreDraft()
+  startAutoSave()
+  window.addEventListener('beforeunload', handleBeforeUnload)
+})
+
+onBeforeUnmount(() => {
+  if (autoSaveInterval) {
+    clearInterval(autoSaveInterval)
+  }
+  window.removeEventListener('beforeunload', handleBeforeUnload)
+})
+
+// 路由离开守卫
+onBeforeRouteLeave((_to, _from, next) => {
+  if (hasUnsavedChanges.value) {
+    ElMessageBox.confirm('有未保存的修改，确定要离开吗？', '提示', {
+      confirmButtonText: '离开',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+      .then(() => {
+        next()
+      })
+      .catch(() => {
+        next(false)
+      })
+  } else {
+    next()
+  }
 })
 </script>
 
@@ -80,11 +180,11 @@ onMounted(() => {
       class="max-w-4xl"
     >
       <el-form-item label="标题" prop="title">
-        <el-input v-model="form.title" placeholder="请输入文章标题" />
+        <el-input v-model="form.title" placeholder="请输入文章标题" maxlength="200" show-word-limit />
       </el-form-item>
 
       <el-form-item label="分类">
-        <el-select v-model="form.categoryId" placeholder="选择分类" clearable class="w-full">
+        <el-select v-model="form.categoryId" filterable placeholder="选择分类" clearable class="w-full">
           <el-option
             v-for="cat in categories"
             :key="cat.id"
@@ -100,11 +200,13 @@ onMounted(() => {
           type="textarea"
           :rows="3"
           placeholder="文章摘要，留空自动生成"
+          maxlength="500"
+          show-word-limit
         />
       </el-form-item>
 
       <el-form-item label="封面图">
-        <el-input v-model="form.cover" placeholder="封面图URL" />
+        <el-input v-model="form.cover" placeholder="封面图URL" maxlength="500" />
       </el-form-item>
 
       <el-form-item label="内容" prop="content">
@@ -117,7 +219,7 @@ onMounted(() => {
       </el-form-item>
 
       <el-form-item v-if="!form.isOriginal" label="原文链接">
-        <el-input v-model="form.originalUrl" placeholder="转载文章的原文链接" />
+        <el-input v-model="form.originalUrl" placeholder="转载文章的原文链接" maxlength="500" />
       </el-form-item>
 
       <el-form-item label="发布状态">

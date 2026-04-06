@@ -1,5 +1,5 @@
-# 个人技术博客系统 - 简化版开发方案
-## 基于 Spring Boot 3.5 + Vue 3 + 阿里云ECS（无评论模块）
+# 个人技术博客系统 - 开发方案
+## 基于 Spring Boot 3.3 + Vue 3 + DDD 架构
 
 ---
 
@@ -15,12 +15,11 @@
 - **访客**：只能浏览，不能互动（无评论）
 
 ### 1.3 核心功能
-1. ✅ 文章管理（Markdown编辑、发布、分类、标签）
-2. ✅ 技术日志（快速记录、时间线展示）
-3. ✅ 个人展示（关于页面、技能展示、项目展示）
-4. ✅ 内容搜索（全文搜索）
-5. ✅ AI辅助（智能标签、文章摘要）
-6. ✅ 数据统计（访问量、文章统计）
+1. 文章管理（Markdown编辑、发布、分类、标签）
+2. 技术日志（快速记录、时间线展示）
+3. 个人展示（关于页面、技能展示、项目展示）
+4. 数据统计（文章浏览量、独立访客统计）
+5. AI辅助（智能标签、文章摘要 - 预留接口）
 
 ---
 
@@ -36,11 +35,11 @@
 │  ┌──────────────────────┐         ┌──────────────────────────┐ │
 │  │       前端层          │         │          后端层           │ │
 │  │  ┌────────────────┐  │         │  ┌────────────────────┐   │ │
-│  │  │   Vue 3        │  │         │  │  Spring Boot 3.5   │   │ │
+│  │  │   Vue 3        │  │         │  │  Spring Boot 3.3   │   │ │
 │  │  │   + Vite       │  │◄───────►│  │  + Java 21         │   │ │
-│  │  │   + TypeScript │  │  HTTP   │  │  + MyBatis Plus    │   │ │
-│  │  │   + Tailwind   │  │         │  │  + Sa-Token        │   │ │
-│  │  │   + Pinia      │  │         │  │  + Validation      │   │ │
+│  │  │   + TypeScript │  │  HTTP   │  │  + DDD架构         │   │ │
+│  │  │   + Tailwind   │  │         │  │  + MyBatis Plus    │   │ │
+│  │  │   + Pinia      │  │         │  │  + Sa-Token        │   │ │
 │  │  │   + Element+   │  │         │  └────────────────────┘   │ │
 │  │  └────────────────┘  │         └───────────┬───────────────┘ │
 │  └──────────────────────┘                     │                 │
@@ -52,14 +51,9 @@
 │  │  └────────────────┘  │         │  └─────────────────┘   │    │
 │  └──────────────────────┘         │  ┌─────────────────┐   │    │
 │                                     │  │     Redis       │   │    │
-│  ┌──────────────────────┐         │  │   (缓存/会话)    │   │    │
-│  │    AI能力层          │         │  └─────────────────┘   │    │
-│  │  ┌────────────────┐  │         └────────────────────────┘    │
-│  │  │  Spring AI     │  │                                      │
-│  │  │  + DashScope   │  │                                      │
-│  │  │  (通义千问)     │  │                                      │
-│  │  └────────────────┘  │                                      │
-│  └──────────────────────┘                                      │
+│                                     │  │   (缓存/会话)    │   │    │
+│                                     │  └─────────────────┘   │    │
+│                                     └────────────────────────┘    │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -68,30 +62,271 @@
 
 | 层级 | 技术选型 | 版本 |
 |------|----------|------|
-| **后端** | Spring Boot | 3.5.x |
-| **JDK** | Java | 21 |
-| **ORM** | MyBatis Plus | 3.5.5 |
+| **后端** | Spring Boot | 3.3.5 |
+| **JDK** | Java | 21 LTS |
+| **ORM** | MyBatis Plus | 3.5.9 |
 | **数据库** | PostgreSQL | 15+ |
 | **缓存** | Redis | 7+ |
-| **认证** | Sa-Token | 1.44+ |
-| **API文档** | Knife4j | 4.4+ |
-| **工具库** | Hutool | 5.8+ |
-| **前端** | Vue | 3.4+ |
-| **构建** | Vite | 5+ |
-| **类型** | TypeScript | 5+ |
-| **样式** | Tailwind CSS | 3.4+ |
-| **UI组件** | Element Plus | 2.5+ |
-| **状态** | Pinia | 2+ |
-| **Markdown** | md-editor-v3 | 4+ |
+| **认证** | Sa-Token | 1.44.0 |
+| **API文档** | Knife4j | 4.4.0 |
+| **工具库** | Hutool | 5.8.36 |
+| **前端** | Vue | 3.4.15 |
+| **构建** | Vite | 5.0.11 |
+| **类型** | TypeScript | 5.3.3 |
+| **样式** | Tailwind CSS | 3.4.1 |
+| **UI组件** | Element Plus | 2.5.1 |
+| **状态** | Pinia | 2.1.7 |
+| **Markdown** | md-editor-v3 | 4.11.0 |
 | **搜索** | Pagefind | 1+ |
-| **AI** | Spring AI | 0.8+ |
-| **AI模型** | DashScope | - |
 
 ---
 
-## 三、数据库设计（简化版）
+## 三、DDD 分层架构
 
-### 3.1 表结构概览
+### 3.1 架构分层图
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      Interfaces 接口层                           │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
+│  │ Controller  │  │  Exception  │  │      DTO/Command        │  │
+│  │   REST API  │  │   Handler   │  │     (入参/出参)          │  │
+│  └─────────────┘  └─────────────┘  └─────────────────────────┘  │
+├─────────────────────────────────────────────────────────────────┤
+│                    Application 应用层                           │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │              AppService (应用服务)                       │   │
+│  │     - 编排领域对象完成用例                                │   │
+│  │     - 事务控制                                           │   │
+│  │     - 跨聚合协调                                         │   │
+│  │     - 发布领域事件                                       │   │
+│  └─────────────────────────────────────────────────────────┘   │
+├─────────────────────────────────────────────────────────────────┤
+│                     Domain 领域层                               │
+│  ┌────────────┐  ┌────────────┐  ┌────────────┐                │
+│  │  Entity    │  │ ValueObject│  │ Repository │                │
+│  │  (聚合根)   │  │   (值对象)  │  │  (接口)     │                │
+│  ├────────────┤  ├────────────┤  ├────────────┤                │
+│  │ DomainEvent│  │  Enum      │  │ DomainSvc  │                │
+│  └────────────┘  └────────────┘  └────────────┘                │
+├─────────────────────────────────────────────────────────────────┤
+│                  Infrastructure 基础设施层                       │
+│  ┌────────────┐  ┌────────────┐  ┌────────────┐                │
+│  │  Mapper    │  │RepositoryImpl│  │   Config   │                │
+│  │ (数据访问)  │  │  (仓储实现)  │  │   (配置类)  │                │
+│  └────────────┘  └────────────┘  └────────────┘                │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 3.2 分层调用规则
+
+| 规则 | 说明 |
+|------|------|
+| 允许 | `Controller` → `AppService` → `Repository` |
+| 允许 | `AppService` 调用多个聚合的 `Repository` |
+| 允许 | `RepositoryImpl` 实现 `Repository` 接口 |
+| 禁止 | `Controller` 直接调用 `Repository` |
+| 禁止 | `AppService` 之间互相调用 |
+| 禁止 | 领域层依赖应用层/接口层 |
+| 禁止 | 跨聚合直接操作实体（必须通过聚合根）|
+
+### 3.3 包结构规范
+
+```
+com.nanmuli.blog
+├── domain                          # 领域层 - 核心业务逻辑
+│   ├── article                     # 文章聚合
+│   │   ├── Article.java            # 聚合根实体
+│   │   ├── ArticleId.java          # 值对象（ID包装）
+│   │   ├── ArticleStatus.java      # 枚举（1=发布, 2=草稿, 3=回收）
+│   │   ├── ArticleRepository.java  # 仓储接口
+│   │   ├── ArticleViewRecord.java  # 阅读记录实体
+│   │   ├── ArticleVisitLog.java    # 访问日志实体
+│   │   └── event/                  # 领域事件
+│   │       ├── ArticleCreatedEvent.java
+│   │       └── ArticlePublishedEvent.java
+│   ├── category                    # 分类聚合
+│   ├── dailylog                    # 技术日志聚合
+│   ├── skill                       # 技能展示聚合
+│   ├── project                     # 项目展示聚合
+│   ├── friendlink                  # 友链聚合
+│   ├── config                      # 系统配置聚合
+│   ├── file                        # 文件聚合
+│   ├── user                        # 用户聚合
+│   └── ai                          # AI生成聚合
+│
+├── application                     # 应用层 - 用例编排
+│   ├── article
+│   │   ├── ArticleAppService.java           # 应用服务
+│   │   ├── command/CreateArticleCommand.java # 命令对象（写）
+│   │   ├── dto/ArticleDTO.java               # 数据传输对象（读）
+│   │   └── query/ArticlePageQuery.java       # 查询对象
+│   └── ...
+│
+├── interfaces                      # 接口层 - 外部交互
+│   ├── rest                        # REST控制器
+│   │   ├── ArticleController.java
+│   │   ├── AuthController.java
+│   │   └── ...
+│   ├── handler                     # 异常处理器
+│   └── filter                      # 过滤器
+│       └── TraceIdFilter.java
+│
+├── infrastructure                  # 基础设施层
+│   ├── config                      # 配置类
+│   │   ├── db/MyBatisPlusConfig.java
+│   │   ├── cache/RedisConfig.java
+│   │   ├── security/SaTokenConfig.java
+│   │   └── web/Knife4jConfig.java
+│   └── persistence                 # 持久化实现
+│       └── article
+│           ├── ArticleMapper.java
+│           └── ArticleRepositoryImpl.java
+│
+└── shared                          # 共享内核
+    ├── domain                      # 共享领域基类
+    │   └── BaseAggregateRoot.java
+    ├── result                      # 统一响应
+    │   ├── Result.java
+    │   └── PageResult.java
+    ├── exception                   # 异常定义
+    │   └── BusinessException.java
+    └── util                        # 工具类
+        └── MarkdownUtil.java
+```
+
+### 3.4 核心实体设计
+
+#### 实体基类（BaseAggregateRoot）
+
+```java
+@Getter
+public abstract class BaseAggregateRoot<ID extends Serializable> implements Serializable {
+    @TableId(type = IdType.ASSIGN_ID)
+    protected ID id;
+
+    @TableField(fill = FieldFill.INSERT)
+    protected LocalDateTime createdAt;
+
+    @TableField(fill = FieldFill.INSERT_UPDATE)
+    protected LocalDateTime updatedAt;
+
+    @TableLogic
+    @TableField(fill = FieldFill.INSERT)
+    protected Boolean isDeleted;
+
+    public boolean isNew() {
+        return id == null;
+    }
+}
+```
+
+#### 文章实体（Article）
+
+```java
+@Getter
+@Setter
+@EqualsAndHashCode(callSuper = false)
+public class Article extends BaseAggregateRoot<Long> {
+    private String title;           // 标题
+    private String slug;            // 别名（URL友好）
+    private String content;         // Markdown内容
+    private String contentHtml;     // 渲染后的HTML
+    private String summary;         // 摘要
+    private String cover;           // 封面图URL
+    private Long categoryId;        // 分类ID
+    private Long userId;            // 作者ID
+    private Integer viewCount;      // 浏览量
+    private Integer likeCount;      // 点赞数
+    private Integer wordCount;      // 字数
+    private Integer readingTime;    // 阅读时间（分钟）
+    private Integer status;         // 状态（1=发布, 2=草稿, 3=回收）
+    private Boolean isTop;          // 是否置顶
+    private Boolean isOriginal;     // 是否原创
+    private String originalUrl;     // 原文链接（非原创时）
+    private LocalDateTime publishTime; // 发布时间
+
+    // 领域方法
+    public void publish() { this.status = 1; this.publishTime = LocalDateTime.now(); }
+    public void draft() { this.status = 2; }
+    public void recycle() { this.status = 3; }
+    public boolean isPublished() { return status != null && status == 1; }
+
+    public void calculateWordCount() {
+        if (this.content != null) {
+            this.wordCount = this.content.replaceAll("\\s+", "").length();
+            this.readingTime = Math.max(1, this.wordCount / 300);
+        }
+    }
+}
+```
+
+### 3.5 应用服务（Application Service）
+
+```java
+@Slf4j
+@Service
+@RequiredArgsConstructor
+@CacheConfig(cacheNames = "article")
+@Transactional(readOnly = true)
+public class ArticleAppService {
+
+    private final ArticleRepository articleRepository;
+    private final CategoryRepository categoryRepository;
+    private final ApplicationEventPublisher eventPublisher;
+    private final MarkdownUtil markdownUtil;
+
+    @Transactional
+    @CacheEvict(cacheNames = "article:list", allEntries = true)
+    public Long create(CreateArticleCommand command) {
+        // 1. 验证（slug唯一性、叶子分类）
+        // 2. 创建领域对象
+        // 3. 生成HTML、摘要
+        // 4. 持久化
+        // 5. 发布事件
+        // 6. 返回ID
+    }
+
+    @Cacheable(key = "#slug")
+    public ArticleDTO getBySlug(String slug) { }
+}
+```
+
+### 3.6 控制器（Controller）
+
+```java
+@Tag(name = "文章管理")
+@RestController
+@RequestMapping("/api")
+@RequiredArgsConstructor
+public class ArticleController {
+
+    private final ArticleAppService articleAppService;
+
+    // 公开接口
+    @GetMapping("/article/list")
+    public Result<PageResult<ArticleDTO>> list(ArticlePageQuery query) { }
+
+    @GetMapping("/article/{slug}")
+    public Result<ArticleDTO> detail(@PathVariable String slug) { }
+
+    // 管理接口（需登录）
+    @PostMapping("/admin/article")
+    public Result<Long> create(@Valid @RequestBody CreateArticleCommand command) { }
+
+    @PutMapping("/admin/article/{id}")
+    public Result<Void> update(@PathVariable Long id, @Valid @RequestBody UpdateArticleCommand command) { }
+
+    @DeleteMapping("/admin/article/{id}")
+    public Result<Void> delete(@PathVariable Long id) { }
+}
+```
+
+---
+
+## 四、数据库设计
+
+### 4.1 表结构概览
 
 | 表名 | 说明 | 数据量预估 |
 |------|------|------------|
@@ -101,81 +336,29 @@
 | sys_config | 系统配置 | < 30 |
 | sys_operation_log | 操作日志 | < 10,000 |
 | article | 文章表 | < 500 |
-| article_draft | 草稿表 | < 50 |
+| article_view_record | 文章阅读记录（UV统计） | < 50,000 |
+| article_visit_log | 文章访问日志（PV统计） | < 100,000 |
 | daily_log | 技术日志表 | < 1,000 |
 | category | 分类表 | < 15 |
 | tag | 标签表 | < 50 |
 | article_tag | 文章标签关联表 | < 2,000 |
-| project_showcase | 项目展示表 | < 20 |
+| project | 项目展示表 | < 20 |
 | skill | 技能表 | < 30 |
+| friend_link | 友链表 | < 30 |
 | ai_generation | AI生成记录表 | < 1,000 |
-| article_vector | 文章向量表 | < 500 |
 
-### 3.2 数据库表详细设计
+### 4.2 核心表设计
 
-#### 3.2.1 用户模块
-
-```sql
--- ============================================
--- 用户表 (sys_user)
--- ============================================
-CREATE TABLE sys_user (
-    id BIGSERIAL PRIMARY KEY COMMENT '用户ID',
-    username VARCHAR(50) NOT NULL UNIQUE COMMENT '用户名',
-    password VARCHAR(100) NOT NULL COMMENT '密码（BCrypt加密）',
-    nickname VARCHAR(50) COMMENT '昵称',
-    avatar VARCHAR(255) COMMENT '头像URL',
-    email VARCHAR(100) COMMENT '邮箱',
-    phone VARCHAR(20) COMMENT '手机号',
-    role VARCHAR(20) NOT NULL DEFAULT 'ADMIN' COMMENT '角色：ADMIN-管理员',
-    status INT NOT NULL DEFAULT 1 COMMENT '状态：1-正常 0-禁用',
-    login_ip VARCHAR(50) COMMENT '最后登录IP',
-    login_time TIMESTAMP COMMENT '最后登录时间',
-    create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间',
-    deleted BOOLEAN NOT NULL DEFAULT FALSE COMMENT '逻辑删除'
-);
-
-COMMENT ON TABLE sys_user IS '用户表（仅管理员）';
-
--- 索引
-CREATE INDEX idx_sys_user_username ON sys_user(username);
-CREATE INDEX idx_sys_user_deleted ON sys_user(deleted);
-
--- ============================================
--- 用户登录日志表 (sys_login_log)
--- ============================================
-CREATE TABLE sys_login_log (
-    id BIGSERIAL PRIMARY KEY COMMENT '日志ID',
-    user_id BIGINT COMMENT '用户ID',
-    username VARCHAR(50) COMMENT '用户名',
-    ip VARCHAR(50) COMMENT '登录IP',
-    location VARCHAR(100) COMMENT '登录地点',
-    user_agent VARCHAR(500) COMMENT '浏览器UA',
-    status INT NOT NULL DEFAULT 1 COMMENT '状态：1-成功 0-失败',
-    message VARCHAR(200) COMMENT '消息',
-    create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间'
-);
-
-COMMENT ON TABLE sys_login_log IS '用户登录日志表';
-
-CREATE INDEX idx_login_log_user_id ON sys_login_log(user_id);
-CREATE INDEX idx_login_log_create_time ON sys_login_log(create_time);
-```
-
-#### 3.2.2 文章模块
+#### 文章表 (article)
 
 ```sql
--- ============================================
--- 文章表 (article)
--- ============================================
 CREATE TABLE article (
     id BIGSERIAL PRIMARY KEY COMMENT '文章ID',
     title VARCHAR(200) NOT NULL COMMENT '标题',
-    slug VARCHAR(200) UNIQUE COMMENT 'URL别名（用于SEO）',
+    slug VARCHAR(200) UNIQUE COMMENT 'URL别名',
     content TEXT NOT NULL COMMENT '内容（Markdown）',
     content_html TEXT COMMENT '内容（HTML渲染后）',
-    summary VARCHAR(500) COMMENT '摘要（自动生成或手动填写）',
+    summary VARCHAR(500) COMMENT '摘要',
     cover VARCHAR(255) COMMENT '封面图URL',
     category_id BIGINT COMMENT '分类ID',
     user_id BIGINT NOT NULL COMMENT '作者ID',
@@ -186,86 +369,47 @@ CREATE TABLE article (
     status INT NOT NULL DEFAULT 1 COMMENT '状态：1-已发布 2-草稿 3-回收站',
     is_top BOOLEAN NOT NULL DEFAULT FALSE COMMENT '是否置顶',
     is_original BOOLEAN NOT NULL DEFAULT TRUE COMMENT '是否原创',
-    original_url VARCHAR(500) COMMENT '原文链接（转载时填写）',
+    original_url VARCHAR(500) COMMENT '原文链接',
     publish_time TIMESTAMP COMMENT '发布时间',
-    create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间',
-    deleted BOOLEAN NOT NULL DEFAULT FALSE COMMENT '逻辑删除',
-    
-    CONSTRAINT fk_article_category FOREIGN KEY (category_id) REFERENCES category(id),
-    CONSTRAINT fk_article_user FOREIGN KEY (user_id) REFERENCES sys_user(id)
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间',
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE COMMENT '逻辑删除',
+    version INT DEFAULT 0 COMMENT '乐观锁版本号'
 );
-
-COMMENT ON TABLE article IS '文章表';
-COMMENT ON COLUMN article.status IS '状态：1-已发布 2-草稿 3-回收站';
 
 -- 索引
 CREATE INDEX idx_article_category_id ON article(category_id);
 CREATE INDEX idx_article_status ON article(status);
 CREATE INDEX idx_article_is_top ON article(is_top);
 CREATE INDEX idx_article_publish_time ON article(publish_time DESC);
-CREATE INDEX idx_article_deleted ON article(deleted);
-CREATE INDEX idx_article_create_time ON article(create_time DESC);
-
--- 全文搜索索引
-CREATE INDEX idx_article_content_search ON article USING GIN (to_tsvector('chinese', content));
-CREATE INDEX idx_article_title_search ON article USING GIN (to_tsvector('chinese', title));
-
--- ============================================
--- 文章草稿表 (article_draft)
--- ============================================
-CREATE TABLE article_draft (
-    id BIGSERIAL PRIMARY KEY COMMENT '草稿ID',
-    article_id BIGINT COMMENT '关联的文章ID（新建时为null）',
-    title VARCHAR(200) COMMENT '标题',
-    content TEXT COMMENT '内容',
-    category_id BIGINT COMMENT '分类ID',
-    tags TEXT COMMENT '标签JSON数组',
-    auto_save BOOLEAN DEFAULT FALSE COMMENT '是否自动保存',
-    create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间',
-    
-    CONSTRAINT fk_draft_article FOREIGN KEY (article_id) REFERENCES article(id) ON DELETE CASCADE,
-    CONSTRAINT fk_draft_category FOREIGN KEY (category_id) REFERENCES category(id)
-);
-
-COMMENT ON TABLE article_draft IS '文章草稿表';
-
-CREATE INDEX idx_draft_article_id ON article_draft(article_id);
-CREATE INDEX idx_draft_update_time ON article_draft(update_time DESC);
-
--- ============================================
--- 技术日志表 (daily_log)
--- 用于快速记录每日技术笔记
--- ============================================
-CREATE TABLE daily_log (
-    id BIGSERIAL PRIMARY KEY COMMENT '日志ID',
-    content TEXT NOT NULL COMMENT '日志内容（Markdown）',
-    content_html TEXT COMMENT 'HTML渲染后内容',
-    mood VARCHAR(20) COMMENT '心情：happy-开心 excited-兴奋 normal-平静 tired-疲惫',
-    weather VARCHAR(20) COMMENT '天气',
-    tags TEXT COMMENT '标签JSON数组',
-    word_count INT COMMENT '字数',
-    log_date DATE NOT NULL COMMENT '日志日期',
-    create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间',
-    deleted BOOLEAN NOT NULL DEFAULT FALSE COMMENT '逻辑删除'
-);
-
-COMMENT ON TABLE daily_log IS '技术日志表（每日技术笔记）';
-COMMENT ON COLUMN daily_log.mood IS '心情：happy-开心 excited-兴奋 normal-平静 tired-疲惫';
-
--- 索引
-CREATE INDEX idx_daily_log_log_date ON daily_log(log_date DESC);
-CREATE INDEX idx_daily_log_deleted ON daily_log(deleted);
+CREATE INDEX idx_article_is_deleted ON article(is_deleted);
 ```
 
-#### 3.2.3 分类标签模块
+#### 文章阅读记录表 (article_view_record)
 
 ```sql
--- ============================================
--- 分类表 (category)
--- ============================================
+CREATE TABLE article_view_record (
+    id BIGSERIAL PRIMARY KEY COMMENT '记录ID',
+    article_id BIGINT NOT NULL COMMENT '文章ID',
+    visitor_id VARCHAR(64) NOT NULL COMMENT '访客标识',
+    ip_address VARCHAR(50) COMMENT 'IP地址',
+    user_agent VARCHAR(500) COMMENT '浏览器UA',
+    first_view_time TIMESTAMP NOT NULL COMMENT '首次访问时间',
+    last_view_time TIMESTAMP NOT NULL COMMENT '最后访问时间',
+    view_count INT NOT NULL DEFAULT 1 COMMENT '访问次数',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    
+    CONSTRAINT uk_article_visitor UNIQUE (article_id, visitor_id)
+);
+
+CREATE INDEX idx_avr_article_id ON article_view_record(article_id);
+CREATE INDEX idx_avr_visitor_id ON article_view_record(visitor_id);
+```
+
+#### 分类表 (category)
+
+```sql
 CREATE TABLE category (
     id BIGSERIAL PRIMARY KEY COMMENT '分类ID',
     name VARCHAR(50) NOT NULL COMMENT '分类名称',
@@ -275,501 +419,156 @@ CREATE TABLE category (
     color VARCHAR(20) COMMENT '颜色',
     sort INT NOT NULL DEFAULT 0 COMMENT '排序',
     parent_id BIGINT COMMENT '父分类ID（支持多级）',
+    is_leaf BOOLEAN NOT NULL DEFAULT TRUE COMMENT '是否叶子节点',
     article_count INT NOT NULL DEFAULT 0 COMMENT '文章数量',
     status INT NOT NULL DEFAULT 1 COMMENT '状态：1-正常 0-禁用',
-    create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间',
-    deleted BOOLEAN NOT NULL DEFAULT FALSE COMMENT '逻辑删除',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
     
     CONSTRAINT fk_category_parent FOREIGN KEY (parent_id) REFERENCES category(id)
 );
-
-COMMENT ON TABLE category IS '分类表';
-
-CREATE INDEX idx_category_parent_id ON category(parent_id);
-CREATE INDEX idx_category_sort ON category(sort);
-CREATE INDEX idx_category_status ON category(status);
-CREATE INDEX idx_category_deleted ON category(deleted);
-
--- ============================================
--- 标签表 (tag)
--- ============================================
-CREATE TABLE tag (
-    id BIGSERIAL PRIMARY KEY COMMENT '标签ID',
-    name VARCHAR(50) NOT NULL UNIQUE COMMENT '标签名称',
-    slug VARCHAR(50) UNIQUE COMMENT 'URL别名',
-    color VARCHAR(20) COMMENT '颜色',
-    icon VARCHAR(50) COMMENT '图标',
-    description VARCHAR(200) COMMENT '描述',
-    article_count INT NOT NULL DEFAULT 0 COMMENT '文章数量',
-    status INT NOT NULL DEFAULT 1 COMMENT '状态：1-正常 0-禁用',
-    create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间',
-    deleted BOOLEAN NOT NULL DEFAULT FALSE COMMENT '逻辑删除'
-);
-
-COMMENT ON TABLE tag IS '标签表';
-
-CREATE INDEX idx_tag_name ON tag(name);
-CREATE INDEX idx_tag_status ON tag(status);
-CREATE INDEX idx_tag_deleted ON tag(deleted);
-
--- ============================================
--- 文章-标签关联表 (article_tag)
--- ============================================
-CREATE TABLE article_tag (
-    article_id BIGINT NOT NULL COMMENT '文章ID',
-    tag_id BIGINT NOT NULL COMMENT '标签ID',
-    create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    
-    PRIMARY KEY (article_id, tag_id),
-    CONSTRAINT fk_at_article FOREIGN KEY (article_id) REFERENCES article(id) ON DELETE CASCADE,
-    CONSTRAINT fk_at_tag FOREIGN KEY (tag_id) REFERENCES tag(id) ON DELETE CASCADE
-);
-
-COMMENT ON TABLE article_tag IS '文章-标签关联表';
-
-CREATE INDEX idx_at_tag_id ON article_tag(tag_id);
-```
-
-#### 3.2.4 个人展示模块
-
-```sql
--- ============================================
--- 项目展示表 (project_showcase)
--- 用于展示个人项目
--- ============================================
-CREATE TABLE project_showcase (
-    id BIGSERIAL PRIMARY KEY COMMENT '项目ID',
-    name VARCHAR(100) NOT NULL COMMENT '项目名称',
-    slug VARCHAR(100) UNIQUE COMMENT 'URL别名',
-    description TEXT COMMENT '项目描述',
-    cover VARCHAR(255) COMMENT '项目封面',
-    screenshots TEXT COMMENT '截图JSON数组',
-    tech_stack TEXT COMMENT '技术栈JSON数组',
-    github_url VARCHAR(500) COMMENT 'GitHub链接',
-    demo_url VARCHAR(500) COMMENT '演示链接',
-    doc_url VARCHAR(500) COMMENT '文档链接',
-    sort INT NOT NULL DEFAULT 0 COMMENT '排序',
-    status INT NOT NULL DEFAULT 1 COMMENT '状态：1-展示中 0-隐藏',
-    start_date DATE COMMENT '开始日期',
-    end_date DATE COMMENT '结束日期',
-    create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间',
-    deleted BOOLEAN NOT NULL DEFAULT FALSE COMMENT '逻辑删除'
-);
-
-COMMENT ON TABLE project_showcase IS '项目展示表';
-
-CREATE INDEX idx_project_sort ON project_showcase(sort);
-CREATE INDEX idx_project_status ON project_showcase(status);
-CREATE INDEX idx_project_deleted ON project_showcase(deleted);
-
--- ============================================
--- 技能表 (skill)
--- 用于展示个人技能
--- ============================================
-CREATE TABLE skill (
-    id BIGSERIAL PRIMARY KEY COMMENT '技能ID',
-    name VARCHAR(50) NOT NULL COMMENT '技能名称',
-    category VARCHAR(50) COMMENT '技能分类：language-语言 framework-框架 tool-工具 other-其他',
-    proficiency INT COMMENT '熟练度：1-5',
-    icon VARCHAR(255) COMMENT '图标',
-    color VARCHAR(20) COMMENT '颜色',
-    description VARCHAR(200) COMMENT '描述',
-    sort INT NOT NULL DEFAULT 0 COMMENT '排序',
-    status INT NOT NULL DEFAULT 1 COMMENT '状态：1-展示中 0-隐藏',
-    create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间',
-    deleted BOOLEAN NOT NULL DEFAULT FALSE COMMENT '逻辑删除'
-);
-
-COMMENT ON TABLE skill IS '技能表';
-COMMENT ON COLUMN skill.category IS '技能分类：language-语言 framework-框架 tool-工具 other-其他';
-COMMENT ON COLUMN skill.proficiency IS '熟练度：1-5';
-
-CREATE INDEX idx_skill_category ON skill(category);
-CREATE INDEX idx_skill_sort ON skill(sort);
-CREATE INDEX idx_skill_status ON skill(status);
-CREATE INDEX idx_skill_deleted ON skill(deleted);
-```
-
-#### 3.2.5 文件管理模块
-
-```sql
--- ============================================
--- 文件表 (sys_file)
--- ============================================
-CREATE TABLE sys_file (
-    id BIGSERIAL PRIMARY KEY COMMENT '文件ID',
-    original_name VARCHAR(255) NOT NULL COMMENT '原始文件名',
-    file_name VARCHAR(255) NOT NULL COMMENT '存储文件名',
-    file_path VARCHAR(500) NOT NULL COMMENT '文件路径',
-    file_url VARCHAR(500) NOT NULL COMMENT '访问URL',
-    file_type VARCHAR(50) COMMENT '文件类型',
-    file_size BIGINT COMMENT '文件大小（字节）',
-    mime_type VARCHAR(100) COMMENT 'MIME类型',
-    md5 VARCHAR(32) COMMENT '文件MD5',
-    width INT COMMENT '图片宽度',
-    height INT COMMENT '图片高度',
-    user_id BIGINT COMMENT '上传用户ID',
-    storage_type VARCHAR(20) DEFAULT 'local' COMMENT '存储类型：local-本地 minio-Minio oss-阿里云OSS',
-    usage_type VARCHAR(50) COMMENT '用途：article-文章封面 project-项目图 avatar-头像 log-日志图',
-    ref_id BIGINT COMMENT '关联ID',
-    create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    deleted BOOLEAN NOT NULL DEFAULT FALSE COMMENT '逻辑删除',
-    
-    CONSTRAINT fk_file_user FOREIGN KEY (user_id) REFERENCES sys_user(id)
-);
-
-COMMENT ON TABLE sys_file IS '文件表';
-
-CREATE INDEX idx_file_user_id ON sys_file(user_id);
-CREATE INDEX idx_file_md5 ON sys_file(md5);
-CREATE INDEX idx_file_usage_type ON sys_file(usage_type);
-CREATE INDEX idx_file_ref_id ON sys_file(ref_id);
-CREATE INDEX idx_file_deleted ON sys_file(deleted);
-```
-
-#### 3.2.6 系统配置模块
-
-```sql
--- ============================================
--- 系统配置表 (sys_config)
--- ============================================
-CREATE TABLE sys_config (
-    id BIGSERIAL PRIMARY KEY COMMENT '配置ID',
-    config_key VARCHAR(100) NOT NULL UNIQUE COMMENT '配置键',
-    config_value TEXT COMMENT '配置值',
-    default_value TEXT COMMENT '默认值',
-    description VARCHAR(200) COMMENT '描述',
-    group_name VARCHAR(50) COMMENT '分组',
-    is_public BOOLEAN DEFAULT FALSE COMMENT '是否公开',
-    create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间'
-);
-
-COMMENT ON TABLE sys_config IS '系统配置表';
-
-CREATE INDEX idx_config_key ON sys_config(config_key);
-CREATE INDEX idx_config_group ON sys_config(group_name);
-
--- ============================================
--- 友链表 (friend_link)
--- ============================================
-CREATE TABLE friend_link (
-    id BIGSERIAL PRIMARY KEY COMMENT '友链ID',
-    name VARCHAR(50) NOT NULL COMMENT '网站名称',
-    url VARCHAR(200) NOT NULL COMMENT '网站链接',
-    logo VARCHAR(255) COMMENT '网站Logo',
-    description VARCHAR(200) COMMENT '描述',
-    email VARCHAR(100) COMMENT '联系邮箱',
-    sort INT NOT NULL DEFAULT 0 COMMENT '排序',
-    status INT NOT NULL DEFAULT 1 COMMENT '状态：1-正常 2-待审核 0-禁用',
-    create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间'
-);
-
-COMMENT ON TABLE friend_link IS '友链表';
-
-CREATE INDEX idx_fl_status ON friend_link(status);
-CREATE INDEX idx_fl_sort ON friend_link(sort);
-
--- ============================================
--- 操作日志表 (sys_operation_log)
--- ============================================
-CREATE TABLE sys_operation_log (
-    id BIGSERIAL PRIMARY KEY COMMENT '日志ID',
-    user_id BIGINT COMMENT '用户ID',
-    username VARCHAR(50) COMMENT '用户名',
-    module VARCHAR(50) COMMENT '模块',
-    type VARCHAR(50) COMMENT '操作类型',
-    description VARCHAR(200) COMMENT '描述',
-    request_method VARCHAR(10) COMMENT '请求方法',
-    request_url VARCHAR(500) COMMENT '请求URL',
-    request_params TEXT COMMENT '请求参数',
-    response_data TEXT COMMENT '响应数据',
-    ip VARCHAR(50) COMMENT 'IP地址',
-    location VARCHAR(100) COMMENT '地理位置',
-    user_agent VARCHAR(500) COMMENT '浏览器UA',
-    execute_time BIGINT COMMENT '执行时间（毫秒）',
-    status INT COMMENT '状态：1-成功 0-失败',
-    error_msg TEXT COMMENT '错误信息',
-    create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间'
-);
-
-COMMENT ON TABLE sys_operation_log IS '操作日志表';
-
-CREATE INDEX idx_ol_user_id ON sys_operation_log(user_id);
-CREATE INDEX idx_ol_module ON sys_operation_log(module);
-CREATE INDEX idx_ol_create_time ON sys_operation_log(create_time DESC);
-```
-
-#### 3.2.7 AI模块
-
-```sql
--- ============================================
--- AI生成记录表 (ai_generation)
--- ============================================
-CREATE TABLE ai_generation (
-    id BIGSERIAL PRIMARY KEY COMMENT '记录ID',
-    article_id BIGINT NOT NULL COMMENT '文章ID',
-    type VARCHAR(20) NOT NULL COMMENT '类型：tags-标签 summary-摘要 recommend-推荐 content-内容生成',
-    prompt TEXT COMMENT '提示词',
-    content TEXT COMMENT '生成内容',
-    tokens_used INT COMMENT '使用的token数',
-    model VARCHAR(50) COMMENT '使用的模型',
-    status INT NOT NULL DEFAULT 1 COMMENT '状态：1-成功 0-失败',
-    error_msg TEXT COMMENT '错误信息',
-    create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    
-    CONSTRAINT fk_ag_article FOREIGN KEY (article_id) REFERENCES article(id) ON DELETE CASCADE
-);
-
-COMMENT ON TABLE ai_generation IS 'AI生成记录表';
-COMMENT ON COLUMN ai_generation.type IS '类型：tags-标签 summary-摘要 recommend-推荐 content-内容生成';
-
-CREATE INDEX idx_ag_article_id ON ai_generation(article_id);
-CREATE INDEX idx_ag_type ON ai_generation(type);
-CREATE INDEX idx_ag_create_time ON ai_generation(create_time DESC);
-
--- ============================================
--- 文章内容向量表 (article_vector)
--- 用于AI推荐和语义搜索
--- ============================================
-CREATE TABLE article_vector (
-    id BIGSERIAL PRIMARY KEY COMMENT 'ID',
-    article_id BIGINT NOT NULL UNIQUE COMMENT '文章ID',
-    content_vector vector(1536) COMMENT '内容向量（使用OpenAI或DashScope嵌入）',
-    summary_vector vector(1536) COMMENT '摘要向量',
-    keywords TEXT COMMENT '关键词JSON数组',
-    create_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    update_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间',
-    
-    CONSTRAINT fk_av_article FOREIGN KEY (article_id) REFERENCES article(id) ON DELETE CASCADE
-);
-
-COMMENT ON TABLE article_vector IS '文章内容向量表（用于AI推荐）';
-
-CREATE INDEX idx_av_article_id ON article_vector(article_id);
-CREATE INDEX idx_av_content_vector ON article_vector USING ivfflat (content_vector vector_cosine_ops);
-```
-
-### 3.3 数据库初始化脚本
-
-```sql
--- ============================================
--- 初始化数据
--- ============================================
-
--- 插入默认管理员
-INSERT INTO sys_user (username, password, nickname, email, role, status) VALUES
-('admin', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iAt6Z5EO', '管理员', 'admin@example.com', 'ADMIN', 1);
-
--- 插入默认分类
-INSERT INTO category (name, slug, description, sort) VALUES
-('后端开发', 'backend', 'Java后端开发相关文章', 1),
-('前端技术', 'frontend', '前端开发技术分享', 2),
-('数据库', 'database', '数据库技术与优化', 3),
-('DevOps', 'devops', '运维与部署', 4),
-('技术日志', 'daily-log', '每日技术笔记', 5),
-('项目展示', 'projects', '个人项目介绍', 6);
-
--- 插入默认标签
-INSERT INTO tag (name, slug, color, description) VALUES
-('Java', 'java', '#007396', 'Java编程语言'),
-('Spring Boot', 'spring-boot', '#6DB33F', 'Spring Boot框架'),
-('Vue', 'vue', '#4FC08D', 'Vue.js前端框架'),
-('PostgreSQL', 'postgresql', '#336791', 'PostgreSQL数据库'),
-('Redis', 'redis', '#DC382D', 'Redis缓存'),
-('Docker', 'docker', '#2496ED', 'Docker容器'),
-('Linux', 'linux', '#FCC624', 'Linux系统'),
-('AI', 'ai', '#FF6B6B', '人工智能');
-
--- 插入系统配置
-INSERT INTO sys_config (config_key, config_value, default_value, description, group_name, is_public) VALUES
-('site.name', '我的技术博客', '我的技术博客', '网站名称', 'site', TRUE),
-('site.description', '记录技术成长，分享学习心得', '记录技术成长，分享学习心得', '网站描述', 'site', TRUE),
-('site.logo', '', '', '网站Logo', 'site', TRUE),
-('site.favicon', '', '', '网站Favicon', 'site', TRUE),
-('site.icp', '', '', 'ICP备案号', 'site', TRUE),
-('site.footer', '© 2025 我的技术博客', '© 2025 我的技术博客', '页脚信息', 'site', TRUE),
-('site.about', '', '', '关于页面内容（Markdown）', 'site', TRUE),
-('site.avatar', '', '', '个人头像', 'site', TRUE),
-('site.email', '', '', '联系邮箱', 'site', TRUE),
-('site.github', '', '', 'GitHub链接', 'site', TRUE),
-('ai.enabled', 'false', 'false', '是否启用AI功能', 'ai', FALSE),
-('ai.model', 'qwen-turbo', 'qwen-turbo', 'AI模型', 'ai', FALSE),
-('ai.autoTags', 'true', 'true', '是否自动生成标签', 'ai', FALSE),
-('ai.autoSummary', 'true', 'true', '是否自动生成摘要', 'ai', FALSE);
-
--- 插入示例技能
-INSERT INTO skill (name, category, proficiency, color, description, sort) VALUES
-('Java', 'language', 4, '#007396', '熟练掌握Java编程', 1),
-('Spring Boot', 'framework', 4, '#6DB33F', 'Spring Boot开发', 2),
-('Vue.js', 'framework', 3, '#4FC08D', 'Vue前端开发', 3),
-('PostgreSQL', 'tool', 3, '#336791', 'PostgreSQL数据库', 4),
-('Redis', 'tool', 3, '#DC382D', 'Redis缓存', 5),
-('Docker', 'tool', 3, '#2496ED', 'Docker容器化', 6),
-('Linux', 'tool', 3, '#FCC624', 'Linux系统管理', 7);
 ```
 
 ---
 
-## 四、后端项目结构
-
-### 4.1 项目结构
-
-```
-clever-blog/
-├── clever-blog-backend/
-│   ├── src/
-│   │   ├── main/
-│   │   │   ├── java/
-│   │   │   │   └── com/cleverblog/
-│   │   │   │       ├── CleverBlogApplication.java
-│   │   │   │       │
-│   │   │   │       ├── config/                    # 配置类
-│   │   │   │       │   ├── MyBatisPlusConfig.java
-│   │   │   │       │   ├── SaTokenConfig.java
-│   │   │   │       │   ├── WebMvcConfig.java
-│   │   │   │       │   ├── RedisConfig.java
-│   │   │   │       │   ├── Knife4jConfig.java
-│   │   │   │       │   ├── AsyncConfig.java
-│   │   │   │       │   └── AiConfig.java
-│   │   │   │       │
-│   │   │   │       ├── controller/                # 控制器层
-│   │   │   │       │   ├── AuthController.java
-│   │   │   │       │   ├── UserController.java
-│   │   │   │       │   ├── ArticleController.java
-│   │   │   │       │   ├── DailyLogController.java
-│   │   │   │       │   ├── CategoryController.java
-│   │   │   │       │   ├── TagController.java
-│   │   │   │       │   ├── FileController.java
-│   │   │   │       │   ├── ConfigController.java
-│   │   │   │       │   ├── ProjectShowcaseController.java
-│   │   │   │       │   ├── SkillController.java
-│   │   │   │       │   ├── FriendLinkController.java
-│   │   │   │       │   └── AiController.java
-│   │   │   │       │
-│   │   │   │       ├── service/                   # 业务层
-│   │   │   │       │   ├── impl/
-│   │   │   │       │   │   ├── UserServiceImpl.java
-│   │   │   │       │   │   ├── ArticleServiceImpl.java
-│   │   │   │       │   │   ├── DailyLogServiceImpl.java
-│   │   │   │       │   │   ├── CategoryServiceImpl.java
-│   │   │   │       │   │   ├── TagServiceImpl.java
-│   │   │   │       │   │   ├── FileServiceImpl.java
-│   │   │   │       │   │   ├── ConfigServiceImpl.java
-│   │   │   │       │   │   ├── ProjectShowcaseServiceImpl.java
-│   │   │   │       │   │   ├── SkillServiceImpl.java
-│   │   │   │       │   │   └── AiServiceImpl.java
-│   │   │   │       │   ├── UserService.java
-│   │   │   │       │   ├── ArticleService.java
-│   │   │   │       │   ├── DailyLogService.java
-│   │   │   │       │   ├── CategoryService.java
-│   │   │   │       │   ├── TagService.java
-│   │   │   │       │   ├── FileService.java
-│   │   │   │       │   ├── ConfigService.java
-│   │   │   │       │   ├── ProjectShowcaseService.java
-│   │   │   │       │   ├── SkillService.java
-│   │   │   │       │   └── AiService.java
-│   │   │   │       │
-│   │   │   │       ├── mapper/                    # 数据访问层
-│   │   │   │       │   ├── UserMapper.java
-│   │   │   │       │   ├── ArticleMapper.java
-│   │   │   │       │   ├── DailyLogMapper.java
-│   │   │   │       │   ├── CategoryMapper.java
-│   │   │   │       │   ├── TagMapper.java
-│   │   │   │       │   ├── ArticleTagMapper.java
-│   │   │   │       │   ├── FileMapper.java
-│   │   │   │       │   ├── ConfigMapper.java
-│   │   │   │       │   ├── ProjectShowcaseMapper.java
-│   │   │   │       │   ├── SkillMapper.java
-│   │   │   │       │   ├── FriendLinkMapper.java
-│   │   │   │       │   └── AiGenerationMapper.java
-│   │   │   │       │
-│   │   │   │       ├── entity/                    # 实体类
-│   │   │   │       │   ├── User.java
-│   │   │   │       │   ├── Article.java
-│   │   │   │       │   ├── DailyLog.java
-│   │   │   │       │   ├── Category.java
-│   │   │   │       │   ├── Tag.java
-│   │   │   │       │   ├── ArticleTag.java
-│   │   │   │       │   ├── File.java
-│   │   │   │       │   ├── Config.java
-│   │   │   │       │   ├── ProjectShowcase.java
-│   │   │   │       │   ├── Skill.java
-│   │   │   │       │   ├── FriendLink.java
-│   │   │   │       │   └── AiGeneration.java
-│   │   │   │       │
-│   │   │   │       ├── dto/                       # 数据传输对象
-│   │   │   │       │   ├── LoginDTO.java
-│   │   │   │       │   ├── ArticleCreateDTO.java
-│   │   │   │       │   ├── ArticleUpdateDTO.java
-│   │   │   │       │   ├── ArticleQueryDTO.java
-│   │   │   │       │   ├── DailyLogCreateDTO.java
-│   │   │   │       │   └── FileUploadDTO.java
-│   │   │   │       │
-│   │   │   │       ├── vo/                        # 视图对象
-│   │   │   │       │   ├── UserVO.java
-│   │   │   │       │   ├── ArticleVO.java
-│   │   │   │       │   ├── ArticleListVO.java
-│   │   │   │       │   ├── DailyLogVO.java
-│   │   │   │       │   ├── CategoryVO.java
-│   │   │   │       │   ├── TagVO.java
-│   │   │   │       │   ├── ProjectShowcaseVO.java
-│   │   │   │       │   ├── SkillVO.java
-│   │   │   │       │   └── ResultVO.java
-│   │   │   │       │
-│   │   │   │       ├── common/                    # 通用类
-│   │   │   │       │   ├── Result.java
-│   │   │   │       │   ├── PageResult.java
-│   │   │   │       │   ├── BusinessException.java
-│   │   │   │       │   ├── GlobalExceptionHandler.java
-│   │   │   │       │   ├── BaseEntity.java
-│   │   │   │       │   ├── Constants.java
-│   │   │   │       │   └── enums/
-│   │   │   │       │       ├── ArticleStatus.java
-│   │   │   │       │       ├── DailyLogMood.java
-│   │   │   │       │       └── SkillCategory.java
-│   │   │   │       │
-│   │   │   │       ├── utils/                     # 工具类
-│   │   │   │       │   ├── JwtUtils.java
-│   │   │   │       │   ├── FileUtils.java
-│   │   │   │       │   ├── MarkdownUtils.java
-│   │   │   │       │   ├── IpUtils.java
-│   │   │   │       │   └── AiPromptUtils.java
-│   │   │   │       │
-│   │   │   │       ├── aspect/                    # AOP
-│   │   │   │       │   └── LogAspect.java
-│   │   │   │       │
-│   │   │   │       └── job/                       # 定时任务
-│   │   │   │           ├── ArticleViewCountJob.java
-│   │   │   │           └── AiSummaryJob.java
-│   │   │   │
-│   │   │   └── resources/
-│   │   │       ├── mapper/                        # XML映射文件
-│   │   │       ├── application.yml
-│   │   │       ├── application-dev.yml
-│   │   │       ├── application-prod.yml
-│   │   │       └── logback-spring.xml
-│   │   │
-│   │   └── test/
-│   │
-│   ├── pom.xml
-│   └── Dockerfile
-│
-```
-
----
-
-## 五、前端项目结构
+## 五、后端项目结构
 
 ### 5.1 项目结构
 
 ```
-clever-blog-frontend/
+backend/
+├── src/
+│   ├── main/
+│   │   ├── java/
+│   │   │   └── com/nanmuli/blog/
+│   │   │       ├── BlogApplication.java
+│   │   │       │
+│   │   │       ├── domain/                    # 领域层
+│   │   │       │   ├── article/
+│   │   │       │   │   ├── Article.java
+│   │   │       │   │   ├── ArticleId.java
+│   │   │       │   │   ├── ArticleStatus.java
+│   │   │       │   │   ├── ArticleRepository.java
+│   │   │       │   │   ├── ArticleViewRecord.java
+│   │   │       │   │   ├── ArticleVisitLog.java
+│   │   │       │   │   └── event/
+│   │   │       │   ├── category/
+│   │   │       │   ├── dailylog/
+│   │   │       │   ├── skill/
+│   │   │       │   ├── project/
+│   │   │       │   ├── friendlink/
+│   │   │       │   ├── config/
+│   │   │       │   ├── file/
+│   │   │       │   ├── user/
+│   │   │       │   └── ai/
+│   │   │       │
+│   │   │       ├── application/               # 应用层
+│   │   │       │   ├── article/
+│   │   │       │   │   ├── ArticleAppService.java
+│   │   │       │   │   ├── command/
+│   │   │       │   │   │   ├── CreateArticleCommand.java
+│   │   │       │   │   │   ├── UpdateArticleCommand.java
+│   │   │       │   │   │   └── RecordArticleViewCommand.java
+│   │   │       │   │   ├── dto/
+│   │   │       │   │   │   ├── ArticleDTO.java
+│   │   │       │   │   │   ├── ArticleArchiveDTO.java
+│   │   │       │   │   │   └── ArticleStatsDTO.java
+│   │   │       │   │   └── query/
+│   │   │       │   │       └── ArticlePageQuery.java
+│   │   │       │   ├── category/
+│   │   │       │   ├── dailylog/
+│   │   │       │   ├── skill/
+│   │   │       │   ├── project/
+│   │   │       │   ├── friendlink/
+│   │   │       │   ├── config/
+│   │   │       │   ├── file/
+│   │   │       │   ├── user/
+│   │   │       │   └── event/
+│   │   │       │       └── ArticleEventHandler.java
+│   │   │       │
+│   │   │       ├── interfaces/                # 接口层
+│   │   │       │   ├── rest/
+│   │   │       │   │   ├── ArticleController.java
+│   │   │       │   │   ├── AuthController.java
+│   │   │       │   │   ├── CategoryController.java
+│   │   │       │   │   ├── DailyLogController.java
+│   │   │       │   │   ├── SkillController.java
+│   │   │       │   │   ├── ProjectController.java
+│   │   │       │   │   ├── FriendLinkController.java
+│   │   │       │   │   ├── ConfigController.java
+│   │   │       │   │   ├── FileController.java
+│   │   │       │   │   └── DashboardController.java
+│   │   │       │   ├── handler/
+│   │   │       │   └── filter/
+│   │   │       │       └── TraceIdFilter.java
+│   │   │       │
+│   │   │       ├── infrastructure/            # 基础设施层
+│   │   │       │   ├── config/
+│   │   │       │   │   ├── db/
+│   │   │       │   │   │   └── MyBatisPlusConfig.java
+│   │   │       │   │   ├── cache/
+│   │   │       │   │   │   └── RedisConfig.java
+│   │   │       │   │   ├── security/
+│   │   │       │   │   │   └── SaTokenConfig.java
+│   │   │       │   │   ├── web/
+│   │   │       │   │   │   ├── Knife4jConfig.java
+│   │   │       │   │   │   └── WebMvcConfig.java
+│   │   │       │   │   └── ai/
+│   │   │       │   │       └── AsyncConfig.java
+│   │   │       │   ├── persistence/
+│   │   │       │   │   ├── article/
+│   │   │       │   │   │   ├── ArticleMapper.java
+│   │   │       │   │   │   ├── ArticleRepositoryImpl.java
+│   │   │       │   │   │   ├── ArticleViewRecordMapper.java
+│   │   │       │   │   │   └── ArticleViewRecordRepositoryImpl.java
+│   │   │       │   │   ├── category/
+│   │   │       │   │   ├── dailylog/
+│   │   │       │   │   ├── skill/
+│   │   │       │   │   ├── project/
+│   │   │       │   │   ├── friendlink/
+│   │   │       │   │   ├── config/
+│   │   │       │   │   ├── file/
+│   │   │       │   │   ├── user/
+│   │   │       │   │   └── ai/
+│   │   │       │   └── ai/
+│   │   │       │       └── NoOpAiService.java
+│   │   │       │
+│   │   │       └── shared/                    # 共享内核
+│   │   │           ├── domain/
+│   │   │           │   ├── BaseAggregateRoot.java
+│   │   │           │   ├── DomainEvent.java
+│   │   │           │   └── Identifier.java
+│   │   │           ├── result/
+│   │   │           │   ├── Result.java
+│   │   │           │   └── PageResult.java
+│   │   │           ├── exception/
+│   │   │           │   └── BusinessException.java
+│   │   │           └── util/
+│   │   │               └── MarkdownUtil.java
+│   │   │
+│   │   └── resources/
+│   │       ├── db/                            # 数据库迁移
+│   │       ├── sql/                           # SQL脚本
+│   │       ├── application.yml
+│   │       ├── application-dev.yml
+│   │       ├── application-prod.yml
+│   │       └── logback-spring.xml
+│   │
+│   └── test/
+│
+├── pom.xml
+└── Dockerfile
+```
+
+---
+
+## 六、前端项目结构
+
+### 6.1 项目结构
+
+```
+frontend/
 ├── public/
 │   ├── favicon.ico
 │   └── logo.png
@@ -777,7 +576,6 @@ clever-blog-frontend/
 ├── src/
 │   ├── api/                           # API接口
 │   │   ├── auth.ts
-│   │   ├── user.ts
 │   │   ├── article.ts
 │   │   ├── dailyLog.ts
 │   │   ├── category.ts
@@ -786,125 +584,84 @@ clever-blog-frontend/
 │   │   ├── config.ts
 │   │   ├── project.ts
 │   │   ├── skill.ts
-│   │   └── ai.ts
+│   │   └── dashboard.ts
 │   │
 │   ├── assets/                        # 静态资源
 │   │   ├── images/
-│   │   ├── icons/
 │   │   └── styles/
-│   │       ├── tailwind.css
-│   │       └── variables.scss
+│   │       └── tailwind.css
 │   │
 │   ├── components/                    # 公共组件
 │   │   ├── common/
 │   │   │   ├── AppHeader.vue
 │   │   │   ├── AppFooter.vue
-│   │   │   ├── AppSidebar.vue
-│   │   │   ├── AppPagination.vue
-│   │   │   ├── AppLoading.vue
-│   │   │   └── AppEmpty.vue
-│   │   │
+│   │   │   └── AppSidebar.vue
 │   │   ├── article/
 │   │   │   ├── ArticleCard.vue
 │   │   │   ├── ArticleList.vue
-│   │   │   ├── ArticleContent.vue
 │   │   │   ├── ArticleMeta.vue
-│   │   │   ├── ArticleTags.vue
 │   │   │   └── ArticleToc.vue
-│   │   │
 │   │   ├── dailyLog/
-│   │   │   ├── DailyLogCard.vue
 │   │   │   └── DailyLogTimeline.vue
-│   │   │
-│   │   ├── editor/
-│   │   │   └── MarkdownEditor.vue
-│   │   │
 │   │   ├── project/
-│   │   │   ├── ProjectCard.vue
-│   │   │   └── ProjectList.vue
-│   │   │
-│   │   ├── skill/
-│   │   │   ├── SkillItem.vue
-│   │   │   └── SkillCloud.vue
-│   │   │
-│   │   └── search/
-│   │       └── PagefindSearch.vue
+│   │   │   └── ProjectCard.vue
+│   │   └── skill/
+│   │       └── SkillCloud.vue
 │   │
-│   ├── composables/
+│   ├── composables/                   # 组合式函数
 │   │   ├── useAuth.ts
-│   │   ├── useArticle.ts
-│   │   ├── useDailyLog.ts
-│   │   ├── useConfig.ts
 │   │   └── useTheme.ts
 │   │
-│   ├── layouts/
+│   ├── layouts/                       # 布局组件
 │   │   ├── DefaultLayout.vue
 │   │   ├── AdminLayout.vue
 │   │   └── BlankLayout.vue
 │   │
-│   ├── router/
+│   ├── router/                        # 路由配置
 │   │   ├── index.ts
-│   │   ├── routes.ts
-│   │   └── guards.ts
+│   │   └── routes.ts
 │   │
-│   ├── stores/
+│   ├── stores/                        # 状态管理
 │   │   ├── index.ts
 │   │   ├── modules/
 │   │   │   ├── user.ts
 │   │   │   ├── article.ts
-│   │   │   ├── dailyLog.ts
-│   │   │   ├── config.ts
-│   │   │   └── app.ts
+│   │   │   └── config.ts
 │   │   └── plugins/
 │   │       └── persist.ts
 │   │
-│   ├── styles/
+│   ├── styles/                        # 样式文件
 │   │   ├── index.scss
 │   │   ├── markdown.scss
-│   │   ├── code.scss
-│   │   └── element-plus.scss
+│   │   └── code.scss
 │   │
-│   ├── types/
-│   │   ├── user.ts
+│   ├── types/                         # 类型定义
 │   │   ├── article.ts
 │   │   ├── dailyLog.ts
 │   │   └── api.ts
 │   │
-│   ├── utils/
+│   ├── utils/                         # 工具函数
 │   │   ├── request.ts
 │   │   ├── storage.ts
 │   │   ├── format.ts
-│   │   ├── validate.ts
-│   │   └── markdown.ts
+│   │   └── visitor.ts
 │   │
-│   ├── views/
+│   ├── views/                         # 页面视图
 │   │   ├── home/
 │   │   │   └── Index.vue
-│   │   │
 │   │   ├── article/
 │   │   │   ├── List.vue
-│   │   │   ├── Detail.vue
-│   │   │   └── Archive.vue
-│   │   │
-│   │   ├── dailyLog/
-│   │   │   ├── List.vue
 │   │   │   └── Detail.vue
-│   │   │
+│   │   ├── dailyLog/
+│   │   │   └── List.vue
 │   │   ├── category/
 │   │   │   └── Index.vue
-│   │   │
-│   │   ├── tag/
-│   │   │   └── Index.vue
-│   │   │
 │   │   ├── about/
 │   │   │   └── Index.vue
-│   │   │
 │   │   ├── project/
 │   │   │   └── Index.vue
-│   │   │
 │   │   ├── auth/
 │   │   │   └── Login.vue
-│   │   │
 │   │   └── admin/
 │   │       ├── Dashboard.vue
 │   │       ├── article/
@@ -912,20 +669,11 @@ clever-blog-frontend/
 │   │       │   ├── Create.vue
 │   │       │   └── Edit.vue
 │   │       ├── dailyLog/
-│   │       │   ├── List.vue
-│   │       │   └── Create.vue
 │   │       ├── category/
-│   │       │   └── Index.vue
 │   │       ├── tag/
-│   │       │   └── Index.vue
 │   │       ├── project/
-│   │       │   └── Index.vue
 │   │       ├── skill/
-│   │       │   └── Index.vue
-│   │       ├── config/
-│   │       │   └── Index.vue
-│   │       └── friendLink/
-│   │           └── Index.vue
+│   │       └── config/
 │   │
 │   ├── App.vue
 │   ├── main.ts
@@ -938,156 +686,102 @@ clever-blog-frontend/
 ├── tailwind.config.js
 ├── postcss.config.js
 ├── eslint.config.js
-├── .prettierrc
-├── .gitignore
-└── README.md
+└── .prettierrc
 ```
 
 ---
 
-## 六、AI模块设计
+## 七、API设计规范
 
-### 6.1 AI功能
+### 7.1 RESTful 路径规范
 
-| 功能 | 描述 | 触发方式 |
-|------|------|----------|
-| **智能标签** | 根据文章内容自动生成5-8个标签 | 发布文章时异步生成 |
-| **文章摘要** | 自动生成200字以内摘要 | 发布文章时异步生成 |
-| **内容推荐** | 基于向量相似度推荐相关文章 | 文章详情页展示 |
-| **语义搜索** | 理解搜索意图，返回相关文章 | 搜索功能 |
+| 操作 | 公开接口 | 管理接口 | 说明 |
+|------|----------|----------|------|
+| 列表查询 | GET /api/article/list | GET /api/admin/article/list | 分页 |
+| 详情查询 | GET /api/article/{slug} | GET /api/admin/article/{id} | |
+| 归档查询 | GET /api/article/archive | - | 按年月归档 |
+| 置顶文章 | GET /api/article/top | - | |
+| 创建 | - | POST /api/admin/article | |
+| 更新 | - | PUT /api/admin/article/{id} | |
+| 删除 | - | DELETE /api/admin/article/{id} | 逻辑删除 |
+| 记录浏览 | POST /api/article/{slug}/view | - | 异步 |
 
-### 6.2 AI服务实现
+### 7.2 统一响应格式
 
-```java
-@Service
-@Slf4j
-public class AiServiceImpl implements AiService {
-    
-    @Autowired
-    private ChatClient chatClient;
-    
-    @Autowired
-    private ArticleVectorMapper articleVectorMapper;
-    
-    /**
-     * 生成文章标签
-     */
-    @Override
-    @Async("taskExecutor")
-    public CompletableFuture<List<String>> generateTags(Long articleId, String content) {
-        try {
-            String prompt = String.format(
-                "请为以下文章生成5-8个标签，用逗号分隔。标签应该简洁、相关、热门。\n\n文章内容（前500字）：\n%s",
-                content.substring(0, Math.min(content.length(), 500))
-            );
-            
-            String response = chatClient.prompt(prompt)
-                .options(DashScopeChatOptions.builder()
-                    .withModel("qwen-turbo")
-                    .withTemperature(0.3f)
-                    .build())
-                .call()
-                .content();
-            
-            List<String> tags = Arrays.stream(response.split("，|,"))
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .collect(Collectors.toList());
-            
-            // 保存生成记录
-            saveGeneration(articleId, "tags", prompt, response);
-            
-            return CompletableFuture.completedFuture(tags);
-        } catch (Exception e) {
-            log.error("生成标签失败", e);
-            return CompletableFuture.completedFuture(Collections.emptyList());
-        }
-    }
-    
-    /**
-     * 生成文章摘要
-     */
-    @Override
-    @Async("taskExecutor")
-    public CompletableFuture<String> generateSummary(Long articleId, String content) {
-        try {
-            String prompt = String.format(
-                "请为以下文章生成200字以内的摘要，要求简洁明了，突出重点。\n\n文章内容（前1000字）：\n%s",
-                content.substring(0, Math.min(content.length(), 1000))
-            );
-            
-            String summary = chatClient.prompt(prompt)
-                .options(DashScopeChatOptions.builder()
-                    .withModel("qwen-turbo")
-                    .withTemperature(0.3f)
-                    .build())
-                .call()
-                .content();
-            
-            // 保存生成记录
-            saveGeneration(articleId, "summary", prompt, summary);
-            
-            return CompletableFuture.completedFuture(summary);
-        } catch (Exception e) {
-            log.error("生成摘要失败", e);
-            return CompletableFuture.completedFuture("");
-        }
-    }
-    
-    /**
-     * 搜索相似文章
-     */
-    @Override
-    public List<ArticleVO> searchSimilarArticles(Long articleId, int limit) {
-        ArticleVector vector = articleVectorMapper.selectByArticleId(articleId);
-        if (vector == null || vector.getContentVector() == null) {
-            return Collections.emptyList();
-        }
-        
-        return articleVectorMapper.findSimilarArticles(articleId, vector.getContentVector(), limit);
-    }
+```json
+// 成功响应
+{
+  "code": 200,
+  "message": "success",
+  "data": { },
+  "timestamp": 1712345678901
+}
+
+// 分页响应
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "total": 100,
+    "pages": 10,
+    "current": 1,
+    "size": 10,
+    "records": []
+  }
+}
+
+// 错误响应
+{
+  "code": 400,
+  "message": "标题不能为空",
+  "data": null,
+  "timestamp": 1712345678901
 }
 ```
 
----
+### 7.3 HTTP状态码规范
 
-## 七、开发路线图
-
-### 7.1 阶段一：基础架构（2周）
-
-| 周次 | 任务 | 产出 |
-|------|------|------|
-| 1 | 环境搭建 + 数据库设计 | 开发环境、数据库脚本 |
-| 2 | 后端基础架构 + 前端基础架构 | 项目骨架、基础配置 |
-
-### 7.2 阶段二：核心功能（4周）
-
-| 周次 | 任务 | 产出 |
-|------|------|------|
-| 3 | 用户认证 + 文章管理 | 登录注册、文章CRUD |
-| 4 | 分类标签 + 文章展示 | 分类管理、标签云、文章列表/详情 |
-| 5 | 技术日志 + 个人展示 | 日志CRUD、关于页面、技能展示 |
-| 6 | 文件上传 + 项目展示 | 图片上传、项目展示 |
-
-### 7.3 阶段三：功能增强（2周）
-
-| 周次 | 任务 | 产出 |
-|------|------|------|
-| 7 | 搜索功能 + 数据统计 | Pagefind搜索、访问量统计 |
-| 8 | 性能优化 + 部署 | Redis缓存、阿里云部署 |
-
-### 7.4 阶段四：AI集成（2周）
-
-| 周次 | 任务 | 产出 |
-|------|------|------|
-| 9 | Spring AI集成 | AI服务基础 |
-| 10 | 智能功能 | 标签生成、摘要生成、推荐 |
+| 场景 | 状态码 | 说明 |
+|------|--------|------|
+| 成功 | 200 | 标准成功 |
+| 参数错误 | 400 | 客户端输入验证失败 |
+| 未认证 | 401 | 需要登录（Sa-Token拦截）|
+| 无权限 | 403 | 权限不足 |
+| 资源不存在 | 404 | URL错误或资源已删除 |
+| 业务错误 | 422 | 业务规则校验失败 |
+| 系统错误 | 500 | 服务器内部错误 |
 
 ---
 
-## 八、部署架构
+## 八、开发路线图
 
-### 8.1 阿里云服务器部署
+### 阶段一：基础架构（已完成）
+- 后端DDD架构搭建
+- 前端Vue3项目搭建
+- 数据库设计与初始化
+
+### 阶段二：核心功能（已完成）
+- 用户认证模块
+- 文章管理（CRUD、Markdown编辑）
+- 分类标签管理
+- 技术日志模块
+- 文件上传
+
+### 阶段三：功能增强（已完成）
+- 文章浏览统计（PV/UV）
+- 仪表盘数据展示
+- 主题切换（明暗主题）
+
+### 阶段四：部署优化（待完成）
+- 生产环境配置
+- Docker容器化
+- CI/CD流程
+
+---
+
+## 九、部署架构
+
+### 9.1 阿里云服务器部署
 
 ```
 ┌─────────────────────────────────────────┐
@@ -1108,7 +802,7 @@ public class AiServiceImpl implements AiService {
 └─────────────────────────────────────────┘
 ```
 
-### 8.2 JVM参数
+### 9.2 JVM参数
 
 ```bash
 java -Xms256m -Xmx512m \
@@ -1116,67 +810,38 @@ java -Xms256m -Xmx512m \
      -XX:MaxMetaspaceSize=256m \
      -XX:+UseG1GC \
      -XX:MaxGCPauseMillis=200 \
-     -jar clever-blog.jar
+     -jar blog-backend.jar
 ```
 
 ---
 
-## 九、总结
+## 十、总结
 
-### 9.1 技术栈总览
+### 10.1 技术栈总览
 
 | 层级 | 技术选型 |
 |------|----------|
-| **后端** | Spring Boot 3.5 + Java 21 + MyBatis Plus + Sa-Token + PostgreSQL + Redis |
+| **后端** | Spring Boot 3.3 + Java 21 + DDD + MyBatis Plus + Sa-Token + PostgreSQL + Redis |
 | **前端** | Vue 3 + Vite + TypeScript + Tailwind CSS + Element Plus + Pinia |
-| **AI** | Spring AI + 阿里云DashScope + pgvector |
 | **部署** | 阿里云ECS 2核2G + Nginx |
 
-### 9.2 数据库表清单（简化版）
+### 10.2 架构特点
 
-| 表名 | 说明 |
-|------|------|
-| sys_user | 用户表（仅管理员） |
-| sys_login_log | 登录日志 |
-| sys_file | 文件表 |
-| sys_config | 系统配置 |
-| sys_operation_log | 操作日志 |
-| article | 文章表 |
-| article_draft | 草稿表 |
-| **daily_log** | **技术日志表（新增）** |
-| category | 分类表 |
-| tag | 标签表 |
-| article_tag | 文章标签关联表 |
-| **project_showcase** | **项目展示表（新增）** |
-| **skill** | **技能表（新增）** |
-| ai_generation | AI生成记录表 |
-| article_vector | 文章向量表 |
+1. **DDD分层架构**：清晰的领域层、应用层、接口层、基础设施层分离
+2. **领域驱动设计**：聚合根、值对象、领域事件、仓储模式
+3. **独立访客统计**：基于 visitorId 的 UV 统计，基于访问日志的 PV 统计
+4. **缓存策略**：Spring Cache + Redis，支持多级缓存
+5. **安全设计**：Sa-Token 认证、XSS 防护、SQL 注入防护
 
-### 9.3 与完整版对比
+### 10.3 项目状态
 
-| 功能 | 完整版 | 简化版（本方案） |
-|------|--------|------------------|
-| 评论系统 | ✅ | ❌ 移除 |
-| 评论点赞 | ✅ | ❌ 移除 |
-| 技术日志 | ❌ | ✅ 新增 |
-| 项目展示 | ❌ | ✅ 新增 |
-| 技能展示 | ❌ | ✅ 新增 |
-| 友链管理 | ✅ | ✅ 保留 |
-
-### 9.4 预期成果
-
-- ✅ 简洁的个人技术博客系统
-- ✅ Markdown文章编辑与代码高亮
-- ✅ 技术日志（每日笔记）
-- ✅ 个人展示（技能、项目）
-- ✅ 全文搜索（Pagefind）
-- ✅ AI智能标签与摘要
-- ✅ 阿里云服务器部署
-- ✅ 适合2核2G服务器的优化配置
+- 后端核心功能：已完成
+- 前端核心功能：已完成
+- 数据统计：已完成
+- AI功能：预留接口，待接入
 
 ---
 
-**开发周期：** 10周（每周10-15小时）
-**难度等级：** 中等
-**学习价值：** ⭐⭐⭐⭐⭐
-
+**文档版本：** v2.0  
+**最后更新：** 2026-04-06  
+**架构：** DDD (Domain-Driven Design)

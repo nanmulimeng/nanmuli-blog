@@ -35,6 +35,12 @@ export default {
         warning: 'var(--theme-warning)',
         error: 'var(--theme-error)',
         info: 'var(--theme-info)',
+        // 扩展颜色
+        purple: {
+          DEFAULT: '#A855F7',
+          light: '#C084FC',
+        },
+        danger: 'var(--theme-error)',
         // 暗色层级
         dark: {
           900: '#0a0a0f',

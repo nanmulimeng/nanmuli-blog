@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { getArticleList } from '@/api/article'
 import { getCategoryList, getLeafCategoryList } from '@/api/category'
@@ -11,6 +11,7 @@ const router = useRouter()
 const route = useRoute()
 
 const loading = ref(false)
+const loadingDelayTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 const articles = ref<Article[]>([])
 const categoryTree = ref<Category[]>([])
 const leafCategories = ref<Category[]>([])
@@ -21,6 +22,14 @@ const currentPage = ref(1)
 const pageSize = ref(12)
 const selectedCategory = ref<string | undefined>(undefined)
 const sortBy = ref('newest')
+
+// 防抖定时器
+let fetchTimeout: ReturnType<typeof setTimeout> | null = null
+// 请求取消控制器
+let abortController: AbortController | null = null
+
+// 图片加载状态
+const imageLoaded = ref<Record<string, boolean>>({})
 
 const sortOptions = [
   { value: 'newest', label: '最新发布', icon: 'Calendar' },
@@ -55,7 +64,23 @@ const selectedCategoryName = computed(() => {
 })
 
 async function fetchArticles(): Promise<void> {
-  loading.value = true
+  // 取消之前的请求
+  if (abortController) {
+    abortController.abort()
+  }
+  abortController = new AbortController()
+
+  // 清除之前的loading延迟定时器
+  if (loadingDelayTimer.value) {
+    clearTimeout(loadingDelayTimer.value)
+    loadingDelayTimer.value = null
+  }
+
+  // 延迟显示loading状态（避免快速切换时的闪烁）
+  loadingDelayTimer.value = setTimeout(() => {
+    loading.value = true
+  }, 100)
+
   try {
     const res = await getArticleList({
       current: currentPage.value,
@@ -67,8 +92,25 @@ async function fetchArticles(): Promise<void> {
     articles.value = res.records
     total.value = res.total
   } finally {
+    // 清除loading延迟定时器
+    if (loadingDelayTimer.value) {
+      clearTimeout(loadingDelayTimer.value)
+      loadingDelayTimer.value = null
+    }
     loading.value = false
+    abortController = null
   }
+}
+
+// 防抖获取文章列表（带延迟加载状态，避免快速切换时闪烁）
+function debouncedFetchArticles(): void {
+  if (fetchTimeout) {
+    clearTimeout(fetchTimeout)
+  }
+  // 延迟100ms显示loading，如果请求在100ms内完成则不显示loading（避免闪烁）
+  fetchTimeout = setTimeout(() => {
+    fetchArticles()
+  }, 150)
 }
 
 async function fetchCategories(): Promise<void> {
@@ -79,17 +121,25 @@ async function fetchCategories(): Promise<void> {
 function handleCategoryChange(categoryId: string | undefined): void {
   selectedCategory.value = categoryId
   currentPage.value = 1
-  fetchArticles()
+  // 同步更新URL，支持刷新后保持筛选状态
+  router.replace({
+    path: '/article',
+    query: {
+      ...route.query,
+      categoryId: categoryId || undefined
+    }
+  })
+  debouncedFetchArticles()
 }
 
 function handleSortChange(sort: string): void {
   sortBy.value = sort
-  fetchArticles()
+  debouncedFetchArticles()
 }
 
 function handlePageChange(page: number): void {
   currentPage.value = page
-  fetchArticles()
+  debouncedFetchArticles()
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
@@ -100,6 +150,19 @@ function clearSearch(): void {
 
 onMounted(() => {
   fetchCategories()
+})
+
+// 组件卸载时清理定时器和请求
+onUnmounted(() => {
+  if (fetchTimeout) {
+    clearTimeout(fetchTimeout)
+  }
+  if (loadingDelayTimer.value) {
+    clearTimeout(loadingDelayTimer.value)
+  }
+  if (abortController) {
+    abortController.abort()
+  }
 })
 </script>
 
@@ -140,7 +203,7 @@ onMounted(() => {
               type="text"
               placeholder="搜索文章..."
               class="input-glass w-full sm:w-80 pr-24 pl-4 py-3 rounded-xl"
-              @keyup.enter="fetchArticles"
+              @keyup.enter="debouncedFetchArticles"
             />
             <div class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
               <button
@@ -260,15 +323,21 @@ onMounted(() => {
             @click="router.push(`/article/${article.slug}`)"
           >
             <!-- Cover Image -->
-            <div class="relative aspect-[16/10] overflow-hidden">
+            <div class="relative aspect-[16/10] overflow-hidden bg-surface-tertiary">
               <img
                 v-if="article.cover"
                 :src="article.cover"
                 :alt="article.title"
-                class="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
+                class="h-full w-full object-cover transition-all duration-500"
+                :class="{ 'opacity-0': !imageLoaded[article.id], 'group-hover:scale-110': imageLoaded[article.id] }"
+                @load="imageLoaded[article.id] = true"
               />
               <div
-                v-else
+                v-if="!imageLoaded[article.id] && article.cover"
+                class="absolute inset-0 skeleton-loading"
+              />
+              <div
+                v-if="!article.cover"
                 class="flex h-full w-full items-center justify-center bg-gradient-to-br from-blue-400/20 to-cyan-300/20 dark:from-cyan-500/20 dark:to-blue-400/20"
               >
                 <el-icon class="text-5xl text-primary/50">
@@ -400,5 +469,17 @@ onMounted(() => {
 }
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
+}
+
+/* 骨架屏动画 */
+.skeleton-loading {
+  background: linear-gradient(90deg, var(--surface-tertiary, #f0f0f0) 25%, var(--surface-secondary, #e0e0e0) 50%, var(--surface-tertiary, #f0f0f0) 75%);
+  background-size: 200% 100%;
+  animation: skeleton 1.5s infinite;
+}
+
+@keyframes skeleton {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 </style>

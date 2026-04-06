@@ -95,3 +95,6 @@ export function formatDateTime(date: string | Date): string {
 export function fromNow(date: string | Date): string {
   return fromNowCN(date)
 }
+
+/** 相对时间别名：刚刚、5分钟前、2小时前... */
+export const formatTimeAgoCN = fromNowCN

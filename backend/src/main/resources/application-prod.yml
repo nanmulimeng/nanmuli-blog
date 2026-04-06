@@ -23,9 +23,31 @@ spring:
           max-idle: 8
           min-idle: 0
 
+# 生产环境禁用API文档
+knife4j:
+  enable: false
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+# 博客业务配置
+blog:
+  file:
+    upload-path: /opt/nanmuli-blog/uploads
+    access-url: /uploads/
+  ai:
+    enabled: false
+
 logging:
   level:
     root: warn
     com.nanmuli.blog: info
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] [%X{traceId}] %-5level %logger{36} - %msg%n"
+  file:
+    name: /opt/nanmuli-blog/logs/blog.log
+    max-size: 100MB
+    max-history: 30

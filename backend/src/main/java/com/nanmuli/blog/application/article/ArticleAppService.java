@@ -32,8 +32,10 @@ import com.nanmuli.blog.shared.util.MarkdownUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.util.StringUtils;
 import org.springframework.cache.annotation.CacheConfig;
+import org.springframework.web.util.HtmlUtils;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Caching;
 import org.springframework.cache.annotation.Cacheable;
@@ -45,6 +47,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -65,7 +70,10 @@ public class ArticleAppService {
     @Transactional
     @Caching(evict = {
         @CacheEvict(cacheNames = "article", allEntries = true),
-        @CacheEvict(cacheNames = "article:list", allEntries = true)
+        @CacheEvict(cacheNames = "article:list", allEntries = true),
+        @CacheEvict(cacheNames = "article:top", allEntries = true),
+        @CacheEvict(cacheNames = "article:archive", allEntries = true),
+        @CacheEvict(cacheNames = "category", allEntries = true)
     })
     public Long create(CreateArticleCommand command) {
         // 验证分类是否为叶子节点
@@ -135,7 +143,11 @@ public class ArticleAppService {
     @Transactional
     @Caching(evict = {
         @CacheEvict(cacheNames = "article", allEntries = true),
-        @CacheEvict(cacheNames = "article:list", allEntries = true)
+        @CacheEvict(cacheNames = "article:list", allEntries = true),
+        @CacheEvict(cacheNames = "article:top", allEntries = true),
+        @CacheEvict(cacheNames = "article:archive", allEntries = true),
+        @CacheEvict(cacheNames = "article:stats", key = "#command.articleId"),
+        @CacheEvict(cacheNames = "category", allEntries = true)
     })
     public void update(UpdateArticleCommand command) {
         // 验证分类是否为叶子节点
@@ -143,6 +155,12 @@ public class ArticleAppService {
 
         Article article = articleRepository.findById(new ArticleId(command.getArticleId()))
                 .orElseThrow(() -> new BusinessException("文章不存在"));
+
+        // 添加归属校验
+        Long currentUserId = StpUtil.getLoginIdAsLong();
+        if (!currentUserId.equals(article.getUserId())) {
+            throw new BusinessException("无权修改他人文章");
+        }
 
         // 保存原有分类ID，用于后续更新文章数
         Long oldCategoryId = article.getCategoryId();
@@ -174,7 +192,11 @@ public class ArticleAppService {
             }
         }
 
-        articleRepository.save(article);
+        try {
+            articleRepository.save(article);
+        } catch (OptimisticLockingFailureException e) {
+            throw new BusinessException("文章已被他人修改，请刷新后重试");
+        }
 
         // 更新分类文章数（新旧分类都更新）
         Long newCategoryId = article.getCategoryId();
@@ -189,11 +211,11 @@ public class ArticleAppService {
     }
 
     @Transactional(readOnly = true)
-    @Cacheable(key = "#slug")
+    @Cacheable(key = "#slug", unless = "#result == null")
     public ArticleDTO getBySlug(String slug) {
-        Article article = articleRepository.findBySlug(slug)
-                .orElseThrow(() -> new BusinessException("文章不存在"));
-        return toDTO(article);
+        return articleRepository.findBySlug(slug)
+                .map(this::toDTO)
+                .orElse(null);
     }
 
     @Transactional(readOnly = true)
@@ -230,7 +252,8 @@ public class ArticleAppService {
             result = articleRepository.findAllPage(page);
         }
 
-        List<ArticleDTO> records = result.getRecords().stream().map(this::toDTO).toList();
+        // 批量查询分类，避免N+1问题
+        List<ArticleDTO> records = batchConvertToDTO(result.getRecords());
         return new PageResult<>(result.getTotal(), result.getCurrent(), result.getSize(), records);
     }
 
@@ -253,7 +276,8 @@ public class ArticleAppService {
             result = articleRepository.findPublishedPage(page, query.getSort());
         }
 
-        List<ArticleDTO> records = result.getRecords().stream().map(this::toDTO).toList();
+        // 批量查询分类，避免N+1问题
+        List<ArticleDTO> records = batchConvertToDTO(result.getRecords());
         return new PageResult<>(result.getTotal(), result.getCurrent(), result.getSize(), records);
     }
 
@@ -276,11 +300,21 @@ public class ArticleAppService {
     @Transactional
     @Caching(evict = {
         @CacheEvict(cacheNames = "article", allEntries = true),
-        @CacheEvict(cacheNames = "article:list", allEntries = true)
+        @CacheEvict(cacheNames = "article:list", allEntries = true),
+        @CacheEvict(cacheNames = "article:top", allEntries = true),
+        @CacheEvict(cacheNames = "article:archive", allEntries = true),
+        @CacheEvict(cacheNames = "article:stats", key = "#id"),
+        @CacheEvict(cacheNames = "category", allEntries = true)
     })
     public void delete(Long id) {
         Article article = articleRepository.findById(new ArticleId(id))
                 .orElseThrow(() -> new BusinessException("文章不存在或已被删除"));
+
+        // 添加归属校验
+        Long currentUserId = StpUtil.getLoginIdAsLong();
+        if (!currentUserId.equals(article.getUserId())) {
+            throw new BusinessException("无权删除他人文章");
+        }
 
         Long categoryId = article.getCategoryId();
 
@@ -292,11 +326,20 @@ public class ArticleAppService {
         }
     }
 
+    /**
+     * 增加文章浏览量（已废弃，请使用 recordView 方法）
+     * 注意：此方法与 recordView 重复计数，请勿同时调用
+     */
+    @Deprecated(since = "1.1", forRemoval = true)
     @Async
     @Transactional
     public void incrementViewCount(String slug) {
         articleRepository.findBySlug(slug).ifPresent(article -> {
             articleRepository.increaseViewCount(new ArticleId(article.getId()));
+            // 异步更新后清除文章缓存，确保阅读数一致性
+            // 注意：由于@Async方法无法使用@CacheEvict，缓存将在TTL(30分钟)后自动失效
+            // 如需实时一致性，可注入CacheManager手动清除：
+            // cacheManager.getCache("article").evict(article.getSlug());
         });
     }
 
@@ -356,6 +399,7 @@ public class ArticleAppService {
      * 获取文章完整访问统计（PV/UV/今日）
      */
     @Transactional(readOnly = true)
+    @Cacheable(cacheNames = "article:stats", key = "#articleId")
     public ArticleStatsDTO getArticleStats(Long articleId) {
         Article article = articleRepository.findById(new ArticleId(articleId))
                 .orElseThrow(() -> new BusinessException("文章不存在"));
@@ -372,6 +416,7 @@ public class ArticleAppService {
     }
 
     @Transactional(readOnly = true)
+    @Cacheable(cacheNames = "article:archive", key = "'all'")
     public List<ArticleArchiveDTO> getArchive() {
         List<java.util.Map<String, Object>> rawData = articleRepository.findArchiveByYearMonth();
         List<ArticleArchiveDTO> result = new ArrayList<>();
@@ -430,9 +475,51 @@ public class ArticleAppService {
         }
     }
 
+    /**
+     * 批量转换文章列表为DTO，使用批量查询避免N+1问题
+     */
+    private List<ArticleDTO> batchConvertToDTO(List<Article> articles) {
+        if (articles.isEmpty()) {
+            return List.of();
+        }
+
+        // 1. 收集所有分类ID
+        Set<Long> categoryIds = articles.stream()
+                .map(Article::getCategoryId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        // 2. 批量查询所有分类
+        Map<Long, Category> categoryMap = categoryRepository.findAllById(categoryIds)
+                .stream().collect(Collectors.toMap(Category::getId, c -> c));
+
+        // 3. 收集所有父分类ID
+        Set<Long> parentIds = categoryMap.values().stream()
+                .map(Category::getParentId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        // 4. 批量查询所有父分类
+        Map<Long, Category> parentMap = categoryRepository.findAllById(parentIds)
+                .stream().collect(Collectors.toMap(Category::getId, c -> c));
+
+        // 5. 内存组装DTO
+        return articles.stream()
+                .map(article -> toDTO(article, categoryMap, parentMap))
+                .toList();
+    }
+
     private ArticleDTO toDTO(Article article) {
+        return toDTO(article, Map.of(), Map.of());
+    }
+
+    private ArticleDTO toDTO(Article article, Map<Long, Category> categoryMap, Map<Long, Category> parentMap) {
         ArticleDTO dto = new ArticleDTO();
         BeanUtils.copyProperties(article, dto);
+        // XSS963262a4Ff1a5bf9680798988fdb884cHTML8f6c4e49
+        if (article.getTitle() != null) {
+            dto.setTitle(HtmlUtils.htmlEscape(article.getTitle()));
+        }
         dto.setId(article.getId());
         // 显式映射时间字段（字段名不一致）
         dto.setCreateTime(article.getCreatedAt());
@@ -444,12 +531,15 @@ public class ArticleAppService {
 
         // 填充分类信息和分类路径
         if (article.getCategoryId() != null) {
-            Category category = categoryRepository.findById(article.getCategoryId()).orElse(null);
+            Category category = categoryMap.get(article.getCategoryId());
+            // 如果Map中没有，回退到单独查询（兼容单条查询场景）
+            if (category == null && categoryMap.isEmpty()) {
+                category = categoryRepository.findById(article.getCategoryId()).orElse(null);
+            }
             if (category != null) {
                 dto.setCategory(toCategoryDTO(category));
-
                 // 构建分类层级路径
-                dto.setCategoryPath(buildCategoryPath(category));
+                dto.setCategoryPath(buildCategoryPath(category, parentMap));
             }
         }
 
@@ -462,6 +552,10 @@ public class ArticleAppService {
     private CategoryDTO toCategoryDTO(Category category) {
         CategoryDTO dto = new CategoryDTO();
         BeanUtils.copyProperties(category, dto);
+        // XSS963262a4Ff1a5bf952067c7b540d79f08fdb884cHTML8f6c4e49
+        if (category.getName() != null) {
+            dto.setName(HtmlUtils.htmlEscape(category.getName()));
+        }
         dto.setId(category.getId());
         dto.setCreateTime(category.getCreatedAt());
         dto.setUpdateTime(category.getUpdatedAt());
@@ -469,18 +563,18 @@ public class ArticleAppService {
     }
 
     /**
-     * 构建分类层级路径（从根到当前分类）
+     * 构建分类层级路径（从根到当前分类）- 使用批量查询的Map
      */
-    private List<CategoryDTO> buildCategoryPath(Category category) {
+    private List<CategoryDTO> buildCategoryPath(Category category, Map<Long, Category> parentMap) {
         List<CategoryDTO> path = new ArrayList<>();
 
         // 添加当前分类
         path.add(toCategoryDTO(category));
 
-        // 递归添加上级分类
+        // 递归添加上级分类（从Map中获取）
         Long parentId = category.getParentId();
         while (parentId != null) {
-            Category parent = categoryRepository.findById(parentId).orElse(null);
+            Category parent = parentMap.get(parentId);
             if (parent == null) {
                 break;
             }

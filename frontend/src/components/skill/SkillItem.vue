@@ -5,6 +5,11 @@ defineProps<{
   skill: Skill
 }>()
 </script>
+<script lang="ts">
+export default {
+  name: 'SkillItem'
+}
+</script>
 
 <template>
   <div class="flex items-center gap-4 rounded-lg border border-border bg-surface-secondary p-4">

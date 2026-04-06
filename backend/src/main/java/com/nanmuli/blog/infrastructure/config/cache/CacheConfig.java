@@ -62,6 +62,10 @@ public class CacheConfig {
                         .entryTtl(Duration.ofHours(2))) // 标签缓存2小时
                 .withCacheConfiguration("config", RedisCacheConfiguration.defaultCacheConfig()
                         .entryTtl(Duration.ofDays(1))) // 系统配置缓存1天
+                .withCacheConfiguration("article:archive", RedisCacheConfiguration.defaultCacheConfig()
+                        .entryTtl(Duration.ofHours(1))) // 文章归档缓存1小时
+                .withCacheConfiguration("article:stats", RedisCacheConfiguration.defaultCacheConfig()
+                        .entryTtl(Duration.ofMinutes(5))) // 文章统计缓存5分钟
                 .build();
     }
 }

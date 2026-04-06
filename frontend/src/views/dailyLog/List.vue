@@ -3,6 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { getDailyLogList } from '@/api/dailyLog'
 import { formatDateCN, formatMonthCN } from '@/utils/format'
+import { Timer, PartlyCloudy, ArrowRight } from '@element-plus/icons-vue'
 import type { DailyLog } from '@/types/dailyLog'
 
 const router = useRouter()

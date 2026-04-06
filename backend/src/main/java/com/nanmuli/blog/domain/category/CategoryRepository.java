@@ -2,6 +2,7 @@ package com.nanmuli.blog.domain.category;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -39,4 +40,9 @@ public interface CategoryRepository {
      * 分页查询分类列表
      */
     IPage<Category> findPage(IPage<Category> page, Long parentId, Boolean isLeaf, Integer status, String keyword);
+
+    /**
+     * 根据ID集合批量查询分类
+     */
+    List<Category> findAllById(Collection<Long> ids);
 }

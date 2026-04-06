@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
-import { Setting, HomeFilled } from '@element-plus/icons-vue'
+import { markRaw } from 'vue'
+import {
+  Setting, HomeFilled, Odometer, Document, Notebook,
+  Collection, FolderOpened, Trophy
+} from '@element-plus/icons-vue'
 
 defineProps<{
   collapsed: boolean
@@ -9,13 +13,13 @@ defineProps<{
 const router = useRouter()
 
 const menuItems = [
-  { path: '/admin', icon: 'Odometer', label: '仪表盘' },
-  { path: '/admin/article', icon: 'Document', label: '文章管理' },
-  { path: '/admin/daily-log', icon: 'Notebook', label: '日志管理' },
-  { path: '/admin/category', icon: 'Collection', label: '分类管理' },
-  { path: '/admin/project', icon: 'FolderOpened', label: '项目管理' },
-  { path: '/admin/skill', icon: 'Trophy', label: '技能管理' },
-  { path: '/admin/config', icon: 'Setting', label: '系统配置' },
+  { path: '/admin', icon: markRaw(Odometer), label: '仪表盘' },
+  { path: '/admin/article', icon: markRaw(Document), label: '文章管理' },
+  { path: '/admin/daily-log', icon: markRaw(Notebook), label: '日志管理' },
+  { path: '/admin/category', icon: markRaw(Collection), label: '分类管理' },
+  { path: '/admin/project', icon: markRaw(FolderOpened), label: '项目管理' },
+  { path: '/admin/skill', icon: markRaw(Trophy), label: '技能管理' },
+  { path: '/admin/config', icon: markRaw(Setting), label: '系统配置' },
 ]
 
 function isActive(path: string): boolean {

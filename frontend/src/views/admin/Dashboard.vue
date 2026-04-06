@@ -27,10 +27,10 @@ const recentArticles = ref<Article[]>([])
 async function fetchStats() {
   try {
     const data = await getDashboardStats()
-    stats.value[0].value = data.articleCount || 0
-    stats.value[1].value = data.projectCount || 0
-    stats.value[2].value = data.visitCount || 0      // 访问量（PV）
-    stats.value[3].value = data.visitorCount || 0    // 访客数（UV）
+    if (stats.value[0]) stats.value[0].value = data.articleCount || 0
+    if (stats.value[1]) stats.value[1].value = data.projectCount || 0
+    if (stats.value[2]) stats.value[2].value = data.visitCount || 0      // 访问量（PV）
+    if (stats.value[3]) stats.value[3].value = data.visitorCount || 0    // 访客数（UV）
   } catch (error: any) {
     ElMessage.error(error?.message || '加载统计数据失败')
   }
@@ -53,12 +53,12 @@ function formatDate(dateStr: string): string {
   })
 }
 
-function getStatusType(status: number): '' | 'success' | 'info' | 'warning' | 'danger' {
+function getStatusType(status: number): 'success' | 'info' | 'warning' | 'danger' {
   switch (status) {
     case 1: return 'success'
     case 2: return 'warning'
     case 3: return 'info'
-    default: return ''
+    default: return 'info'
   }
 }
 

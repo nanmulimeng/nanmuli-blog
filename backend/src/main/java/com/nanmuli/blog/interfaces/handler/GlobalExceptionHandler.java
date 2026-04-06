@@ -10,6 +10,7 @@ import org.slf4j.MDC;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.UUID;
 
@@ -43,13 +44,36 @@ public class GlobalExceptionHandler {
         return Result.error(403, "权限不足");
     }
 
+    /**
+     * 处理参数类型不匹配异常（如路径参数无法转换为期望类型）
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public Result<Void> handleMethodArgumentTypeMismatchException(MethodArgumentTypeMismatchException e, HttpServletRequest request) {
+        log.warn("参数类型不匹配: uri={}, param={}, value={}, error={}",
+                request.getRequestURI(), e.getName(), e.getValue(), e.getMessage());
+        return Result.error(400, "请求参数格式错误");
+    }
+
     @ExceptionHandler(Exception.class)
     public Result<Void> handleException(Exception e, HttpServletRequest request) {
         String traceId = MDC.get("traceId");
         if (traceId == null) {
             traceId = UUID.randomUUID().toString().replace("-", "");
         }
-        log.error("[traceId={}] 系统异常, uri={}, method={}", traceId, request.getRequestURI(), request.getMethod(), e);
+        String desensitizedMessage = desensitize(e.getMessage());
+        log.error("[traceId={}] 系统异常, uri={}, method={}, error={}", traceId, request.getRequestURI(), request.getMethod(), desensitizedMessage, e);
         return Result.error(500, "系统繁忙，请稍后再试");
+    }
+
+    /**
+     * 敏感信息脱敏处理
+     */
+    private String desensitize(String message) {
+        if (message == null) return null;
+        // 脱敏密码
+        message = message.replaceAll("(?i)(password|pwd|secret|key)=[^&\\s]*", "$1=***");
+        // 脱敏Token
+        message = message.replaceAll("(?i)(token|authorization)[:=][^\\s]*", "$1:***");
+        return message;
     }
 }

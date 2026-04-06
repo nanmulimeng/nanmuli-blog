@@ -10,7 +10,6 @@ export function useAuth() {
 
   const isLoggedIn = computed(() => userStore.isLoggedIn)
   const userInfo = computed(() => userStore.userInfo)
-  const token = computed(() => userStore.token)
 
   async function login(form: LoginForm): Promise<void> {
     await userStore.loginAction(form)
@@ -23,7 +22,6 @@ export function useAuth() {
   return {
     isLoggedIn,
     userInfo,
-    token,
     login,
     logout,
   }

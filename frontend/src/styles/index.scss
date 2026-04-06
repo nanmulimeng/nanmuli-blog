@@ -103,6 +103,12 @@ body {
   color: var(--theme-text-primary);
   background-color: var(--theme-bg-primary);
   transition: background-color 0.3s ease, color 0.3s ease;
+
+  /* 安全区域适配 - iPhone 刘海屏和底部横条 */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
 }
 
 /* 选中文字样式 */
@@ -224,6 +230,8 @@ body {
     color: var(--theme-text-primary);
     transition: all 0.2s ease;
     width: 100%;
+    /* 防止 iOS 自动缩放 */
+    font-size: 16px;
   }
 
   .input-glass:focus {
@@ -2035,6 +2043,45 @@ html.dark body .el-select-dropdown .el-select-dropdown__item {
 /* 修复 textarea focus */
 .dark .el-textarea__inner:focus {
   border-color: var(--theme-primary) !important;
+}
+
+/* ============================================
+   Safe Area Support for Notched Devices
+   ============================================ */
+
+/* 固定头部适配刘海屏 */
+.safe-area-top {
+  padding-top: max(1rem, env(safe-area-inset-top));
+}
+
+/* 固定底部适配底部横条 */
+.safe-area-bottom {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+/* 全屏容器安全区域 */
+.safe-area-container {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+}
+
+/* ============================================
+   iOS Input Optimization
+   ============================================ */
+
+/* 防止 iOS 输入框自动缩放 */
+input, textarea, select {
+  font-size: 16px;
+}
+
+/* 针对 iOS 设备的特殊处理 */
+@supports (-webkit-touch-callout: none) {
+  /* iOS 设备 */
+  input, textarea, select {
+    font-size: 16px !important;
+  }
 }
 
 /* ============================================

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { Skill } from '@/types/skill'
+import SkillItem from './SkillItem.vue'
 
 const props = defineProps<{
   skills: Skill[]
