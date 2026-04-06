@@ -72,7 +72,7 @@ function handleClick(): void {
 
     <div class="flex items-center justify-between text-sm text-content-tertiary">
       <div class="flex gap-4">
-        <span>阅读 {{ article.viewCount }}</span>
+        <span>{{ article.viewCount }} 人阅读</span>
         <span>点赞 {{ article.likeCount }}</span>
       </div>
       <div v-if="article.tags?.length" class="flex gap-2">

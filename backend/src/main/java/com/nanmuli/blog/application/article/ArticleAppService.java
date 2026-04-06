@@ -7,12 +7,18 @@ import com.nanmuli.blog.application.article.command.CreateArticleCommand;
 import com.nanmuli.blog.application.article.command.UpdateArticleCommand;
 import com.nanmuli.blog.application.article.dto.ArticleArchiveDTO;
 import com.nanmuli.blog.application.article.dto.ArticleDTO;
+import com.nanmuli.blog.application.article.dto.ArticleStatsDTO;
 import com.nanmuli.blog.application.article.query.ArticlePageQuery;
 import com.nanmuli.blog.application.category.CategoryAppService;
 import com.nanmuli.blog.application.category.dto.CategoryDTO;
 import com.nanmuli.blog.domain.article.Article;
 import com.nanmuli.blog.domain.article.ArticleId;
 import com.nanmuli.blog.domain.article.ArticleRepository;
+import com.nanmuli.blog.domain.article.ArticleViewRecord;
+import com.nanmuli.blog.domain.article.ArticleViewRecordRepository;
+import com.nanmuli.blog.domain.article.ArticleVisitLog;
+import com.nanmuli.blog.domain.article.ArticleVisitLogRepository;
+import com.nanmuli.blog.application.article.command.RecordArticleViewCommand;
 import com.nanmuli.blog.domain.article.event.ArticleCreatedEvent;
 import com.nanmuli.blog.domain.article.event.ArticlePublishedEvent;
 import com.nanmuli.blog.domain.category.Category;
@@ -46,6 +52,8 @@ import java.util.stream.Collectors;
 public class ArticleAppService {
 
     private final ArticleRepository articleRepository;
+    private final ArticleViewRecordRepository articleViewRecordRepository;
+    private final ArticleVisitLogRepository articleVisitLogRepository;
     private final CategoryRepository categoryRepository;
     private final CategoryAppService categoryAppService;
     private final ApplicationEventPublisher eventPublisher;
@@ -241,6 +249,77 @@ public class ArticleAppService {
         });
     }
 
+    /**
+     * 记录文章阅读用户（UV统计）和访问日志（PV统计）
+     */
+    @Transactional
+    public void recordView(RecordArticleViewCommand command, String ipAddress, String userAgent) {
+        Long articleId = command.getArticleId();
+        String visitorId = command.getVisitorId();
+
+        // 1. 记录访问日志（PV统计 - 每次访问都记录）
+        ArticleVisitLog visitLog = new ArticleVisitLog();
+        visitLog.setArticleId(articleId);
+        visitLog.setVisitorId(visitorId);
+        visitLog.setIpAddress(ipAddress);
+        visitLog.setUserAgent(userAgent);
+        visitLog.setVisitTime(java.time.LocalDateTime.now());
+        articleVisitLogRepository.save(visitLog);
+
+        // 2. 更新或创建独立访客记录（UV统计）
+        ArticleViewRecord record = articleViewRecordRepository
+                .findByArticleIdAndVisitorId(articleId, visitorId)
+                .orElse(null);
+
+        if (record == null) {
+            // 新访客，创建记录
+            record = new ArticleViewRecord();
+            record.setArticleId(articleId);
+            record.setVisitorId(visitorId);
+            record.setIpAddress(ipAddress);
+            record.setUserAgent(userAgent);
+            record.setFirstViewTime(java.time.LocalDateTime.now());
+            record.setLastViewTime(java.time.LocalDateTime.now());
+            record.setViewCount(1);
+            articleViewRecordRepository.save(record);
+
+            // 同时更新文章表的viewCount字段（保持兼容性）
+            articleRepository.increaseViewCount(new ArticleId(articleId));
+        } else {
+            // 已有记录，更新访问时间和次数
+            record.setLastViewTime(java.time.LocalDateTime.now());
+            record.setViewCount(record.getViewCount() + 1);
+            articleViewRecordRepository.save(record);
+        }
+    }
+
+    /**
+     * 获取文章阅读用户数量（UV）
+     */
+    @Transactional(readOnly = true)
+    public Long getArticleViewCount(Long articleId) {
+        return articleViewRecordRepository.countUniqueVisitorsByArticleId(articleId);
+    }
+
+    /**
+     * 获取文章完整访问统计（PV/UV/今日）
+     */
+    @Transactional(readOnly = true)
+    public ArticleStatsDTO getArticleStats(Long articleId) {
+        Article article = articleRepository.findById(new ArticleId(articleId))
+                .orElseThrow(() -> new BusinessException("文章不存在"));
+
+        ArticleStatsDTO stats = new ArticleStatsDTO();
+        stats.setArticleId(articleId);
+        stats.setSlug(article.getSlug());
+        stats.setTitle(article.getTitle());
+        stats.setVisitCount(articleVisitLogRepository.countByArticleId(articleId));
+        stats.setVisitorCount(articleViewRecordRepository.countUniqueVisitorsByArticleId(articleId));
+        stats.setTodayCount(articleVisitLogRepository.countTodayByArticleId(articleId));
+
+        return stats;
+    }
+
     @Transactional(readOnly = true)
     public List<ArticleArchiveDTO> getArchive() {
         List<java.util.Map<String, Object>> rawData = articleRepository.findArchiveByYearMonth();
@@ -283,6 +362,10 @@ public class ArticleAppService {
         // 显式映射时间字段（字段名不一致）
         dto.setCreateTime(article.getCreatedAt());
         dto.setUpdateTime(article.getUpdatedAt());
+
+        // 从阅读记录表统计阅读用户数量（UV）
+        Long viewCount = articleViewRecordRepository.countUniqueVisitorsByArticleId(article.getId());
+        dto.setViewCount(viewCount != null ? viewCount.intValue() : 0);
 
         // 填充分类信息和分类路径
         if (article.getCategoryId() != null) {

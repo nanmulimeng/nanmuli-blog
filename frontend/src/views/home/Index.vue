@@ -20,7 +20,7 @@ const activeCategory = ref<string | null>(null)
 // 统计数据动画
 const animatedStats = ref({
   articleCount: 0,
-  categoryCount: 0,
+  projectCount: 0,
   tagCount: 0,
   dayCount: 0,
 })
@@ -49,7 +49,7 @@ function animateStats() {
 
   const targets = {
     articleCount: aggregated.value.stats.articleCount || 0,
-    categoryCount: aggregated.value.stats.categoryCount || 0,
+    projectCount: aggregated.value.stats.projectCount || 0,
     tagCount: aggregated.value.stats.tagCount || 0,
     dayCount: aggregated.value.stats.dailyLogCount || 0,
   }
@@ -66,7 +66,7 @@ function animateStats() {
 
     animatedStats.value = {
       articleCount: Math.floor(targets.articleCount * easeOut),
-      categoryCount: Math.floor(targets.categoryCount * easeOut),
+      projectCount: Math.floor(targets.projectCount * easeOut),
       tagCount: Math.floor(targets.tagCount * easeOut),
       dayCount: Math.floor(targets.dayCount * easeOut),
     }
@@ -272,9 +272,9 @@ watch(experience, (newVal) => {
         </div>
         <div class="text-center">
           <div class="text-3xl font-bold text-content-primary sm:text-4xl">
-            {{ animatedStats.categoryCount }}
+            {{ animatedStats.projectCount }}
           </div>
-          <div class="mt-1 text-sm text-content-tertiary">个分类</div>
+          <div class="mt-1 text-sm text-content-tertiary">个项目</div>
         </div>
         <div class="text-center">
           <div class="text-3xl font-bold text-content-primary sm:text-4xl">

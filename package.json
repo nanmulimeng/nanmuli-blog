@@ -1,0 +1,6 @@
+{
+  "devDependencies": {
+    "@iconify-json/ep": "^1.2.4",
+    "unplugin-icons": "^23.0.1"
+  }
+}

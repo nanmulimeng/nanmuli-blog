@@ -19,7 +19,12 @@ const menuItems = [
 ]
 
 function isActive(path: string): boolean {
-  return router.currentRoute.value.path.startsWith(path)
+  const currentPath = router.currentRoute.value.path
+  // 仪表盘路径 /admin 需要精确匹配，避免所有子路由都高亮
+  if (path === '/admin') {
+    return currentPath === '/admin' || currentPath === '/admin/'
+  }
+  return currentPath.startsWith(path)
 }
 </script>
 

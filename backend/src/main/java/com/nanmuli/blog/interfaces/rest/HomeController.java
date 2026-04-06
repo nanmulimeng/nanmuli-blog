@@ -48,7 +48,7 @@ public class HomeController {
 
         HomeAggregatedDTO.SiteStatsDTO stats = new HomeAggregatedDTO.SiteStatsDTO();
         stats.setArticleCount(articleAppService.countPublished());
-        stats.setCategoryCount((long) dto.getCategories().size());
+        stats.setProjectCount((long) dto.getProjects().size());
         stats.setTagCount((long) dto.getTags().size());
         stats.setDailyLogCount(dailyLogRepository.count());
         dto.setStats(stats);

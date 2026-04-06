@@ -1005,20 +1005,23 @@ html.dark body .el-table .el-table__fixed-right th.el-table__cell {
 }
 
 .dark .el-form-item__label {
-  color: var(--theme-text-secondary);
+  color: var(--theme-text-secondary) !important;
 }
 
-.dark .el-input__wrapper {
-  background-color: var(--theme-bg-tertiary);
-  box-shadow: 0 0 0 1px var(--theme-border) inset;
+.dark .el-input__wrapper,
+.dark .el-input:not(.is-disabled) .el-input__wrapper {
+  background-color: var(--theme-bg-tertiary) !important;
+  box-shadow: 0 0 0 1px var(--theme-border) inset !important;
 }
 
 .dark .el-input__inner {
-  color: var(--theme-text-primary);
+  color: var(--theme-text-primary) !important;
+  background-color: transparent !important;
 }
 
-.dark .el-input__wrapper.is-focus {
-  box-shadow: 0 0 0 1px var(--theme-primary) inset;
+.dark .el-input__wrapper.is-focus,
+.dark .el-input.is-focus .el-input__wrapper {
+  box-shadow: 0 0 0 1px var(--theme-primary) inset !important;
 }
 
 /* el-input placeholder 暗色模式 */
@@ -1044,14 +1047,16 @@ html.dark body .el-table .el-table__fixed-right th.el-table__cell {
   background-color: var(--theme-bg-tertiary) !important;
   border-color: var(--theme-border) !important;
   color: var(--theme-text-primary) !important;
+  box-shadow: none !important;
 }
 
 .dark .el-textarea__inner:focus {
   border-color: var(--theme-primary) !important;
+  box-shadow: 0 0 0 1px var(--theme-primary) inset !important;
 }
 
 .dark .el-textarea__inner::placeholder {
-  color: var(--theme-text-tertiary);
+  color: var(--theme-text-tertiary) !important;
 }
 
 /* el-select 暗色模式 */
@@ -1119,22 +1124,86 @@ html.dark body .el-table .el-table__fixed-right th.el-table__cell {
   border-color: var(--theme-border);
 }
 
-.dark .el-select-dropdown {
-  background-color: var(--theme-bg-secondary);
-  border-color: var(--theme-border);
+/* el-select-dropdown 全局背景修复 - 最高优先级 */
+html.dark body .el-select-dropdown,
+html.dark body .el-select-dropdown.el-popper,
+html.dark body .el-popper.is-light .el-select-dropdown,
+html.dark body .el-popper.el-select-dropdown {
+  background-color: var(--theme-bg-secondary) !important;
+  border-color: var(--theme-border) !important;
 }
 
-.dark .el-select-dropdown__item {
-  color: var(--theme-text-primary);
+/* el-select-dropdown 包装器 */
+html.dark body .el-popper.el-select-dropdown {
+  background-color: var(--theme-bg-secondary) !important;
+}
+
+/* el-select-dropdown 内部所有元素背景 */
+html.dark body .el-select-dropdown > *,
+html.dark body .el-select-dropdown .el-scrollbar,
+html.dark body .el-select-dropdown .el-scrollbar__wrap,
+html.dark body .el-select-dropdown .el-scrollbar__view {
+  background-color: transparent !important;
+}
+
+/* el-select-dropdown 列表 - 强制覆盖 */
+html.dark body .el-select-dropdown__list,
+html.dark body .el-select-dropdown .el-select-dropdown__list {
+  background-color: var(--theme-bg-secondary) !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+/* el-select-dropdown 选项 - 强制所有项背景 */
+html.dark body .el-select-dropdown__item,
+html.dark body .el-select-dropdown .el-select-dropdown__item {
+  color: var(--theme-text-primary) !important;
+  background-color: var(--theme-bg-secondary) !important;
 }
 
 .dark .el-select-dropdown__item:hover,
 .dark .el-select-dropdown__item.hover {
-  background-color: var(--theme-bg-tertiary);
+  background-color: var(--theme-bg-tertiary) !important;
+}
+
+/* 修复选中和聚焦状态 */
+.dark .el-select-dropdown__item.selected,
+.dark .el-select-dropdown__item.is-selected {
+  background-color: var(--theme-bg-tertiary) !important;
+  color: var(--theme-primary) !important;
+}
+
+/* 修复 el-select-dropdown 顶部空块和头部 */
+.dark .el-select-dropdown .el-select-dropdown__header,
+.dark .el-select-dropdown__header {
+  background-color: var(--theme-bg-secondary) !important;
+  border-bottom-color: var(--theme-border) !important;
+}
+
+/* el-popper 箭头修复 */
+.dark .el-popper .el-popper__arrow::before {
+  background-color: var(--theme-bg-secondary) !important;
+  border-color: var(--theme-border) !important;
+}
+
+.dark .el-popper.is-light .el-popper__arrow::before {
+  background-color: var(--theme-bg-secondary) !important;
+  border-color: var(--theme-border) !important;
+}
+
+/* el-select 空内容提示 */
+.dark .el-select-dropdown__empty {
+  background-color: var(--theme-bg-secondary) !important;
+  color: var(--theme-text-tertiary) !important;
+}
+
+/* el-select 加载状态 */
+.dark .el-select-dropdown__loading {
+  background-color: var(--theme-bg-secondary) !important;
 }
 
 .dark .el-select-dropdown__item.selected {
-  color: var(--theme-primary);
+  color: var(--theme-primary) !important;
   font-weight: 600;
 }
 
@@ -1445,17 +1514,21 @@ html.dark body .el-table .el-table__fixed-right th.el-table__cell {
 
 /* el-radio 暗色模式 */
 .dark .el-radio {
-  color: var(--theme-text-primary);
+  color: var(--theme-text-primary) !important;
+}
+
+.dark .el-radio__label {
+  color: var(--theme-text-primary) !important;
 }
 
 .dark .el-radio__input.is-checked + .el-radio__label {
-  color: var(--theme-primary);
+  color: var(--theme-primary) !important;
 }
 
 /* radio 未选中状态边框 */
 .dark .el-radio__inner {
-  border-color: var(--theme-text-tertiary);
-  background-color: var(--theme-bg-tertiary);
+  border-color: var(--theme-text-tertiary) !important;
+  background-color: var(--theme-bg-tertiary) !important;
 }
 
 .dark .el-radio__input.is-checked .el-radio__inner {
@@ -1473,17 +1546,21 @@ html.dark body .el-table .el-table__fixed-right th.el-table__cell {
 
 /* el-checkbox 暗色模式 */
 .dark .el-checkbox {
-  color: var(--theme-text-primary);
+  color: var(--theme-text-primary) !important;
+}
+
+.dark .el-checkbox__label {
+  color: var(--theme-text-primary) !important;
 }
 
 .dark .el-checkbox__input.is-checked + .el-checkbox__label {
-  color: var(--theme-primary);
+  color: var(--theme-primary) !important;
 }
 
 /* checkbox 未选中状态边框 - 增强可见性 */
 .dark .el-checkbox__inner {
-  border-color: var(--theme-text-tertiary);
-  background-color: var(--theme-bg-tertiary);
+  border-color: var(--theme-text-tertiary) !important;
+  background-color: var(--theme-bg-tertiary) !important;
 }
 
 .dark .el-checkbox__input.is-checked .el-checkbox__inner {
@@ -1543,13 +1620,16 @@ html.dark body .el-table .el-table__fixed-right th.el-table__cell {
   color: var(--theme-text-tertiary);
 }
 
-/* el-select 输入框暗色模式 */
-.dark .el-select .el-input__wrapper {
-  background-color: var(--theme-bg-tertiary);
+/* el-select 输入框暗色模式 - 强制覆盖 */
+.dark .el-select .el-input__wrapper,
+.dark .el-select:hover .el-input__wrapper {
+  background-color: var(--theme-bg-tertiary) !important;
+  box-shadow: 0 0 0 1px var(--theme-border) inset !important;
 }
 
-.dark .el-select .el-input.is-focus .el-input__wrapper {
-  box-shadow: 0 0 0 1px var(--theme-primary) inset;
+.dark .el-select .el-input.is-focus .el-input__wrapper,
+.dark .el-select .el-input__wrapper.is-focus {
+  box-shadow: 0 0 0 1px var(--theme-primary) inset !important;
 }
 
 /* el-color-picker 暗色模式 */
@@ -1762,6 +1842,123 @@ html.dark body .el-table .el-table__fixed-right th.el-table__cell {
   background-color: #1e1e2e;
 }
 
+/* md-editor-v3 输入区域背景修复 */
+.dark .md-editor-input {
+  background-color: var(--theme-bg-secondary) !important;
+}
+
+.dark .md-editor-input-wrapper {
+  background-color: var(--theme-bg-secondary) !important;
+}
+
+/* 修复编辑器内容区域 */
+.dark .md-editor-content {
+  background-color: var(--theme-bg-secondary) !important;
+}
+
+/* 修复 md-editor textarea 背景 */
+.dark .md-editor-input-wrapper textarea,
+.dark .md-editor-input-wrapper .md-editor-textarea {
+  background-color: var(--theme-bg-secondary) !important;
+  color: var(--theme-text-primary) !important;
+}
+
+/* 修复编辑器内部所有可能的黑色背景 */
+.dark .md-editor .md-editor-input-wrapper,
+.dark .md-editor .md-editor-input,
+.dark .md-editor .CodeMirror,
+.dark .md-editor .cm-editor,
+.dark .md-editor .cm-scroller {
+  background-color: var(--theme-bg-secondary) !important;
+}
+
+/* 修复 CodeMirror 编辑器 */
+.dark .md-editor .cm-editor .cm-scroller {
+  background-color: var(--theme-bg-secondary) !important;
+}
+
+.dark .md-editor .cm-editor .cm-content {
+  background-color: var(--theme-bg-secondary) !important;
+  color: var(--theme-text-primary) !important;
+}
+
+/* 修复编辑器行号区域 */
+.dark .md-editor .cm-gutters {
+  background-color: var(--theme-bg-tertiary) !important;
+  border-color: var(--theme-border) !important;
+  color: var(--theme-text-tertiary) !important;
+}
+
+/* 修复 md-editor-v3 左侧编辑区域黑色背景 - 终极修复 */
+.dark .md-editor {
+  background-color: var(--theme-bg-secondary) !important;
+}
+
+.dark .md-editor > * {
+  background-color: transparent !important;
+}
+
+.dark .md-editor .md-editor-content {
+  background-color: var(--theme-bg-secondary) !important;
+}
+
+/* 修复 textarea 和输入框 */
+.dark .md-editor textarea,
+.dark .md-editor .md-editor-textarea,
+.dark .md-editor-input-wrapper > div {
+  background-color: var(--theme-bg-secondary) !important;
+}
+
+/* 修复 md-editor 内部所有可能的黑色背景元素 */
+.dark .md-editor .md-editor-input-wrapper::before,
+.dark .md-editor .md-editor-input-wrapper::after {
+  background-color: transparent !important;
+}
+
+/* 修复 md-editor 暗色主题下的编辑区域 */
+.dark .md-editor .md-editor-input-wrapper[style*="background"],
+.dark .md-editor .md-editor-input[style*="background"] {
+  background-color: var(--theme-bg-secondary) !important;
+}
+
+/* 强制所有 md-editor 内部元素 */
+.dark .md-editor * {
+  background-color: transparent;
+}
+
+/* 但是保留特定元素的背景 */
+.dark .md-editor .md-editor-toolbar,
+.dark .md-editor .cm-gutters {
+  background-color: var(--theme-bg-tertiary) !important;
+}
+
+.dark .md-editor .md-editor-input-wrapper,
+.dark .md-editor .md-editor-input {
+  background-color: var(--theme-bg-secondary) !important;
+}
+
+/* 修复 CodeMirror 相关元素 */
+.dark .md-editor .cm-editor {
+  background-color: var(--theme-bg-secondary) !important;
+}
+
+.dark .md-editor .cm-content,
+.dark .md-editor .cm-line {
+  background-color: transparent !important;
+  color: var(--theme-text-primary) !important;
+}
+
+/* 修复 md-editor 的 dark 主题下的输入区域 */
+.dark .md-editor-dark .md-editor-input-wrapper,
+.dark .md-editor-dark .md-editor-input {
+  background-color: var(--theme-bg-secondary) !important;
+}
+
+.dark .md-editor-dark textarea {
+  background-color: var(--theme-bg-secondary) !important;
+  color: var(--theme-text-primary) !important;
+}
+
 /* md-editor-v3 滚动条 */
 .dark .md-editor::-webkit-scrollbar {
   width: 8px;
@@ -1779,6 +1976,65 @@ html.dark body .el-table .el-table__fixed-right th.el-table__cell {
 
 .dark .md-editor::-webkit-scrollbar-thumb:hover {
   background: var(--theme-text-secondary);
+}
+
+/* ============================================
+   Element Plus Form 暗色模式全局修复
+   ============================================ */
+
+/* 修复表单标签颜色 */
+.dark .el-form-item__label {
+  color: var(--theme-text-secondary) !important;
+}
+
+/* 修复所有输入框背景 - 最高优先级 */
+.dark .el-form .el-input__wrapper,
+.dark .el-form-item .el-input__wrapper,
+.dark .el-form .el-textarea__inner,
+.dark .el-form-item .el-textarea__inner,
+.dark .el-form .el-select .el-input__wrapper,
+.dark .el-input .el-input__wrapper {
+  background-color: var(--theme-bg-tertiary) !important;
+  box-shadow: 0 0 0 1px var(--theme-border) inset !important;
+}
+
+/* 修复 el-input 内部输入框 */
+.dark .el-input__wrapper .el-input__inner {
+  background-color: transparent !important;
+  color: var(--theme-text-primary) !important;
+}
+
+/* 修复 el-select 下拉触发器背景 */
+.dark .el-select .el-input .el-input__wrapper,
+.dark .el-select .el-input.is-focus .el-input__wrapper,
+.dark .el-select .el-input:hover .el-input__wrapper,
+.dark .el-select .el-input__wrapper {
+  background-color: var(--theme-bg-tertiary) !important;
+  box-shadow: 0 0 0 1px var(--theme-border) inset !important;
+}
+
+.dark .el-select .el-input__inner {
+  color: var(--theme-text-primary) !important;
+  background-color: transparent !important;
+}
+
+/* 修复 placeholder 颜色 */
+.dark .el-input__inner::placeholder,
+.dark .el-textarea__inner::placeholder,
+.dark .el-select .el-input__inner::placeholder {
+  color: var(--theme-text-tertiary) !important;
+}
+
+/* 修复 focus 状态 */
+.dark .el-input__wrapper.is-focus,
+.dark .el-input.is-focus .el-input__wrapper,
+.dark .el-select .el-input.is-focus .el-input__wrapper {
+  box-shadow: 0 0 0 1px var(--theme-primary) inset !important;
+}
+
+/* 修复 textarea focus */
+.dark .el-textarea__inner:focus {
+  border-color: var(--theme-primary) !important;
 }
 
 /* ============================================
@@ -1833,4 +2089,187 @@ html.dark body .el-table .el-table__fixed-right th.el-table__cell {
 /* 修复 el-table 所有可能的顶部白线来源 */
 .dark .el-table * {
   border-top-color: #334155 !important;
+}
+
+/* ============================================
+   el-select 暗夜模式终极修复
+   ============================================ */
+
+/* 最高优先级：强制 el-select 输入框背景 */
+html.dark body .el-select .el-input__wrapper,
+html.dark body .el-select .el-input.is-focus .el-input__wrapper,
+html.dark body .el-select .el-input:hover .el-input__wrapper,
+html.dark body .el-select.is-focus .el-input__wrapper,
+html.dark body .el-select .el-input__wrapper.is-focus,
+html.dark body .el-select .el-input__inner,
+html.dark body .el-select__wrapper,
+html.dark body .el-select .el-input {
+  background-color: var(--theme-bg-tertiary) !important;
+  box-shadow: 0 0 0 1px var(--theme-border) inset !important;
+}
+
+/* 修复 el-select 内部输入框 */
+html.dark body .el-select .el-input__inner {
+  background-color: transparent !important;
+  color: var(--theme-text-primary) !important;
+}
+
+/* 修复选中后的 el-select 显示 */
+html.dark body .el-select .el-select__selection {
+  background-color: transparent !important;
+  color: var(--theme-text-primary) !important;
+}
+
+/* 修复 el-select 的 placeholder */
+html.dark body .el-select .el-select__placeholder,
+html.dark body .el-select .el-input__placeholder {
+  color: var(--theme-text-tertiary) !important;
+}
+
+/* 修复 el-select 选中文字颜色 - 所有可能的选择器 */
+html.dark body .el-select .el-input__inner,
+html.dark body .el-select .el-select__selected-item,
+html.dark body .el-select .el-select__selection span,
+html.dark body .el-select .el-input__wrapper .el-input__inner {
+  color: var(--theme-text-primary) !important;
+}
+
+/* 修复 el-select 选中值的文字 */
+html.dark body .el-select .el-select__selection .el-select__selected-item {
+  color: var(--theme-text-primary) !important;
+}
+
+/* 修复单选模式下选中的文字 */
+html.dark body .el-select .el-select__single {
+  color: var(--theme-text-primary) !important;
+}
+
+/* 修复 el-select 后缀图标颜色 */
+html.dark body .el-select .el-select__suffix,
+html.dark body .el-select .el-select__caret {
+  color: var(--theme-text-secondary) !important;
+}
+
+/* 修复 el-select 多选模式下的标签 */
+html.dark body .el-select .el-select__tags {
+  background-color: transparent !important;
+}
+
+html.dark body .el-select .el-select__tags .el-tag {
+  background-color: var(--theme-bg-secondary) !important;
+  border-color: var(--theme-border) !important;
+  color: var(--theme-text-primary) !important;
+}
+
+/* 修复 el-select suffix 图标区域 */
+html.dark body .el-select .el-input__suffix,
+html.dark body .el-select .el-input__suffix-inner {
+  background-color: transparent !important;
+}
+
+html.dark body .el-select .el-input__suffix .el-icon {
+  color: var(--theme-text-secondary) !important;
+}
+
+/* 修复 el-select 展开/收起图标 */
+html.dark body .el-select .el-select__caret {
+  color: var(--theme-text-secondary) !important;
+}
+
+/* 修复 el-select 禁用状态 */
+html.dark body .el-select.is-disabled .el-input__wrapper {
+  background-color: var(--theme-bg-tertiary) !important;
+  opacity: 0.6;
+}
+
+/* 修复 el-select  hover 时的背景 */
+html.dark body .el-select:hover:not(.is-disabled) .el-input__wrapper {
+  box-shadow: 0 0 0 1px var(--theme-primary) inset !important;
+}
+
+/* 修复 el-select  focus 状态 */
+html.dark body .el-select.is-focus .el-input__wrapper,
+html.dark body .el-select .el-input.is-focus .el-input__wrapper {
+  box-shadow: 0 0 0 1px var(--theme-primary) inset !important;
+}
+
+/* ============================================
+   el-input 字数统计修复
+   ============================================ */
+
+/* 修复 el-input 字数统计器背景 */
+html.dark body .el-input .el-input__count,
+html.dark body .el-input__count {
+  background-color: transparent !important;
+  color: var(--theme-text-tertiary) !important;
+}
+
+/* 修复 el-input 字数统计器文本 */
+html.dark body .el-input__count .el-input__count-inner,
+html.dark body .el-input__count-inner {
+  background-color: transparent !important;
+  color: var(--theme-text-tertiary) !important;
+}
+
+/* 修复 textarea 字数统计 */
+html.dark body .el-textarea .el-input__count,
+html.dark body .el-textarea__inner ~ .el-input__count {
+  background-color: transparent !important;
+  color: var(--theme-text-tertiary) !important;
+}
+
+/* ============================================
+   el-select-dropdown 下拉文字颜色修复
+   ============================================ */
+
+/* 下拉选项文字颜色 */
+html.dark body .el-select-dropdown__item,
+html.dark body .el-select-dropdown .el-select-dropdown__item,
+html.dark body .el-select-dropdown__item span,
+html.dark body .el-select-dropdown__item .el-select-dropdown__item-text {
+  color: var(--theme-text-primary) !important;
+}
+
+/* 下拉选项 hover 状态 */
+html.dark body .el-select-dropdown__item:hover,
+html.dark body .el-select-dropdown__item.hover,
+html.dark body .el-select-dropdown__item:hover span,
+html.dark body .el-select-dropdown__item.hover span {
+  color: var(--theme-text-primary) !important;
+  background-color: var(--theme-bg-tertiary) !important;
+}
+
+/* 下拉选项选中状态 */
+html.dark body .el-select-dropdown__item.selected,
+html.dark body .el-select-dropdown__item.is-selected,
+html.dark body .el-select-dropdown__item.selected span,
+html.dark body .el-select-dropdown__item.is-selected span {
+  color: var(--theme-primary) !important;
+  background-color: var(--theme-bg-tertiary) !important;
+  font-weight: 600;
+}
+
+/* 下拉选项禁用状态 */
+html.dark body .el-select-dropdown__item.is-disabled,
+html.dark body .el-select-dropdown__item.is-disabled span {
+  color: var(--theme-text-tertiary) !important;
+  opacity: 0.6;
+}
+
+/* 下拉框分组标题 */
+html.dark body .el-select-group__title {
+  color: var(--theme-text-tertiary) !important;
+  background-color: transparent !important;
+}
+
+/* 下拉框空状态 */
+html.dark body .el-select-dropdown__empty {
+  color: var(--theme-text-tertiary) !important;
+}
+
+/* 下拉框搜索输入框 */
+html.dark body .el-select-dropdown .el-select-dropdown__input {
+  background-color: var(--theme-bg-tertiary) !important;
+  color: var(--theme-text-primary) !important;
+  border-color: var(--theme-border) !important;
 }

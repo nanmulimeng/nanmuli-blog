@@ -114,14 +114,12 @@ onMounted(fetchData)
       </el-table-column>
       <el-table-column prop="slug" label="别名" />
       <el-table-column prop="articleCount" label="文章数" width="100" />
-      <el-table-column label="操作" width="150" fixed="right">
+      <el-table-column label="操作" width="120" fixed="right" align="center">
         <template #default="{ row }">
-          <el-button type="primary" link :icon="Edit" @click="handleEdit(row)">
-            编辑
-          </el-button>
-          <el-button type="danger" link :icon="Delete" @click="handleDelete(row)">
-            删除
-          </el-button>
+          <el-button-group>
+            <el-button type="primary" size="small" :icon="Edit" @click="handleEdit(row)" title="编辑" />
+            <el-button type="danger" size="small" :icon="Delete" @click="handleDelete(row)" title="删除" />
+          </el-button-group>
         </template>
       </el-table-column>
     </el-table>

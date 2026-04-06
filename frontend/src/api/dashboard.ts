@@ -3,9 +3,9 @@ import type { Article } from '@/types/article'
 
 export interface DashboardStats {
   articleCount: number
-  categoryCount: number
-  tagCount: number
-  viewCount: number
+  projectCount: number  // 项目数量
+  visitCount: number    // 访问量（PV）
+  visitorCount: number  // 访客数（UV）
 }
 
 export function getDashboardStats(): Promise<DashboardStats> {

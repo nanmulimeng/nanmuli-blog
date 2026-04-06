@@ -33,7 +33,7 @@ onMounted(fetchTags)
 <template>
   <div class="tag-page">
     <!-- Page Header -->
-    <section class="bg-surface-tertiary py-12">
+    <section class="py-12">
       <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 text-center">
         <h1 class="text-3xl font-bold text-content-primary">标签云</h1>
         <p class="mt-2 text-content-secondary">共 {{ tags.length }} 个标签，涵盖各种技术主题</p>
@@ -45,7 +45,7 @@ onMounted(fetchTags)
       <div class="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
         <!-- Loading -->
         <div v-if="loading" class="flex flex-wrap justify-center gap-3">
-          <div v-for="i in 20" :key="i" class="h-10 w-24 bg-surface-tertiary rounded-full animate-pulse" />
+          <div v-for="i in 20" :key="i" class="h-10 w-24 bg-surface-primary rounded-full animate-pulse" />
         </div>
 
         <!-- Empty -->
@@ -59,7 +59,7 @@ onMounted(fetchTags)
           <button
             v-for="tag in tags"
             :key="tag.id"
-            class="inline-flex items-center px-4 py-2 rounded-full bg-surface-secondary border border-border font-medium transition-all duration-150 hover:border-primary hover:text-primary hover:shadow-sm"
+            class="inline-flex items-center px-4 py-2 rounded-full bg-surface-primary border border-border font-medium transition-all duration-150 hover:border-primary hover:text-primary hover:shadow-sm"
             :style="{ fontSize: getTagSize(tag.articleCount) }"
             @click="router.push(`/article?tag=${tag.id}`)"
           >

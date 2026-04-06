@@ -43,3 +43,26 @@ export function getArticleArchive(): Promise<ArticleArchive[]> {
 export function recordArticleView(slug: string): Promise<void> {
   return post<void>(`/article/${slug}/view`)
 }
+
+// 记录文章阅读用户（UV统计）
+export function recordArticleViewByVisitor(
+  articleId: string,
+  visitorId: string
+): Promise<void> {
+  return post<void>(`/article/${articleId}/record-view`, { visitorId })
+}
+
+// 文章访问统计
+export interface ArticleStats {
+  articleId: string
+  slug: string
+  title: string
+  visitCount: number    // 总访问量（PV）
+  visitorCount: number  // 独立访客（UV）
+  todayCount: number    // 今日访问
+}
+
+// 获取文章访问统计
+export function getArticleStats(articleId: string): Promise<ArticleStats> {
+  return get<ArticleStats>(`/article/${articleId}/stats`)
+}

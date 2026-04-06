@@ -60,6 +60,13 @@ public class ProjectRepositoryImpl implements ProjectRepository {
     }
 
     @Override
+    public Long countAll() {
+        LambdaQueryWrapper<Project> wrapper = Wrappers.lambdaQuery();
+        wrapper.eq(Project::getIsDeleted, false);
+        return projectMapper.selectCount(wrapper);
+    }
+
+    @Override
     public void deleteById(Long id) {
         projectMapper.deleteById(id);
     }

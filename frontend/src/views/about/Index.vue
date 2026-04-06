@@ -109,7 +109,7 @@ onMounted(() => {
     </section>
 
     <!-- Skills Section -->
-    <section class="py-12 bg-surface-tertiary">
+    <section class="py-12">
       <div class="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
         <h2 class="text-xl font-bold text-content-primary mb-8">技能栈</h2>
 
@@ -121,7 +121,7 @@ onMounted(() => {
               <div
                 v-for="skill in skills.filter(s => s.category === cat.key)"
                 :key="skill.id"
-                class="flex items-center gap-3 bg-surface-secondary rounded-lg p-3 border border-border"
+                class="flex items-center gap-3 bg-surface-primary rounded-lg p-3 border border-border"
               >
                 <img v-if="skill.icon" :src="skill.icon" class="w-6 h-6" :alt="skill.name">
                 <span class="flex-1 font-medium text-content-primary">{{ skill.name }}</span>
@@ -131,7 +131,7 @@ onMounted(() => {
                     v-for="i in 5"
                     :key="i"
                     class="w-2 h-2 rounded-full"
-                    :class="i <= skill.proficiency ? 'bg-primary' : 'bg-surface-tertiary'"
+                    :class="i <= skill.proficiency ? 'bg-primary' : 'bg-surface-secondary'"
                   />
                 </div>
               </div>

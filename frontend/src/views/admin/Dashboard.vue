@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { Document, Folder, Collection, View, EditPen, Notebook, FolderOpened, Setting } from '@element-plus/icons-vue'
+import { Document, FolderOpened, View, User, EditPen, Notebook, Setting } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { getDashboardStats, getRecentArticles } from '@/api/dashboard'
 import type { Article } from '@/types/article'
@@ -17,9 +17,9 @@ interface StatItem {
 
 const stats = ref<StatItem[]>([
   { label: '文章数量', value: 0, icon: Document },
-  { label: '分类数量', value: 0, icon: Folder },
-  { label: '标签数量', value: 0, icon: Collection },
-  { label: '总阅读量', value: 0, icon: View },
+  { label: '项目数量', value: 0, icon: FolderOpened },
+  { label: '访问量', value: 0, icon: View },
+  { label: '访客数', value: 0, icon: User },
 ])
 
 const recentArticles = ref<Article[]>([])
@@ -28,9 +28,9 @@ async function fetchStats() {
   try {
     const data = await getDashboardStats()
     stats.value[0].value = data.articleCount || 0
-    stats.value[1].value = data.categoryCount || 0
-    stats.value[2].value = data.tagCount || 0
-    stats.value[3].value = data.viewCount || 0
+    stats.value[1].value = data.projectCount || 0
+    stats.value[2].value = data.visitCount || 0      // 访问量（PV）
+    stats.value[3].value = data.visitorCount || 0    // 访客数（UV）
   } catch (error: any) {
     ElMessage.error(error?.message || '加载统计数据失败')
   }

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { Plus, Edit, Delete, Share, Link } from '@element-plus/icons-vue'
+import { Plus, Edit, Delete, Share } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getAdminDailyLogList, deleteDailyLog } from '@/api/dailyLog'
 import { formatDateCN } from '@/utils/format'
@@ -135,23 +135,13 @@ onMounted(fetchData)
           <el-tag v-else type="info" size="small">私有</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="200" fixed="right">
+      <el-table-column label="操作" width="160" fixed="right" align="center">
         <template #default="{ row }">
-          <el-button
-            type="success"
-            link
-            :icon="Share"
-            :disabled="!row.isPublic"
-            @click="handleShare(row)"
-          >
-            分享
-          </el-button>
-          <el-button type="primary" link :icon="Edit" @click="handleEdit(row)">
-            编辑
-          </el-button>
-          <el-button type="danger" link :icon="Delete" @click="handleDelete(row)">
-            删除
-          </el-button>
+          <el-button-group>
+            <el-button type="success" size="small" :icon="Share" :disabled="!row.isPublic" @click="handleShare(row)" title="分享" />
+            <el-button type="primary" size="small" :icon="Edit" @click="handleEdit(row)" title="编辑" />
+            <el-button type="danger" size="small" :icon="Delete" @click="handleDelete(row)" title="删除" />
+          </el-button-group>
         </template>
       </el-table-column>
     </el-table>

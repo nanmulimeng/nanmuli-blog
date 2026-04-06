@@ -4,8 +4,9 @@ import com.nanmuli.blog.application.article.dto.ArticleDTO;
 import com.nanmuli.blog.application.dashboard.dto.DashboardStatsDTO;
 import com.nanmuli.blog.domain.article.Article;
 import com.nanmuli.blog.domain.article.ArticleRepository;
-import com.nanmuli.blog.domain.category.CategoryRepository;
-import com.nanmuli.blog.domain.tag.TagRepository;
+import com.nanmuli.blog.domain.article.ArticleViewRecordRepository;
+import com.nanmuli.blog.domain.article.ArticleVisitLogRepository;
+import com.nanmuli.blog.domain.project.ProjectRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
@@ -18,8 +19,9 @@ import java.util.List;
 public class DashboardAppService {
 
     private final ArticleRepository articleRepository;
-    private final CategoryRepository categoryRepository;
-    private final TagRepository tagRepository;
+    private final ArticleViewRecordRepository articleViewRecordRepository;
+    private final ArticleVisitLogRepository articleVisitLogRepository;
+    private final ProjectRepository projectRepository;
 
     @Transactional(readOnly = true)
     public DashboardStatsDTO getStats() {
@@ -28,14 +30,14 @@ public class DashboardAppService {
         // 统计文章总数（所有未删除的）
         stats.setArticleCount(articleRepository.countAll());
 
-        // 统计分类总数
-        stats.setCategoryCount(categoryRepository.countAll());
+        // 统计项目总数
+        stats.setProjectCount(projectRepository.countAll());
 
-        // 统计标签总数
-        stats.setTagCount(tagRepository.countAll());
+        // 统计总访问量（PV）
+        stats.setVisitCount(articleVisitLogRepository.countTotalVisits());
 
-        // 统计总阅读量
-        stats.setViewCount(articleRepository.sumViewCount());
+        // 统计总访客数（UV）
+        stats.setVisitorCount(articleViewRecordRepository.countTotalUniqueVisitors());
 
         return stats;
     }

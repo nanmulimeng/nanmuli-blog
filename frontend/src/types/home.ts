@@ -17,7 +17,7 @@ export interface HomeAggregated {
 
 export interface SiteStats {
   articleCount: number
-  categoryCount: number
+  projectCount: number
   tagCount: number
   dailyLogCount: number
 }

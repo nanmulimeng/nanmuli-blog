@@ -25,7 +25,7 @@ const sortBy = ref('newest')
 const sortOptions = [
   { value: 'newest', label: '最新发布', icon: 'Calendar' },
   { value: 'oldest', label: '最早发布', icon: 'Clock' },
-  { value: 'popular', label: '最多阅读', icon: 'View' }
+  { value: 'popular', label: '最多人看', icon: 'View' }
 ]
 
 // 从URL参数初始化
@@ -342,7 +342,7 @@ onMounted(() => {
                   </span>
                   <span class="flex items-center gap-1">
                     <el-icon><View /></el-icon>
-                    {{ article.viewCount }}
+                    {{ article.viewCount }} 人
                   </span>
                 </div>
 

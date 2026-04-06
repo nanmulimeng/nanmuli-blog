@@ -41,7 +41,7 @@ public class HomeAggregatedDTO {
     @Data
     public static class SiteStatsDTO {
         private Long articleCount;
-        private Long categoryCount;
+        private Long projectCount;
         private Long tagCount;
         private Long dailyLogCount;
     }

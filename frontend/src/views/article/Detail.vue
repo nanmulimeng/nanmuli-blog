@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getArticleBySlug, recordArticleView, getArticleList } from '@/api/article'
+import { getArticleBySlug, recordArticleViewByVisitor, getArticleList, getArticleStats, type ArticleStats } from '@/api/article'
+import { generateVisitorId } from '@/utils/visitor'
 import { formatDateCN, formatDateTimeCN } from '@/utils/format'
 import type { Article } from '@/types/article'
 
@@ -14,6 +15,10 @@ const loading = ref(false)
 const toc = ref<Array<{ id: string; text: string; level: number }>>([])
 const activeHeading = ref('')
 const copySuccess = ref(false)
+
+// 访问统计
+const articleStats = ref<ArticleStats | null>(null)
+const statsLoading = ref(false)
 
 async function fetchArticle(): Promise<void> {
   const slug = route.params.slug as string
@@ -28,6 +33,9 @@ async function fetchArticle(): Promise<void> {
     article.value = res
     generateToc(res.content)
     fetchRelatedArticles(res.categoryId, res.id)
+
+    // 获取文章访问统计
+    fetchArticleStats(res.id)
 
     // 等待DOM更新后设置滚动监听
     nextTick(() => {
@@ -50,6 +58,18 @@ async function fetchRelatedArticles(categoryId: string, excludeId: string): Prom
     relatedArticles.value = res.records.filter(a => a.id !== excludeId).slice(0, 3)
   } catch {
     // ignore
+  }
+}
+
+// 获取文章访问统计
+async function fetchArticleStats(articleId: string): Promise<void> {
+  statsLoading.value = true
+  try {
+    articleStats.value = await getArticleStats(articleId)
+  } catch {
+    // ignore
+  } finally {
+    statsLoading.value = false
   }
 }
 
@@ -121,10 +141,12 @@ const readingProgress = computed(() => {
 
 onMounted(() => {
   fetchArticle()
+  // 5秒后记录阅读用户（UV统计）
   setTimeout(() => {
-    const slug = route.params.slug as string
-    if (slug) {
-      recordArticleView(slug)
+    const articleId = article.value?.id
+    if (articleId) {
+      const visitorId = generateVisitorId()
+      recordArticleViewByVisitor(articleId, visitorId)
     }
   }, 5000)
 })
@@ -209,11 +231,32 @@ onMounted(() => {
               </div>
               {{ formatDateCN(article.publishTime) }}
             </span>
-            <span class="flex items-center gap-2 text-content-tertiary">
+            <!-- 访问统计 -->
+            <template v-if="articleStats">
+              <span class="flex items-center gap-2 text-content-tertiary" title="总访问量">
+                <div class="flex h-8 w-8 items-center justify-center rounded-full bg-info/10">
+                  <el-icon class="text-info"><View /></el-icon>
+                </div>
+                {{ articleStats.visitCount || 0 }}
+              </span>
+              <span class="flex items-center gap-2 text-content-tertiary" title="访客数">
+                <div class="flex h-8 w-8 items-center justify-center rounded-full bg-purple/10">
+                  <el-icon class="text-purple"><User /></el-icon>
+                </div>
+                {{ articleStats.visitorCount || 0 }}
+              </span>
+              <span class="flex items-center gap-2 text-content-tertiary" title="今日访问">
+                <div class="flex h-8 w-8 items-center justify-center rounded-full bg-success/10">
+                  <el-icon class="text-success"><TrendCharts /></el-icon>
+                </div>
+                今日 {{ articleStats.todayCount || 0 }}
+              </span>
+            </template>
+            <span v-else class="flex items-center gap-2 text-content-tertiary">
               <div class="flex h-8 w-8 items-center justify-center rounded-full bg-info/10">
                 <el-icon class="text-info"><View /></el-icon>
               </div>
-              {{ article.viewCount }} 阅读
+              {{ article.viewCount }} 人阅读
             </span>
             <span class="flex items-center gap-2 text-content-tertiary">
               <div class="flex h-8 w-8 items-center justify-center rounded-full bg-warning/10">

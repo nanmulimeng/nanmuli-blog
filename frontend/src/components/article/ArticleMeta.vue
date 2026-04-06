@@ -14,7 +14,7 @@ defineProps<{
     </span>
     <span class="flex items-center gap-1">
       <el-icon><View /></el-icon>
-      阅读 {{ article.viewCount }}
+      {{ article.viewCount }} 人阅读
     </span>
     <span class="flex items-center gap-1">
       <el-icon><Star /></el-icon>

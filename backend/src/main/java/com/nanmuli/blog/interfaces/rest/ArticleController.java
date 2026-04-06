@@ -2,9 +2,11 @@ package com.nanmuli.blog.interfaces.rest;
 
 import com.nanmuli.blog.application.article.ArticleAppService;
 import com.nanmuli.blog.application.article.command.CreateArticleCommand;
+import com.nanmuli.blog.application.article.command.RecordArticleViewCommand;
 import com.nanmuli.blog.application.article.command.UpdateArticleCommand;
 import com.nanmuli.blog.application.article.dto.ArticleArchiveDTO;
 import com.nanmuli.blog.application.article.dto.ArticleDTO;
+import com.nanmuli.blog.application.article.dto.ArticleStatsDTO;
 import com.nanmuli.blog.application.article.query.ArticlePageQuery;
 import com.nanmuli.blog.shared.result.PageResult;
 import com.nanmuli.blog.shared.result.Result;
@@ -76,6 +78,37 @@ public class ArticleController {
     public Result<Void> incrementViewCount(@PathVariable String slug) {
         articleAppService.incrementViewCount(slug);
         return Result.success();
+    }
+
+    @PostMapping("/article/{articleId}/record-view")
+    @Operation(summary = "记录文章阅读用户")
+    public Result<Void> recordView(
+            @PathVariable Long articleId,
+            @RequestBody RecordArticleViewCommand command,
+            jakarta.servlet.http.HttpServletRequest request) {
+        command.setArticleId(articleId);
+        String ipAddress = getClientIpAddress(request);
+        String userAgent = request.getHeader("User-Agent");
+        articleAppService.recordView(command, ipAddress, userAgent);
+        return Result.success();
+    }
+
+    @GetMapping("/article/{articleId}/stats")
+    @Operation(summary = "获取文章访问统计")
+    public Result<ArticleStatsDTO> getArticleStats(@PathVariable Long articleId) {
+        return Result.success(articleAppService.getArticleStats(articleId));
+    }
+
+    private String getClientIpAddress(jakarta.servlet.http.HttpServletRequest request) {
+        String xForwardedFor = request.getHeader("X-Forwarded-For");
+        if (xForwardedFor != null && !xForwardedFor.isEmpty()) {
+            return xForwardedFor.split(",")[0].trim();
+        }
+        String xRealIp = request.getHeader("X-Real-IP");
+        if (xRealIp != null && !xRealIp.isEmpty()) {
+            return xRealIp;
+        }
+        return request.getRemoteAddr();
     }
 
 }

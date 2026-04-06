@@ -4,6 +4,8 @@ import { resolve } from 'node:path'
 import AutoImport from 'unplugin-auto-import/vite'
 import Components from 'unplugin-vue-components/vite'
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
+import Icons from 'unplugin-icons/vite'
+import { FileSystemIconLoader } from 'unplugin-icons/loaders'
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -17,6 +19,9 @@ export default defineConfig({
     Components({
       resolvers: [ElementPlusResolver()],
       dts: 'src/components.d.ts',
+    }),
+    Icons({
+      autoInstall: true,
     }),
   ],
   resolve: {

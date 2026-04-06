@@ -35,7 +35,7 @@ function isSafeUrl(url: string | undefined): boolean {
 <template>
   <div class="project-page">
     <!-- Page Header -->
-    <section class="bg-surface-tertiary py-12">
+    <section class="py-12">
       <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 text-center">
         <h1 class="text-3xl font-bold text-content-primary">项目展示</h1>
         <p class="mt-2 text-content-secondary">个人开源项目与作品</p>
@@ -47,8 +47,8 @@ function isSafeUrl(url: string | undefined): boolean {
       <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <!-- Loading -->
         <div v-if="loading" class="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          <div v-for="i in 6" :key="i" class="bg-surface-secondary rounded-xl overflow-hidden border border-border">
-            <div class="aspect-video bg-surface-tertiary" />
+          <div v-for="i in 6" :key="i" class="bg-surface-primary rounded-xl overflow-hidden border border-border">
+            <div class="aspect-video bg-surface-primary" />
             <div class="p-5">
               <el-skeleton :rows="2" animated />
             </div>
@@ -66,10 +66,10 @@ function isSafeUrl(url: string | undefined): boolean {
           <div
             v-for="project in projects"
             :key="project.id"
-            class="group bg-surface-secondary rounded-xl overflow-hidden border border-border shadow-sm transition-all duration-150 hover:shadow-lg"
+            class="group bg-surface-primary rounded-xl overflow-hidden border border-border shadow-sm transition-all duration-150 hover:shadow-lg"
           >
             <!-- Cover -->
-            <div class="aspect-video bg-surface-tertiary relative overflow-hidden">
+            <div class="aspect-video bg-surface-primary relative overflow-hidden">
               <img
                 v-if="project.cover"
                 :src="project.cover"
@@ -94,7 +94,7 @@ function isSafeUrl(url: string | undefined): boolean {
                 <span
                   v-for="tech in project.techStack?.slice(0, 4)"
                   :key="tech"
-                  class="px-2 py-1 bg-surface-tertiary rounded text-xs text-content-secondary"
+                  class="px-2 py-1 bg-surface-secondary rounded text-xs text-content-secondary"
                 >
                   {{ tech }}
                 </span>

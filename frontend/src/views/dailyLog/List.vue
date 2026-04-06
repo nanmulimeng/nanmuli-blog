@@ -62,7 +62,7 @@ onMounted(fetchLogs)
 <template>
   <div class="daily-log-page">
     <!-- Page Header -->
-    <section class="bg-surface-tertiary py-12">
+    <section class="py-12">
       <div class="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 text-center">
         <h1 class="text-3xl font-bold text-content-primary">技术日志</h1>
         <p class="mt-2 text-content-secondary">记录每日技术学习与思考</p>
@@ -74,7 +74,7 @@ onMounted(fetchLogs)
       <div class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
         <!-- Loading -->
         <div v-if="loading" class="space-y-8">
-          <div v-for="i in 3" :key="i" class="bg-surface-secondary rounded-xl p-6 border border-border">
+          <div v-for="i in 3" :key="i" class="bg-surface-primary rounded-xl p-6 border border-border">
             <el-skeleton :rows="2" animated />
           </div>
         </div>
@@ -95,7 +95,7 @@ onMounted(fetchLogs)
             <!-- Month Header -->
             <div class="relative flex items-center justify-center mb-8">
               <div class="absolute left-0 right-0 h-px bg-border" />
-              <span class="relative px-4 bg-surface-tertiary text-lg font-semibold text-content-primary">
+              <span class="relative px-4 bg-surface-primary text-lg font-semibold text-content-primary">
                 {{ formatMonthCN(month) }}
               </span>
             </div>
@@ -122,7 +122,7 @@ onMounted(fetchLogs)
 
                 <!-- Log Card -->
                 <div
-                  class="bg-surface-secondary rounded-xl p-5 border border-border shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                  class="bg-surface-primary rounded-xl p-5 border border-border shadow-sm hover:shadow-md transition-all cursor-pointer"
                   @click="router.push(`/daily-log/${log.id}`)"
                 >
                   <div class="flex items-center justify-between mb-3">
