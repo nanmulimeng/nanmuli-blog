@@ -7,9 +7,6 @@ export * from './article'
 // 分类相关 API
 export * from './category'
 
-// 标签相关 API
-export * from './tag'
-
 // 日志相关 API
 export * from './dailyLog'
 

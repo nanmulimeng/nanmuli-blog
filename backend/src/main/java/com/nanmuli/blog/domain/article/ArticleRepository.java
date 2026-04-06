@@ -19,7 +19,10 @@ public interface ArticleRepository {
 
     IPage<Article> findByCategoryId(Long categoryId, IPage<Article> page);
 
-    IPage<Article> findByTagId(Long tagId, IPage<Article> page);
+    /**
+     * 根据多个分类ID查询文章（用于父分类筛选，包含所有子分类）
+     */
+    IPage<Article> findByCategoryIds(List<Long> categoryIds, IPage<Article> page, String sort);
 
     IPage<Article> findAllPage(IPage<Article> page);
 

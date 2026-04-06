@@ -3,7 +3,6 @@ package com.nanmuli.blog.application.article.dto;
 import com.nanmuli.blog.application.category.dto.CategoryDTO;
 import com.nanmuli.blog.application.project.dto.ProjectDTO;
 import com.nanmuli.blog.application.skill.dto.SkillDTO;
-import com.nanmuli.blog.application.tag.dto.TagDTO;
 import lombok.Data;
 
 import java.util.List;
@@ -26,9 +25,6 @@ public class HomeAggregatedDTO {
     /** 分类列表 */
     private List<CategoryDTO> categories;
 
-    /** 标签云 */
-    private List<TagDTO> tags;
-
     /** 技能展示 */
     private List<SkillDTO> skills;
 
@@ -42,7 +38,6 @@ public class HomeAggregatedDTO {
     public static class SiteStatsDTO {
         private Long articleCount;
         private Long projectCount;
-        private Long tagCount;
         private Long dailyLogCount;
     }
 }

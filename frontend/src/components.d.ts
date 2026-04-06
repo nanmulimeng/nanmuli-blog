@@ -14,7 +14,6 @@ declare module 'vue' {
     ArticleContent: typeof import('./components/article/ArticleContent.vue')['default']
     ArticleList: typeof import('./components/article/ArticleList.vue')['default']
     ArticleMeta: typeof import('./components/article/ArticleMeta.vue')['default']
-    ArticleTags: typeof import('./components/article/ArticleTags.vue')['default']
     ArticleToc: typeof import('./components/article/ArticleToc.vue')['default']
     DailyLogCard: typeof import('./components/dailyLog/DailyLogCard.vue')['default']
     DailyLogTimeline: typeof import('./components/dailyLog/DailyLogTimeline.vue')['default']

@@ -39,27 +39,18 @@ watch(() => route.query, (query) => {
   fetchArticles()
 }, { immediate: true })
 
-// 扁平化叶子分类列表
-const flatLeafCategories = computed(() => {
-  const result: Category[] = []
-  function traverse(list: Category[]) {
-    list.forEach(item => {
-      if (item.isLeaf) {
-        result.push(item)
-      }
-      if (item.children?.length) {
-        traverse(item.children)
-      }
-    })
-  }
-  traverse(categoryTree.value)
-  return result.sort((a, b) => (a.sort || 0) - (b.sort || 0))
+// 获取父级分类列表（用于筛选）
+const parentCategories = computed(() => {
+  // 只返回父级分类（有子分类的节点）
+  return categoryTree.value
+    .filter(item => !item.isLeaf && item.children && item.children.length > 0)
+    .sort((a, b) => (a.sort || 0) - (b.sort || 0))
 })
 
 // 获取选中的分类名称
 const selectedCategoryName = computed(() => {
   if (!selectedCategory.value) return '全部文章'
-  const cat = flatLeafCategories.value.find(c => c.id === selectedCategory.value)
+  const cat = parentCategories.value.find((c: Category) => c.id === selectedCategory.value)
   return cat?.name || '全部文章'
 })
 
@@ -174,7 +165,7 @@ onMounted(() => {
                 全部
               </button>
               <button
-                v-for="cat in flatLeafCategories"
+                v-for="cat in parentCategories"
                 :key="cat.id"
                 class="pill whitespace-nowrap"
                 :class="selectedCategory === cat.id ? 'pill-primary' : 'pill-secondary'"
@@ -346,16 +337,6 @@ onMounted(() => {
                   </span>
                 </div>
 
-                <!-- Tags -->
-                <div v-if="article.tags?.length" class="flex gap-1">
-                  <span
-                    v-for="tag in article.tags.slice(0, 2)"
-                    :key="tag"
-                    class="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary"
-                  >
-                    {{ tag }}
-                  </span>
-                </div>
               </div>
             </div>
           </article>

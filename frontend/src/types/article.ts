@@ -15,7 +15,6 @@ export interface Article {
   categoryName?: string  // 从category中提取
   category?: Category    // 完整分类信息
   categoryPath?: Category[]  // 分类层级路径（如：后端开发 > Java）
-  tags?: string[]        // SEO关键词列表（从分类继承）
   viewCount: number
   likeCount: number
   wordCount: number
@@ -40,13 +39,6 @@ export interface ArticleListResult {
   total: number
 }
 
-// Tag已废弃，使用多级分类替代
-export interface Tag {
-  id: string
-  name: string
-  slug: string
-  color: string
-}
 
 export interface ArticleArchive {
   year: string

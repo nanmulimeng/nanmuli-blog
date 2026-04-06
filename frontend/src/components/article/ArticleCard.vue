@@ -70,20 +70,9 @@ function handleClick(): void {
       {{ summary }}
     </p>
 
-    <div class="flex items-center justify-between text-sm text-content-tertiary">
-      <div class="flex gap-4">
-        <span>{{ article.viewCount }} 人阅读</span>
-        <span>点赞 {{ article.likeCount }}</span>
-      </div>
-      <div v-if="article.tags?.length" class="flex gap-2">
-        <span
-          v-for="(tag, index) in article.tags.slice(0, 3)"
-          :key="index"
-          class="rounded bg-surface-tertiary px-2 py-1 text-xs"
-        >
-          {{ tag }}
-        </span>
-      </div>
+    <div class="flex items-center gap-4 text-sm text-content-tertiary">
+      <span>{{ article.viewCount }} 人阅读</span>
+      <span>点赞 {{ article.likeCount }}</span>
     </div>
   </article>
 </template>

@@ -44,12 +44,6 @@ export const publicRoutes: RouteRecordRaw[] = [
     meta: { layout: DefaultLayout, title: '日志详情' },
   },
   {
-    path: '/tag',
-    name: 'Tag',
-    component: () => import('@/views/tag/Index.vue'),
-    meta: { layout: DefaultLayout, title: '标签' },
-  },
-  {
     path: '/about',
     name: 'About',
     component: () => import('@/views/about/Index.vue'),

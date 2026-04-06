@@ -15,7 +15,6 @@ public class ArticlePageQuery {
     private Long size = 10L;
 
     private Long categoryId;
-    private Long tagId;
     private Integer status;
     private String keyword;
     private String sort;

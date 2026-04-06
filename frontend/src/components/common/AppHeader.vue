@@ -27,7 +27,6 @@ const navItems = [
   { path: '/article', label: '文章', icon: 'Document' },
   { path: '/project', label: '项目', icon: 'OfficeBuilding' },
   { path: '/daily-log', label: '日志', icon: 'Timer' },
-  { path: '/tag', label: '标签', icon: 'CollectionTag' },
   { path: '/about', label: '关于', icon: 'UserFilled' },
 ]
 

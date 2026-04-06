@@ -39,10 +39,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -210,7 +208,9 @@ public class ArticleAppService {
 
         // 根据查询条件选择不同的查询方法
         if (query.getCategoryId() != null) {
-            result = articleRepository.findByCategoryId(query.getCategoryId(), page);
+            // 获取该分类及其所有子分类的ID
+            List<Long> categoryIds = getCategoryAndChildrenIds(query.getCategoryId());
+            result = articleRepository.findByCategoryIds(categoryIds, page, query.getSort());
         } else {
             result = articleRepository.findPublishedPage(page, query.getSort());
         }
@@ -342,6 +342,30 @@ public class ArticleAppService {
     }
 
     /**
+     * 获取分类及其所有子分类的ID列表
+     */
+    private List<Long> getCategoryAndChildrenIds(Long categoryId) {
+        List<Long> result = new ArrayList<>();
+        result.add(categoryId);
+
+        // 递归获取所有子分类
+        addChildrenIds(categoryId, result);
+
+        return result;
+    }
+
+    /**
+     * 递归添加子分类ID
+     */
+    private void addChildrenIds(Long parentId, List<Long> result) {
+        List<Category> children = categoryRepository.findByParentId(parentId);
+        for (Category child : children) {
+            result.add(child.getId());
+            addChildrenIds(child.getId(), result);
+        }
+    }
+
+    /**
      * 验证分类是否为叶子节点（只有叶子分类才能关联文章）
      */
     private void validateLeafCategory(Long categoryId) {
@@ -375,9 +399,6 @@ public class ArticleAppService {
 
                 // 构建分类层级路径
                 dto.setCategoryPath(buildCategoryPath(category));
-
-                // 设置标签为分类名称（用于SEO关键词）
-                dto.setTags(Collections.singletonList(category.getName()));
             }
         }
 

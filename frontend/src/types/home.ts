@@ -1,6 +1,5 @@
 import type { Article } from './article'
 import type { Category } from './category'
-import type { Tag } from './tag'
 import type { Skill } from './skill'
 import type { Project } from './project'
 
@@ -9,7 +8,6 @@ export interface HomeAggregated {
   topArticles: Article[]
   hotArticles: Article[]
   categories: Category[]
-  tags: Tag[]
   skills: Skill[]
   projects: Project[]
   stats: SiteStats
@@ -18,6 +16,5 @@ export interface HomeAggregated {
 export interface SiteStats {
   articleCount: number
   projectCount: number
-  tagCount: number
   dailyLogCount: number
 }

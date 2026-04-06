@@ -96,6 +96,27 @@ public class ArticleRepositoryImpl implements ArticleRepository {
     }
 
     @Override
+    public IPage<Article> findByCategoryIds(List<Long> categoryIds, IPage<Article> page, String sort) {
+        LambdaQueryWrapper<Article> wrapper = Wrappers.lambdaQuery();
+        wrapper.in(Article::getCategoryId, categoryIds)
+                .eq(Article::getStatus, 1)
+                .eq(Article::getIsDeleted, false);
+
+        // 根据排序参数设置排序方式
+        if ("oldest".equals(sort)) {
+            wrapper.orderByAsc(Article::getPublishTime);
+        } else if ("popular".equals(sort)) {
+            wrapper.orderByDesc(Article::getViewCount);
+        } else {
+            // 默认：最新发布
+            wrapper.orderByDesc(Article::getIsTop)
+                    .orderByDesc(Article::getPublishTime);
+        }
+
+        return articleMapper.selectPage(page, wrapper);
+    }
+
+    @Override
     public List<Article> findTopArticles(int limit) {
         LambdaQueryWrapper<Article> wrapper = Wrappers.lambdaQuery();
         wrapper.eq(Article::getStatus, 1)
@@ -168,11 +189,6 @@ public class ArticleRepositoryImpl implements ArticleRepository {
     @Override
     public Long sumViewCount() {
         return articleMapper.sumViewCount();
-    }
-
-    @Override
-    public IPage<Article> findByTagId(Long tagId, IPage<Article> page) {
-        return articleMapper.selectByTagId(page, tagId);
     }
 
     @Override

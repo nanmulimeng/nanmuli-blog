@@ -21,7 +21,6 @@ const activeCategory = ref<string | null>(null)
 const animatedStats = ref({
   articleCount: 0,
   projectCount: 0,
-  tagCount: 0,
   dayCount: 0,
 })
 
@@ -50,7 +49,6 @@ function animateStats() {
   const targets = {
     articleCount: aggregated.value.stats.articleCount || 0,
     projectCount: aggregated.value.stats.projectCount || 0,
-    tagCount: aggregated.value.stats.tagCount || 0,
     dayCount: aggregated.value.stats.dailyLogCount || 0,
   }
 
@@ -67,7 +65,6 @@ function animateStats() {
     animatedStats.value = {
       articleCount: Math.floor(targets.articleCount * easeOut),
       projectCount: Math.floor(targets.projectCount * easeOut),
-      tagCount: Math.floor(targets.tagCount * easeOut),
       dayCount: Math.floor(targets.dayCount * easeOut),
     }
 
@@ -262,8 +259,8 @@ watch(experience, (newVal) => {
     </section>
 
     <!-- Stats Bar -->
-    <section class="relative z-20 -mt-16 mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
-      <div class="glass-card grid grid-cols-2 gap-8 rounded-3xl p-8 md:grid-cols-4">
+    <section class="relative z-20 -mt-16 mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
+      <div class="glass-card grid grid-cols-3 gap-8 rounded-3xl p-8">
         <div class="text-center">
           <div class="text-3xl font-bold text-content-primary sm:text-4xl">
             {{ animatedStats.articleCount }}
@@ -275,12 +272,6 @@ watch(experience, (newVal) => {
             {{ animatedStats.projectCount }}
           </div>
           <div class="mt-1 text-sm text-content-tertiary">个项目</div>
-        </div>
-        <div class="text-center">
-          <div class="text-3xl font-bold text-content-primary sm:text-4xl">
-            {{ animatedStats.tagCount }}
-          </div>
-          <div class="mt-1 text-sm text-content-tertiary">个标签</div>
         </div>
         <div class="text-center">
           <div class="text-3xl font-bold text-content-primary sm:text-4xl">

@@ -8,7 +8,6 @@ import lombok.Data;
 
 import java.io.Serializable;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 
 @Data
@@ -25,7 +24,6 @@ public class ArticleDTO implements Serializable {
     private String cover;
     private CategoryDTO category;
     private List<CategoryDTO> categoryPath;  // 分类层级路径
-    private List<String> tags;  // 简化为字符串列表（SEO关键词用途）
     private Integer viewCount;
     private Integer likeCount;
     private Integer wordCount;

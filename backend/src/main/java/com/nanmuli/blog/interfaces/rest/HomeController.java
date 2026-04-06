@@ -9,8 +9,6 @@ import com.nanmuli.blog.application.project.ProjectAppService;
 import com.nanmuli.blog.application.project.dto.ProjectDTO;
 import com.nanmuli.blog.application.skill.SkillAppService;
 import com.nanmuli.blog.application.skill.dto.SkillDTO;
-import com.nanmuli.blog.application.tag.TagAppService;
-import com.nanmuli.blog.application.tag.dto.TagDTO;
 import com.nanmuli.blog.domain.dailylog.DailyLogRepository;
 import com.nanmuli.blog.shared.result.Result;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -29,7 +27,6 @@ public class HomeController {
 
     private final ArticleAppService articleAppService;
     private final CategoryAppService categoryAppService;
-    private final TagAppService tagAppService;
     private final SkillAppService skillAppService;
     private final ProjectAppService projectAppService;
     private final DailyLogRepository dailyLogRepository;
@@ -42,14 +39,12 @@ public class HomeController {
         dto.setTopArticles(articleAppService.listTop(3));
         dto.setHotArticles(articleAppService.listTop(5));
         dto.setCategories(categoryAppService.listAllActive());
-        dto.setTags(tagAppService.listAllActive());
         dto.setSkills(skillAppService.listAllVisible());
         dto.setProjects(projectAppService.listAllVisible());
 
         HomeAggregatedDTO.SiteStatsDTO stats = new HomeAggregatedDTO.SiteStatsDTO();
         stats.setArticleCount(articleAppService.countPublished());
         stats.setProjectCount((long) dto.getProjects().size());
-        stats.setTagCount((long) dto.getTags().size());
         stats.setDailyLogCount(dailyLogRepository.count());
         dto.setStats(stats);
 

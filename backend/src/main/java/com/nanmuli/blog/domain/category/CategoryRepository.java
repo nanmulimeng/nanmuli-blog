@@ -26,6 +26,11 @@ public interface CategoryRepository {
     boolean existsByParentId(Long parentId);
 
     /**
+     * 根据父分类ID查询所有子分类
+     */
+    List<Category> findByParentId(Long parentId);
+
+    /**
      * 检查是否存在指定slug的分类
      */
     boolean existsBySlug(String slug);

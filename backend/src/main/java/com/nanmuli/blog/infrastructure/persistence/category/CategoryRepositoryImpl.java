@@ -79,6 +79,15 @@ public class CategoryRepositoryImpl implements CategoryRepository {
     }
 
     @Override
+    public List<Category> findByParentId(Long parentId) {
+        LambdaQueryWrapper<Category> wrapper = Wrappers.lambdaQuery();
+        wrapper.eq(Category::getParentId, parentId)
+               .eq(Category::getIsDeleted, false)
+               .orderByAsc(Category::getSort);
+        return categoryMapper.selectList(wrapper);
+    }
+
+    @Override
     public boolean existsBySlug(String slug) {
         LambdaQueryWrapper<Category> wrapper = Wrappers.lambdaQuery();
         wrapper.eq(Category::getSlug, slug)

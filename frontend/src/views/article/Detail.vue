@@ -272,16 +272,6 @@ onMounted(() => {
             </span>
           </div>
 
-          <!-- Tags -->
-          <div v-if="article.tags?.length" class="mt-6 flex flex-wrap gap-2">
-            <span
-              v-for="(tag, index) in article.tags"
-              :key="index"
-              class="pill pill-glass"
-            >
-              {{ tag }}
-            </span>
-          </div>
         </div>
       </section>
 
