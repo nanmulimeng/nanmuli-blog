@@ -139,12 +139,24 @@ onMounted(() => {
               v-model="searchKeyword"
               type="text"
               placeholder="搜索文章..."
-              class="input-glass w-full sm:w-72 pr-10"
+              class="input-glass w-full sm:w-80 pr-24 pl-4 py-3 rounded-xl"
               @keyup.enter="fetchArticles"
             />
-            <el-icon class="absolute right-3 top-1/2 -translate-y-1/2 text-content-tertiary">
-              <Search />
-            </el-icon>
+            <div class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+              <button
+                v-if="searchKeyword"
+                class="p-1.5 rounded-lg text-content-tertiary hover:bg-surface-tertiary hover:text-content-secondary transition-colors"
+                @click="clearSearch"
+              >
+                <el-icon><Close /></el-icon>
+              </button>
+              <button
+                class="px-3 py-1.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors"
+                @click="fetchArticles"
+              >
+                搜索
+              </button>
+            </div>
           </div>
         </div>
       </div>

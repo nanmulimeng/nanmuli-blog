@@ -26,6 +26,15 @@ function handleClick(): void {
     @click="handleClick"
   >
     <div class="mb-4 flex items-center gap-3 text-sm text-content-tertiary">
+      <!-- 原创/转载标识 -->
+      <span
+        class="rounded-full px-2 py-1 text-xs font-medium"
+        :class="article.isOriginal
+          ? 'bg-success/10 text-success'
+          : 'bg-warning/10 text-warning'"
+      >
+        {{ article.isOriginal ? '原创' : '转载' }}
+      </span>
       <!-- 分类路径 -->
       <span v-if="article.categoryPath?.length" class="flex items-center gap-1">
         <span

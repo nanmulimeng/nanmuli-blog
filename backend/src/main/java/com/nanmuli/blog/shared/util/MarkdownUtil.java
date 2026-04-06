@@ -22,7 +22,6 @@ public class MarkdownUtil {
             com.vladsch.flexmark.ext.tables.TablesExtension.create(),
             com.vladsch.flexmark.ext.gfm.strikethrough.StrikethroughExtension.create(),
             com.vladsch.flexmark.ext.gfm.tasklist.TaskListExtension.create(),
-            com.vladsch.flexmark.ext.anchorlink.AnchorLinkExtension.create(),
             com.vladsch.flexmark.ext.toc.TocExtension.create()
         ));
         // 代码高亮

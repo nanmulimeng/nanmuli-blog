@@ -1,8 +1,11 @@
 package com.nanmuli.blog.application.article;
 
 import cn.dev33.satoken.stp.StpUtil;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.nanmuli.blog.infrastructure.persistence.article.ArticleMapper;
 import com.nanmuli.blog.application.article.command.CreateArticleCommand;
 import com.nanmuli.blog.application.article.command.UpdateArticleCommand;
 import com.nanmuli.blog.application.article.dto.ArticleArchiveDTO;
@@ -57,6 +60,7 @@ public class ArticleAppService {
     private final CategoryAppService categoryAppService;
     private final ApplicationEventPublisher eventPublisher;
     private final MarkdownUtil markdownUtil;
+    private final ArticleMapper articleMapper;
 
     @Transactional
     @Caching(evict = {
@@ -202,7 +206,30 @@ public class ArticleAppService {
     @Transactional(readOnly = true)
     public PageResult<ArticleDTO> listAll(ArticlePageQuery query) {
         IPage<Article> page = new Page<>(query.getCurrent(), query.getSize());
-        IPage<Article> result = articleRepository.findAllPage(page);
+        IPage<Article> result;
+
+        // 优先处理关键词搜索
+        if (StringUtils.hasText(query.getKeyword())) {
+            // 先查询匹配关键词的分类ID
+            List<Long> matchingCategoryIds = findCategoryIdsByKeyword(query.getKeyword());
+            LambdaQueryWrapper<Article> wrapper = Wrappers.lambdaQuery();
+            wrapper.and(kw -> {
+                kw.like(Article::getTitle, query.getKeyword())
+                  .or()
+                  .like(Article::getContent, query.getKeyword())
+                  .or()
+                  .like(Article::getSummary, query.getKeyword());
+                // 如果有关键词匹配的分类，也加入搜索条件
+                if (matchingCategoryIds != null && !matchingCategoryIds.isEmpty()) {
+                    kw.or().in(Article::getCategoryId, matchingCategoryIds);
+                }
+            })
+            .orderByDesc(Article::getCreatedAt);
+            result = articleMapper.selectPage(page, wrapper);
+        } else {
+            result = articleRepository.findAllPage(page);
+        }
+
         List<ArticleDTO> records = result.getRecords().stream().map(this::toDTO).toList();
         return new PageResult<>(result.getTotal(), result.getCurrent(), result.getSize(), records);
     }
@@ -213,8 +240,12 @@ public class ArticleAppService {
         IPage<Article> page = new Page<>(query.getCurrent(), query.getSize());
         IPage<Article> result;
 
-        // 根据查询条件选择不同的查询方法
-        if (query.getCategoryId() != null) {
+        // 优先处理关键词搜索
+        if (StringUtils.hasText(query.getKeyword())) {
+            // 先查询匹配关键词的分类ID
+            List<Long> matchingCategoryIds = findCategoryIdsByKeyword(query.getKeyword());
+            result = articleRepository.findPublishedByKeyword(query.getKeyword(), matchingCategoryIds, page, query.getSort());
+        } else if (query.getCategoryId() != null) {
             // 获取该分类及其所有子分类的ID
             List<Long> categoryIds = getCategoryAndChildrenIds(query.getCategoryId());
             result = articleRepository.findByCategoryIds(categoryIds, page, query.getSort());
@@ -224,6 +255,16 @@ public class ArticleAppService {
 
         List<ArticleDTO> records = result.getRecords().stream().map(this::toDTO).toList();
         return new PageResult<>(result.getTotal(), result.getCurrent(), result.getSize(), records);
+    }
+
+    /**
+     * 根据关键词查找匹配的分类ID（包括分类名匹配）
+     */
+    private List<Long> findCategoryIdsByKeyword(String keyword) {
+        return categoryRepository.findAll().stream()
+                .filter(cat -> cat.getName() != null && cat.getName().toLowerCase().contains(keyword.toLowerCase()))
+                .map(cat -> cat.getId())
+                .toList();
     }
 
     @Transactional(readOnly = true)

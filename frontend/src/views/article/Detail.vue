@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, nextTick } from 'vue'
+import { ref, onMounted, computed, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getArticleBySlug, recordArticleViewByVisitor, getArticleList, getArticleStats, type ArticleStats } from '@/api/article'
 import { generateVisitorId } from '@/utils/visitor'
 import { formatDateCN, formatDateTimeCN } from '@/utils/format'
 import type { Article } from '@/types/article'
+import hljs from 'highlight.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -15,10 +16,100 @@ const loading = ref(false)
 const toc = ref<Array<{ id: string; text: string; level: number }>>([])
 const activeHeading = ref('')
 const copySuccess = ref(false)
+const contentRef = ref<HTMLElement | null>(null)
+const tocNavRef = ref<HTMLElement | null>(null)
 
 // 访问统计
 const articleStats = ref<ArticleStats | null>(null)
 const statsLoading = ref(false)
+
+// 生成安全的ID
+function generateHeadingId(text: string, index: number): string {
+  // 使用索引确保唯一性，同时处理中文
+  const safeText = text
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^\w\u4e00-\u9fa5-]/g, '')
+    .slice(0, 50)
+  return `heading-${index}-${safeText || 'section'}`
+}
+
+// 从HTML内容中提取标题并生成目录
+function generateTocFromHtml(htmlContent: string): void {
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(htmlContent, 'text/html')
+  const headings = doc.querySelectorAll('h1, h2, h3')
+
+  toc.value = Array.from(headings).map((heading, index) => {
+    const text = heading.textContent?.trim() || ''
+    return {
+      id: generateHeadingId(text, index),
+      text: text,
+      level: parseInt(heading.tagName[1]),
+    }
+  })
+}
+
+// 处理文章内容：高亮代码、处理图片、处理链接
+function processContent(): void {
+  if (!contentRef.value) return
+
+  // 1. 代码高亮
+  contentRef.value.querySelectorAll('pre code').forEach((block) => {
+    hljs.highlightElement(block as HTMLElement)
+  })
+
+  // 2. 图片懒加载
+  contentRef.value.querySelectorAll('img').forEach((img) => {
+    if (!img.hasAttribute('loading')) {
+      img.setAttribute('loading', 'lazy')
+    }
+    // 添加点击放大功能
+    img.style.cursor = 'zoom-in'
+    img.addEventListener('click', () => {
+      // 简单的图片预览
+      const modal = document.createElement('div')
+      modal.style.cssText = `
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.9);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        cursor: zoom-out;
+      `
+      const imgClone = document.createElement('img')
+      imgClone.src = img.src
+      imgClone.style.cssText = 'max-width: 90%; max-height: 90%; object-fit: contain;'
+      modal.appendChild(imgClone)
+      modal.addEventListener('click', () => modal.remove())
+      document.body.appendChild(modal)
+    })
+  })
+
+  // 3. 外部链接在新标签页打开
+  contentRef.value.querySelectorAll('a').forEach((link) => {
+    const href = link.getAttribute('href')
+    if (href && (href.startsWith('http://') || href.startsWith('https://'))) {
+      link.setAttribute('target', '_blank')
+      link.setAttribute('rel', 'noopener noreferrer')
+    }
+  })
+
+  // 4. 为标题添加锚点ID - 严格按索引匹配
+  const headings = contentRef.value.querySelectorAll('h1, h2, h3')
+
+  headings.forEach((heading, index) => {
+    const tocItem = toc.value[index]
+    if (tocItem) {
+      heading.id = tocItem.id
+    }
+  })
+
+  // 5. 重新设置滚动监听（因为刚设置了ID）
+  setupScrollSpy()
+}
 
 async function fetchArticle(): Promise<void> {
   const slug = route.params.slug as string
@@ -31,16 +122,16 @@ async function fetchArticle(): Promise<void> {
   try {
     const res = await getArticleBySlug(slug)
     article.value = res
-    generateToc(res.content)
+
+    // 从HTML内容生成目录
+    generateTocFromHtml(res.contentHtml)
+
     fetchRelatedArticles(res.categoryId, res.id)
 
     // 获取文章访问统计
     fetchArticleStats(res.id)
 
-    // 等待DOM更新后设置滚动监听
-    nextTick(() => {
-      setupScrollSpy()
-    })
+    // processContent 将由 watch(article) 触发
   } catch {
     router.push('/404')
   } finally {
@@ -55,7 +146,7 @@ async function fetchRelatedArticles(categoryId: string, excludeId: string): Prom
       size: 4,
       categoryId
     })
-    relatedArticles.value = res.records.filter(a => a.id !== excludeId).slice(0, 3)
+    relatedArticles.value = res.records.filter((a: Article) => a.id !== excludeId).slice(0, 3)
   } catch {
     // ignore
   }
@@ -73,29 +164,47 @@ async function fetchArticleStats(articleId: string): Promise<void> {
   }
 }
 
-function generateToc(content: string): void {
-  const headings = content.match(/^#{1,3}\s+(.+)$/gm) || []
-  toc.value = headings.map((heading, index) => {
-    const level = heading.match(/^#+/)?.[0].length || 1
-    const text = heading.replace(/^#+\s+/, '')
-    return { id: `heading-${index}`, text, level }
-  })
-}
 
 function scrollToHeading(index: number): void {
-  const element = document.getElementById(`heading-${index}`)
+  const tocItem = toc.value[index]
+  if (!tocItem) return
+
+  const element = document.getElementById(tocItem.id)
   if (element) {
     const offset = 100
     const elementPosition = element.getBoundingClientRect().top
     const offsetPosition = elementPosition + window.pageYOffset - offset
     window.scrollTo({ top: offsetPosition, behavior: 'smooth' })
+  } else {
+    // 尝试通过索引查找
+    const headings = document.querySelectorAll('h1, h2, h3')
+    if (headings[index]) {
+      headings[index].scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
   }
 }
 
+// ScrollSpy 状态
+let scrollSpyObserver: IntersectionObserver | null = null
+
 // 设置滚动监听
 function setupScrollSpy(): void {
-  const headings = document.querySelectorAll('[id^="heading-"]')
-  const observer = new IntersectionObserver(
+  if (!contentRef.value) return
+
+  // 清除旧的观察者
+  if (scrollSpyObserver) {
+    scrollSpyObserver.disconnect()
+    scrollSpyObserver = null
+  }
+
+  // 等待ID设置完成后查找标题
+  const headings = contentRef.value.querySelectorAll('h1, h2, h3')
+
+  // 筛选出有ID的标题
+  const validHeadings = Array.from(headings).filter(h => h.id)
+  if (validHeadings.length === 0) return
+
+  scrollSpyObserver = new IntersectionObserver(
     (entries) => {
       entries.forEach((entry) => {
         if (entry.isIntersecting) {
@@ -103,9 +212,15 @@ function setupScrollSpy(): void {
         }
       })
     },
-    { rootMargin: '-100px 0px -60% 0px' }
+    {
+      rootMargin: '-80px 0px -70% 0px',
+      threshold: 0
+    }
   )
-  headings.forEach((heading) => observer.observe(heading))
+
+  validHeadings.forEach((heading) => {
+    scrollSpyObserver?.observe(heading)
+  })
 }
 
 // 复制文章链接
@@ -149,6 +264,51 @@ onMounted(() => {
       recordArticleViewByVisitor(articleId, visitorId)
     }
   }, 5000)
+})
+
+// 监听路由参数变化，当文章slug变化时重新加载
+watch(() => route.params.slug, (newSlug, oldSlug) => {
+  if (newSlug && newSlug !== oldSlug) {
+    // 重置状态
+    toc.value = []
+    activeHeading.value = ''
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+    fetchArticle()
+  }
+})
+
+// 监听 article 变化，确保内容渲染后处理
+watch(article, (newArticle) => {
+  if (newArticle?.contentHtml) {
+    // 使用更长的延迟确保 v-html 完全渲染
+    setTimeout(() => {
+      processContent()
+    }, 500)
+  }
+}, { immediate: false })
+
+// 监听 activeHeading 变化，自动滚动目录到可视区域
+watch(activeHeading, (newId) => {
+  if (!newId || !tocNavRef.value) return
+
+  // 找到当前激活的目录项
+  const activeLink = tocNavRef.value.querySelector(`a[href="#${newId}"]`)
+  if (!activeLink) return
+
+  // 滚动到可视区域
+  const nav = tocNavRef.value
+  const linkElement = activeLink as HTMLElement
+  const linkTop = linkElement.offsetTop
+  const navHeight = nav.clientHeight
+  const linkHeight = linkElement.clientHeight
+
+  // 计算目标滚动位置，让当前项居中显示
+  const targetScrollTop = linkTop - navHeight / 2 + linkHeight / 2
+
+  nav.scrollTo({
+    top: Math.max(0, targetScrollTop),
+    behavior: 'smooth'
+  })
 })
 </script>
 
@@ -224,7 +384,18 @@ onMounted(() => {
           </h1>
 
           <!-- Meta Info -->
-          <div class="mt-8 flex flex-wrap items-center gap-6 text-sm">
+          <div class="mt-8 flex flex-wrap items-center gap-4 text-sm">
+            <!-- 原创/转载标识 -->
+            <span
+              class="flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium"
+              :class="article.isOriginal
+                ? 'bg-success/10 text-success'
+                : 'bg-warning/10 text-warning'"
+            >
+              <el-icon v-if="article.isOriginal"><DocumentChecked /></el-icon>
+              <el-icon v-else><Link /></el-icon>
+              {{ article.isOriginal ? '原创内容' : '转载内容' }}
+            </span>
             <span class="flex items-center gap-2 text-content-tertiary">
               <div class="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
                 <el-icon class="text-primary"><Calendar /></el-icon>
@@ -270,6 +441,19 @@ onMounted(() => {
               </div>
               {{ article.wordCount }}字
             </span>
+            <!-- 非原创文章来源 -->
+            <span v-if="!article.isOriginal && article.originalUrl" class="flex items-center gap-2 text-sm">
+              <span class="text-content-tertiary">来源：</span>
+              <a
+                :href="article.originalUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-primary hover:text-primary-light hover:underline truncate max-w-[200px]"
+              >
+                {{ article.originalUrl.replace(/^https?:\/\//, '').split('/')[0] }}
+              </a>
+              <el-icon class="text-content-tertiary text-xs"><Link /></el-icon>
+            </span>
           </div>
 
         </div>
@@ -281,7 +465,7 @@ onMounted(() => {
           <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
             <!-- Main Content -->
             <div class="lg:col-span-8">
-              <article class="glass-card rounded-3xl p-8 md:p-12">
+              <article ref="contentRef" class="glass-card rounded-3xl p-8 md:p-12">
                 <div
                   class="markdown-body prose prose-lg max-w-none dark:prose-invert"
                   v-html="article.contentHtml"
@@ -357,17 +541,17 @@ onMounted(() => {
                     <el-icon><List /></el-icon>
                     目录
                   </h3>
-                  <nav class="space-y-1 max-h-[calc(100vh-300px)] overflow-y-auto scrollbar-hide">
+                  <nav ref="tocNavRef" class="space-y-1 max-h-[calc(100vh-300px)] overflow-y-auto scrollbar-hide">
                     <a
                       v-for="(item, index) in toc"
-                      :key="index"
-                      :href="`#heading-${index}`"
+                      :key="item.id"
+                      :href="`#${item.id}`"
                       class="block py-2 text-sm transition-all rounded-lg px-3"
                       :class="[
                         item.level === 1 ? 'text-content-secondary font-medium' : 'text-content-tertiary',
                         item.level === 2 ? 'pl-6' : '',
                         item.level === 3 ? 'pl-9' : '',
-                        activeHeading === `heading-${index}`
+                        activeHeading === item.id
                           ? 'bg-primary/10 text-primary'
                           : 'hover:bg-surface-tertiary'
                       ]"

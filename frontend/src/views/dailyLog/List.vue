@@ -13,11 +13,30 @@ const total = ref(0)
 const currentPage = ref(1)
 const pageSize = ref(20)
 
-const moodMap: Record<string, { icon: string; label: string; color: string }> = {
-  happy: { icon: 'Sunny', label: '开心', color: '#f59e0b' },
-  excited: { icon: 'Star', label: '兴奋', color: '#ef4444' },
-  normal: { icon: 'Minus', label: '平静', color: '#64748B' },
-  tired: { icon: 'Moon', label: '疲惫', color: '#3B82F6' },
+const moodMap: Record<string, { icon: string; label: string; color: string; bgColor: string }> = {
+  happy: { icon: 'Sunny', label: '开心', color: '#f59e0b', bgColor: '#fef3c7' },
+  excited: { icon: 'Star', label: '兴奋', color: '#ef4444', bgColor: '#fee2e2' },
+  normal: { icon: 'Minus', label: '平静', color: '#64748B', bgColor: '#f1f5f9' },
+  tired: { icon: 'Moon', label: '疲惫', color: '#3B82F6', bgColor: '#dbeafe' },
+}
+
+// 统计数据
+const stats = computed(() => {
+  const totalWords = logs.value.reduce((sum, log) => sum + (log.wordCount || 0), 0)
+  const totalDays = new Set(logs.value.map(log => log.logDate)).size
+  return {
+    totalLogs: logs.value.length,
+    totalWords,
+    totalDays,
+    avgWords: logs.value.length > 0 ? Math.round(totalWords / logs.value.length) : 0
+  }
+})
+
+// 提取纯文本摘要
+function extractSummary(html: string, maxLength: number = 150): string {
+  if (!html) return ''
+  const text = html.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim()
+  return text.length > maxLength ? text.slice(0, maxLength) + '...' : text
 }
 
 // 按月份分组
@@ -69,13 +88,37 @@ onMounted(fetchLogs)
       </div>
     </section>
 
+    <!-- Stats Overview -->
+    <section v-if="!loading && logs.length > 0" class="pb-8">
+      <div class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div class="bg-surface-primary rounded-xl p-4 border border-border text-center">
+            <div class="text-2xl font-bold text-primary">{{ stats.totalLogs }}</div>
+            <div class="text-xs text-content-tertiary mt-1">篇日志</div>
+          </div>
+          <div class="bg-surface-primary rounded-xl p-4 border border-border text-center">
+            <div class="text-2xl font-bold text-success">{{ stats.totalWords }}</div>
+            <div class="text-xs text-content-tertiary mt-1">总字数</div>
+          </div>
+          <div class="bg-surface-primary rounded-xl p-4 border border-border text-center">
+            <div class="text-2xl font-bold text-warning">{{ stats.avgWords }}</div>
+            <div class="text-xs text-content-tertiary mt-1">篇均字数</div>
+          </div>
+          <div class="bg-surface-primary rounded-xl p-4 border border-border text-center">
+            <div class="text-2xl font-bold text-info">{{ stats.totalDays }}</div>
+            <div class="text-xs text-content-tertiary mt-1">记录天数</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- Timeline -->
-    <section class="py-12">
+    <section class="py-8">
       <div class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
         <!-- Loading -->
         <div v-if="loading" class="space-y-8">
           <div v-for="i in 3" :key="i" class="bg-surface-primary rounded-xl p-6 border border-border">
-            <el-skeleton :rows="2" animated />
+            <el-skeleton :rows="3" animated />
           </div>
         </div>
 
@@ -122,32 +165,63 @@ onMounted(fetchLogs)
 
                 <!-- Log Card -->
                 <div
-                  class="bg-surface-primary rounded-xl p-5 border border-border shadow-sm hover:shadow-md transition-all cursor-pointer"
+                  class="bg-surface-primary rounded-xl p-5 border border-border shadow-sm hover:shadow-md transition-all cursor-pointer group"
                   @click="router.push(`/daily-log/${log.id}`)"
                 >
+                  <!-- Header -->
                   <div class="flex items-center justify-between mb-3">
-                    <span class="text-sm font-medium text-primary-600">
-                      {{ formatDateCN(log.logDate) }}
-                    </span>
+                    <div class="flex items-center gap-2">
+                      <span class="text-sm font-medium text-primary">
+                        {{ formatDateCN(log.logDate) }}
+                      </span>
+                      <span v-if="log.wordCount" class="text-xs text-content-tertiary">
+                        {{ log.wordCount }} 字
+                      </span>
+                    </div>
                     <div class="flex items-center gap-2">
                       <span
                         v-if="log.mood"
-                        class="text-xs px-2 py-1 rounded-full"
+                        class="flex items-center gap-1 text-xs px-2 py-1 rounded-full"
                         :style="{
                           backgroundColor: moodMap[log.mood]?.color + '15',
                           color: moodMap[log.mood]?.color
                         }"
                       >
+                        <el-icon :size="12"><component :is="moodMap[log.mood]?.icon" /></el-icon>
                         {{ moodMap[log.mood]?.label }}
                       </span>
-                      <span v-if="log.weather" class="text-sm text-content-tertiary">{{ log.weather }}</span>
+                      <span v-if="log.weather" class="text-sm text-content-tertiary flex items-center gap-1">
+                        <el-icon :size="14"><PartlyCloudy /></el-icon>
+                        {{ log.weather }}
+                      </span>
                     </div>
                   </div>
 
-                  <div
-                    class="prose prose-sm max-w-none text-content-secondary line-clamp-3"
-                    v-html="log.contentHtml"
-                  />
+                  <!-- Content Summary -->
+                  <p class="text-content-secondary line-clamp-3 mb-3">
+                    {{ extractSummary(log.contentHtml) }}
+                  </p>
+
+                  <!-- Footer -->
+                  <div class="flex items-center justify-between pt-3 border-t border-border">
+                    <!-- Category -->
+                    <div v-if="log.category" class="flex items-center gap-1">
+                      <span
+                        class="text-xs px-2 py-0.5 rounded"
+                        :style="{
+                          backgroundColor: log.category.color ? log.category.color + '20' : 'var(--theme-bg-tertiary)',
+                          color: log.category.color || 'var(--theme-primary)'
+                        }"
+                      >
+                        {{ log.category.name }}
+                      </span>
+                    </div>
+                    <!-- Read More -->
+                    <div class="flex items-center gap-1 text-sm text-primary group-hover:underline">
+                      <span>阅读全文</span>
+                      <el-icon :size="14"><ArrowRight /></el-icon>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

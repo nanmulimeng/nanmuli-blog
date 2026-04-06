@@ -192,6 +192,39 @@ public class ArticleRepositoryImpl implements ArticleRepository {
     }
 
     @Override
+    public IPage<Article> findPublishedByKeyword(String keyword, List<Long> categoryIds, IPage<Article> page, String sort) {
+        LambdaQueryWrapper<Article> wrapper = Wrappers.lambdaQuery();
+        wrapper.eq(Article::getStatus, 1)
+               .eq(Article::getIsDeleted, false)
+               .and(kw -> {
+                   kw.like(Article::getTitle, keyword)
+                     .or()
+                     .like(Article::getContent, keyword)
+                     .or()
+                     .like(Article::getSummary, keyword);
+                   // 如果有关键词匹配的分类，也加入搜索条件
+                   if (categoryIds != null && !categoryIds.isEmpty()) {
+                       kw.or().in(Article::getCategoryId, categoryIds);
+                   }
+               });
+
+        // 根据排序参数设置排序方式
+        if ("oldest".equals(sort)) {
+            wrapper.orderByDesc(Article::getIsTop)
+                   .orderByAsc(Article::getPublishTime);
+        } else if ("popular".equals(sort)) {
+            wrapper.orderByDesc(Article::getIsTop)
+                   .orderByDesc(Article::getViewCount);
+        } else {
+            // 默认：最新发布
+            wrapper.orderByDesc(Article::getIsTop)
+                    .orderByDesc(Article::getPublishTime);
+        }
+
+        return articleMapper.selectPage(page, wrapper);
+    }
+
+    @Override
     public Long sumViewCount() {
         return articleMapper.sumViewCount();
     }

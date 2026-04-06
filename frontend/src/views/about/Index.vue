@@ -8,27 +8,6 @@ const configStore = useConfigStore()
 const skills = ref<Skill[]>([])
 const loading = ref(false)
 
-const experiences = [
-  {
-    period: '2024年 - 至今',
-    title: '高级开发工程师',
-    company: 'XXX科技有限公司',
-    description: '负责核心业务系统架构设计与开发'
-  },
-  {
-    period: '2022年 - 2024年',
-    title: '中级开发工程师',
-    company: 'YYY互联网公司',
-    description: '参与电商平台后端开发'
-  },
-  {
-    period: '2020年 - 2022年',
-    title: '计算机科学硕士',
-    company: 'ZZZ大学',
-    description: '研究方向：分布式系统'
-  }
-]
-
 const skillCategories = [
   { key: 'language', name: '编程语言' },
   { key: 'framework', name: '框架' },
@@ -141,19 +120,52 @@ onMounted(() => {
       </div>
     </section>
 
-    <!-- Experience Timeline -->
+    <!-- Focus Areas -->
     <section class="py-12">
-      <div class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
-        <h2 class="text-xl font-bold text-content-primary mb-8">经历</h2>
-
-        <div class="relative border-l-2 border-border ml-3 space-y-8">
-          <div v-for="(exp, index) in experiences" :key="index" class="relative pl-8">
-            <div class="absolute -left-2 top-1 w-4 h-4 rounded-full bg-primary border-2 border-border" />
-
-            <div class="text-sm text-primary font-medium">{{ exp.period }}</div>
-            <h3 class="mt-1 text-lg font-semibold text-content-primary">{{ exp.title }}</h3>
-            <div class="text-content-tertiary">{{ exp.company }}</div>
-            <p class="mt-2 text-content-secondary">{{ exp.description }}</p>
+      <div class="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
+        <h2 class="text-xl font-bold text-content-primary mb-8">专注领域</h2>
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div class="bg-surface-primary rounded-xl p-5 border border-border hover:border-primary transition-colors">
+            <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center mb-3">
+              <el-icon class="text-primary"><Monitor /></el-icon>
+            </div>
+            <h3 class="font-semibold text-content-primary mb-1">后端开发</h3>
+            <p class="text-sm text-content-secondary">Java / Spring Boot / 分布式系统</p>
+          </div>
+          <div class="bg-surface-primary rounded-xl p-5 border border-border hover:border-primary transition-colors">
+            <div class="w-10 h-10 rounded-lg bg-success/10 flex items-center justify-center mb-3">
+              <el-icon class="text-success"><Collection /></el-icon>
+            </div>
+            <h3 class="font-semibold text-content-primary mb-1">前端开发</h3>
+            <p class="text-sm text-content-secondary">Vue.js / TypeScript / 现代前端工程化</p>
+          </div>
+          <div class="bg-surface-primary rounded-xl p-5 border border-border hover:border-primary transition-colors">
+            <div class="w-10 h-10 rounded-lg bg-warning/10 flex items-center justify-center mb-3">
+              <el-icon class="text-warning"><DataLine /></el-icon>
+            </div>
+            <h3 class="font-semibold text-content-primary mb-1">数据库</h3>
+            <p class="text-sm text-content-secondary">PostgreSQL / MySQL / Redis</p>
+          </div>
+          <div class="bg-surface-primary rounded-xl p-5 border border-border hover:border-primary transition-colors">
+            <div class="w-10 h-10 rounded-lg bg-info/10 flex items-center justify-center mb-3">
+              <el-icon class="text-info"><Ship /></el-icon>
+            </div>
+            <h3 class="font-semibold text-content-primary mb-1">DevOps</h3>
+            <p class="text-sm text-content-secondary">Docker / CI/CD / 云原生部署</p>
+          </div>
+          <div class="bg-surface-primary rounded-xl p-5 border border-border hover:border-primary transition-colors">
+            <div class="w-10 h-10 rounded-lg bg-purple/10 flex items-center justify-center mb-3">
+              <el-icon class="text-purple"><Cpu /></el-icon>
+            </div>
+            <h3 class="font-semibold text-content-primary mb-1">人工智能</h3>
+            <p class="text-sm text-content-secondary">LLM应用 / AI工程化 / 智能助手</p>
+          </div>
+          <div class="bg-surface-primary rounded-xl p-5 border border-border hover:border-primary transition-colors">
+            <div class="w-10 h-10 rounded-lg bg-danger/10 flex items-center justify-center mb-3">
+              <el-icon class="text-danger"><Lock /></el-icon>
+            </div>
+            <h3 class="font-semibold text-content-primary mb-1">安全技术</h3>
+            <p class="text-sm text-content-secondary">安全研究 / 代码审计 / 漏洞分析</p>
           </div>
         </div>
       </div>

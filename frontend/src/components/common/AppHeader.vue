@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useConfigStore } from '@/stores/modules/config'
 import { useTheme } from '@/composables/useTheme'
+import { getArticleList } from '@/api/article'
+import type { Article } from '@/types/article'
 import ThemeSwitcher from './ThemeSwitcher.vue'
 
 const router = useRouter()
@@ -20,6 +22,10 @@ const isMobileMenuOpen = ref(false)
 // 搜索框
 const isSearchOpen = ref(false)
 const searchQuery = ref('')
+const searchResults = ref<Article[]>([])
+const isSearching = ref(false)
+const selectedIndex = ref(-1)
+const searchInputRef = ref<HTMLInputElement | null>(null)
 
 // 导航项
 const navItems = [
@@ -58,14 +64,90 @@ const closeMobileMenu = () => {
   document.body.style.overflow = ''
 }
 
-// 处理搜索
-const handleSearch = () => {
-  if (searchQuery.value.trim()) {
-    router.push(`/article?keyword=${encodeURIComponent(searchQuery.value.trim())}`)
-    isSearchOpen.value = false
-    searchQuery.value = ''
+// 搜索文章
+const performSearch = async () => {
+  const query = searchQuery.value.trim()
+  if (!query) {
+    searchResults.value = []
+    return
+  }
+
+  isSearching.value = true
+  try {
+    const res = await getArticleList({
+      current: 1,
+      size: 8,
+      keyword: query
+    })
+    searchResults.value = res.records
+    selectedIndex.value = -1
+  } finally {
+    isSearching.value = false
   }
 }
+
+// 防抖搜索
+let searchTimeout: ReturnType<typeof setTimeout> | null = null
+const debouncedSearch = () => {
+  if (searchTimeout) clearTimeout(searchTimeout)
+  searchTimeout = setTimeout(performSearch, 300)
+}
+
+// 处理搜索输入
+watch(searchQuery, () => {
+  debouncedSearch()
+})
+
+// 处理键盘导航
+const handleKeydown = (e: KeyboardEvent) => {
+  if (!isSearchOpen.value) return
+
+  switch (e.key) {
+    case 'Escape':
+      isSearchOpen.value = false
+      break
+    case 'ArrowDown':
+      e.preventDefault()
+      selectedIndex.value = Math.min(selectedIndex.value + 1, searchResults.value.length - 1)
+      break
+    case 'ArrowUp':
+      e.preventDefault()
+      selectedIndex.value = Math.max(selectedIndex.value - 1, -1)
+      break
+    case 'Enter':
+      e.preventDefault()
+      if (selectedIndex.value >= 0 && searchResults.value[selectedIndex.value]) {
+        goToArticle(searchResults.value[selectedIndex.value])
+      } else if (searchQuery.value.trim()) {
+        router.push(`/article?keyword=${encodeURIComponent(searchQuery.value.trim())}`)
+        closeSearch()
+      }
+      break
+  }
+}
+
+// 跳转到文章
+const goToArticle = (article: Article) => {
+  router.push(`/article/${article.slug}`)
+  closeSearch()
+}
+
+// 关闭搜索
+const closeSearch = () => {
+  isSearchOpen.value = false
+  searchQuery.value = ''
+  searchResults.value = []
+  selectedIndex.value = -1
+}
+
+// 打开搜索时聚焦输入框
+watch(isSearchOpen, (open) => {
+  if (open) {
+    nextTick(() => {
+      searchInputRef.value?.focus()
+    })
+  }
+})
 
 // 滚动到顶部
 const scrollToTop = () => {
@@ -74,11 +156,14 @@ const scrollToTop = () => {
 
 onMounted(() => {
   window.addEventListener('scroll', handleScroll, { passive: true })
+  window.addEventListener('keydown', handleKeydown)
   configStore.loadConfig()
 })
 
 onUnmounted(() => {
   window.removeEventListener('scroll', handleScroll)
+  window.removeEventListener('keydown', handleKeydown)
+  if (searchTimeout) clearTimeout(searchTimeout)
 })
 </script>
 
@@ -198,44 +283,169 @@ onUnmounted(() => {
 
       <!-- Search Modal -->
       <Transition
-        enter-active-class="transition duration-200 ease-out"
+        enter-active-class="transition duration-300 ease-out"
         enter-from-class="opacity-0"
         enter-to-class="opacity-100"
-        leave-active-class="transition duration-150 ease-in"
+        leave-active-class="transition duration-200 ease-in"
         leave-from-class="opacity-100"
         leave-to-class="opacity-0"
       >
         <div
           v-if="isSearchOpen"
-          class="fixed inset-0 z-50 flex items-start justify-center bg-black/50 backdrop-blur-sm pt-32"
-          @click="isSearchOpen = false"
+          class="fixed inset-0 z-50 flex items-start justify-center bg-black/60 backdrop-blur-md pt-[15vh]"
+          @click="closeSearch"
         >
           <div
-            class="w-full max-w-2xl transform rounded-2xl glass-card p-6 shadow-2xl transition-all"
+            class="w-full max-w-2xl mx-4 transform rounded-2xl bg-surface-primary border border-border shadow-2xl overflow-hidden transition-all"
             @click.stop
           >
-            <div class="relative">
-              <el-icon class="absolute left-5 top-1/2 -translate-y-1/2 text-xl text-content-tertiary">
+            <!-- Search Input -->
+            <div class="relative border-b border-border">
+              <el-icon class="absolute left-5 top-1/2 -translate-y-1/2 text-2xl text-content-tertiary">
                 <Search />
               </el-icon>
               <input
+                ref="searchInputRef"
                 v-model="searchQuery"
                 type="text"
-                placeholder="搜索文章..."
-                class="input-glass w-full py-4 pl-14 pr-12 text-lg"
-                @keyup.enter="handleSearch"
+                placeholder="搜索文章标题、内容..."
+                class="w-full py-5 pl-14 pr-24 text-lg bg-transparent text-content-primary placeholder:text-content-tertiary/50 focus:outline-none"
               />
-              <button
-                v-if="searchQuery"
-                class="absolute right-5 top-1/2 -translate-y-1/2 text-content-tertiary hover:text-content-secondary"
-                @click="searchQuery = ''"
-              >
-                <el-icon><Close /></el-icon>
-              </button>
+              <div class="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                <!-- Clear Button -->
+                <button
+                  v-if="searchQuery"
+                  class="p-1.5 rounded-lg text-content-tertiary hover:bg-surface-tertiary hover:text-content-secondary transition-colors"
+                  @click="searchQuery = ''"
+                >
+                  <el-icon><Close /></el-icon>
+                </button>
+                <!-- Shortcut Hint -->
+                <span class="hidden sm:flex items-center gap-1 px-2 py-1 rounded-md bg-surface-tertiary text-xs text-content-tertiary">
+                  ESC
+                </span>
+              </div>
             </div>
-            <p class="mt-4 text-center text-sm text-content-tertiary">
-              按 Enter 搜索，按 ESC 关闭
-            </p>
+
+            <!-- Search Results -->
+            <div class="max-h-[60vh] overflow-y-auto">
+              <!-- Loading State -->
+              <div v-if="isSearching" class="py-12 flex flex-col items-center justify-center">
+                <el-icon class="text-3xl text-primary animate-spin">
+                  <Loading />
+                </el-icon>
+                <span class="mt-3 text-sm text-content-tertiary">搜索中...</span>
+              </div>
+
+              <!-- Results List -->
+              <div v-else-if="searchResults.length > 0" class="py-2">
+                <div class="px-4 py-2 text-xs text-content-tertiary uppercase tracking-wider">
+                  找到 {{ searchResults.length }} 篇文章
+                </div>
+                <div
+                  v-for="(article, index) in searchResults"
+                  :key="article.id"
+                  class="mx-2 px-4 py-3 rounded-xl cursor-pointer transition-all"
+                  :class="selectedIndex === index ? 'bg-primary/10 border border-primary/20' : 'hover:bg-surface-tertiary border border-transparent'"
+                  @click="goToArticle(article)"
+                  @mouseenter="selectedIndex = index"
+                >
+                  <div class="flex items-start gap-3">
+                    <!-- Article Cover or Icon -->
+                    <div class="w-12 h-12 rounded-lg bg-surface-tertiary flex-shrink-0 overflow-hidden">
+                      <img
+                        v-if="article.cover"
+                        :src="article.cover"
+                        class="w-full h-full object-cover"
+                        alt=""
+                      />
+                      <div v-else class="w-full h-full flex items-center justify-center">
+                        <el-icon class="text-content-tertiary"><Document /></el-icon>
+                      </div>
+                    </div>
+                    <!-- Article Info -->
+                    <div class="flex-1 min-w-0">
+                      <h4 class="font-medium text-content-primary truncate">
+                        {{ article.title }}
+                      </h4>
+                      <p class="mt-1 text-sm text-content-secondary line-clamp-1">
+                        {{ article.summary || '暂无摘要' }}
+                      </p>
+                      <div class="mt-1.5 flex items-center gap-3 text-xs text-content-tertiary">
+                        <span class="flex items-center gap-1">
+                          <el-icon class="text-xs"><Calendar /></el-icon>
+                          {{ new Date(article.publishTime).toLocaleDateString('zh-CN') }}
+                        </span>
+                        <span class="flex items-center gap-1">
+                          <el-icon class="text-xs"><View /></el-icon>
+                          {{ article.viewCount }} 阅读
+                        </span>
+                      </div>
+                    </div>
+                    <!-- Arrow Icon for selected -->
+                    <el-icon
+                      v-if="selectedIndex === index"
+                      class="text-primary self-center"
+                    >
+                      <ArrowRight />
+                    </el-icon>
+                  </div>
+                </div>
+              </div>
+
+              <!-- No Results -->
+              <div v-else-if="searchQuery && !isSearching" class="py-12 flex flex-col items-center justify-center">
+                <div class="w-16 h-16 rounded-full bg-surface-tertiary flex items-center justify-center mb-4">
+                  <el-icon class="text-2xl text-content-tertiary"><DocumentDelete /></el-icon>
+                </div>
+                <p class="text-content-secondary">未找到相关文章</p>
+                <p class="mt-1 text-sm text-content-tertiary">换个关键词试试吧</p>
+              </div>
+
+              <!-- Empty State (Initial) -->
+              <div v-else class="py-10 px-6">
+                <div class="text-center">
+                  <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/10 mb-4">
+                    <el-icon class="text-2xl text-primary"><Search /></el-icon>
+                  </div>
+                  <h4 class="text-content-primary font-medium">搜索文章</h4>
+                  <p class="mt-1 text-sm text-content-secondary">输入关键词查找感兴趣的内容</p>
+                </div>
+                <!-- Quick Tips -->
+                <div class="mt-6 flex flex-wrap justify-center gap-2">
+                  <button
+                    v-for="tag in ['Vue', 'Spring Boot', '数据库', '前端']"
+                    :key="tag"
+                    class="px-3 py-1.5 rounded-full text-sm bg-surface-tertiary text-content-secondary hover:bg-primary/10 hover:text-primary transition-colors"
+                    @click="searchQuery = tag; performSearch()"
+                  >
+                    {{ tag }}
+                  </button>
+                </div>
+              </div>
+
+              <!-- Footer -->
+              <div v-if="searchResults.length > 0" class="px-4 py-3 border-t border-border bg-surface-secondary/50">
+                <div class="flex items-center justify-between text-xs text-content-tertiary">
+                  <div class="flex items-center gap-3">
+                    <span class="flex items-center gap-1">
+                      <span class="px-1.5 py-0.5 rounded bg-surface-tertiary">↑↓</span>
+                      选择
+                    </span>
+                    <span class="flex items-center gap-1">
+                      <span class="px-1.5 py-0.5 rounded bg-surface-tertiary">↵</span>
+                      打开
+                    </span>
+                  </div>
+                  <button
+                    class="text-primary hover:underline"
+                    @click="router.push(`/article?keyword=${encodeURIComponent(searchQuery)}`); closeSearch()"
+                  >
+                    查看全部结果
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </Transition>

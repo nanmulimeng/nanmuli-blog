@@ -5,7 +5,7 @@ import { getAdminArticleList, deleteArticle } from '@/api/article'
 import { formatDateCN } from '@/utils/format'
 import { ArticleStatusMap } from '@/constants'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Edit, Delete } from '@element-plus/icons-vue'
+import { Plus, Edit, Delete, Search } from '@element-plus/icons-vue'
 import type { Article } from '@/types/article'
 
 const router = useRouter()
@@ -14,6 +14,7 @@ const articles = ref<Article[]>([])
 const total = ref(0)
 const currentPage = ref(1)
 const pageSize = ref(10)
+const searchKeyword = ref('')
 
 async function fetchData(): Promise<void> {
   loading.value = true
@@ -21,12 +22,23 @@ async function fetchData(): Promise<void> {
     const res = await getAdminArticleList({
       current: currentPage.value,
       size: pageSize.value,
+      keyword: searchKeyword.value || undefined,
     })
     articles.value = res.records
     total.value = res.total
   } finally {
     loading.value = false
   }
+}
+
+function handleSearch(): void {
+  currentPage.value = 1
+  fetchData()
+}
+
+function clearSearch(): void {
+  searchKeyword.value = ''
+  handleSearch()
 }
 
 function handleCreate(): void {
@@ -70,6 +82,25 @@ onMounted(fetchData)
       <el-button type="primary" :icon="Plus" @click="handleCreate">
         新建文章
       </el-button>
+    </div>
+
+    <!-- Search Bar -->
+    <div class="mb-4 flex items-center gap-3">
+      <div class="relative flex-1 max-w-md">
+        <el-input
+          v-model="searchKeyword"
+          placeholder="搜索文章标题、内容..."
+          clearable
+          @keyup.enter="handleSearch"
+          @clear="clearSearch"
+        >
+          <template #prefix>
+            <el-icon><Search /></el-icon>
+          </template>
+        </el-input>
+      </div>
+      <el-button type="primary" @click="handleSearch">搜索</el-button>
+      <el-button v-if="searchKeyword" @click="clearSearch">重置</el-button>
     </div>
 
     <el-table v-loading="loading" :data="articles" border>

@@ -58,4 +58,9 @@ public interface ArticleRepository {
      * 检查slug是否被其他文章使用（排除指定ID）
      */
     boolean existsBySlugAndIdNot(String slug, Long id);
+
+    /**
+     * 根据关键词搜索已发布文章（包含分类ID匹配）
+     */
+    IPage<Article> findPublishedByKeyword(String keyword, List<Long> categoryIds, IPage<Article> page, String sort);
 }
