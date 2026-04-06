@@ -32,6 +32,7 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.util.StringUtils;
 import org.springframework.cache.annotation.CacheConfig;
 import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.annotation.Async;
@@ -58,7 +59,10 @@ public class ArticleAppService {
     private final MarkdownUtil markdownUtil;
 
     @Transactional
-    @CacheEvict(cacheNames = "article:list", allEntries = true)
+    @Caching(evict = {
+        @CacheEvict(cacheNames = "article", allEntries = true),
+        @CacheEvict(cacheNames = "article:list", allEntries = true)
+    })
     public Long create(CreateArticleCommand command) {
         // 验证分类是否为叶子节点
         validateLeafCategory(command.getCategoryId());
@@ -125,7 +129,10 @@ public class ArticleAppService {
     }
 
     @Transactional
-    @CacheEvict(allEntries = true)
+    @Caching(evict = {
+        @CacheEvict(cacheNames = "article", allEntries = true),
+        @CacheEvict(cacheNames = "article:list", allEntries = true)
+    })
     public void update(UpdateArticleCommand command) {
         // 验证分类是否为叶子节点
         validateLeafCategory(command.getCategoryId());
@@ -201,7 +208,7 @@ public class ArticleAppService {
     }
 
     @Transactional(readOnly = true)
-    @Cacheable(cacheNames = "article:list", key = "#query.current + '-' + #query.size")
+    @Cacheable(cacheNames = "article:list", key = "#query.current + '-' + #query.size + '-' + #query.categoryId + '-' + #query.sort + '-' + #query.keyword")
     public PageResult<ArticleDTO> listPublished(ArticlePageQuery query) {
         IPage<Article> page = new Page<>(query.getCurrent(), query.getSize());
         IPage<Article> result;
@@ -226,7 +233,10 @@ public class ArticleAppService {
     }
 
     @Transactional
-    @CacheEvict(allEntries = true)
+    @Caching(evict = {
+        @CacheEvict(cacheNames = "article", allEntries = true),
+        @CacheEvict(cacheNames = "article:list", allEntries = true)
+    })
     public void delete(Long id) {
         Article article = articleRepository.findById(new ArticleId(id))
                 .orElseThrow(() -> new BusinessException("文章不存在或已被删除"));

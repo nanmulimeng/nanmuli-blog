@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, markRaw } from 'vue'
 import { useRouter } from 'vue-router'
 import { Document, FolderOpened, View, User, EditPen, Notebook, Setting } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
@@ -16,10 +16,10 @@ interface StatItem {
 }
 
 const stats = ref<StatItem[]>([
-  { label: '文章数量', value: 0, icon: Document },
-  { label: '项目数量', value: 0, icon: FolderOpened },
-  { label: '访问量', value: 0, icon: View },
-  { label: '访客数', value: 0, icon: User },
+  { label: '文章数量', value: 0, icon: markRaw(Document) },
+  { label: '项目数量', value: 0, icon: markRaw(FolderOpened) },
+  { label: '访问量', value: 0, icon: markRaw(View) },
+  { label: '访客数', value: 0, icon: markRaw(User) },
 ])
 
 const recentArticles = ref<Article[]>([])

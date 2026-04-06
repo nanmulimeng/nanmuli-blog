@@ -41,16 +41,16 @@ watch(() => route.query, (query) => {
 
 // 获取父级分类列表（用于筛选）
 const parentCategories = computed(() => {
-  // 只返回父级分类（有子分类的节点）
+  // 只返回父级分类（有子分类的节点），排除"日志"分类
   return categoryTree.value
-    .filter(item => !item.isLeaf && item.children && item.children.length > 0)
+        .filter(item => !item.isLeaf && item.children && item.children.length > 0 && item.name !== '日志' && item.name !== '项目展示')
     .sort((a, b) => (a.sort || 0) - (b.sort || 0))
 })
 
 // 获取选中的分类名称
 const selectedCategoryName = computed(() => {
   if (!selectedCategory.value) return '全部文章'
-  const cat = parentCategories.value.find((c: Category) => c.id === selectedCategory.value)
+  const cat = parentCategories.value.find((c: Category) => String(c.id) === String(selectedCategory.value))
   return cat?.name || '全部文章'
 })
 
@@ -168,8 +168,8 @@ onMounted(() => {
                 v-for="cat in parentCategories"
                 :key="cat.id"
                 class="pill whitespace-nowrap"
-                :class="selectedCategory === cat.id ? 'pill-primary' : 'pill-secondary'"
-                @click="handleCategoryChange(cat.id)"
+                :class="String(selectedCategory) === String(cat.id) ? 'pill-primary' : 'pill-secondary'"
+                @click="handleCategoryChange(String(cat.id))"
               >
                 {{ cat.name }}
               </button>
@@ -257,7 +257,7 @@ onMounted(() => {
               />
               <div
                 v-else
-                class="flex h-full w-full items-center justify-center bg-gradient-to-br from-primary/10 to-primary-light/10 dark:from-primary/10 dark:to-primary-light/10"
+                class="flex h-full w-full items-center justify-center bg-gradient-to-br from-blue-400/20 to-cyan-300/20 dark:from-cyan-500/20 dark:to-blue-400/20"
               >
                 <el-icon class="text-5xl text-primary/50">
                   <Document />

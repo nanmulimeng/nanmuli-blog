@@ -85,11 +85,64 @@ function navigateToCategory(categoryId: string) {
   router.push(`/article?categoryId=${categoryId}`)
 }
 
-// 过滤文章
+// 处理探索分类点击
+function handleCategoryClick(cat: any) {
+  if (cat.name === '日志') {
+    router.push('/daily-log')
+  } else if (cat.name === '项目展示') {
+    router.push('/project')
+  } else {
+    navigateToCategory(String(cat.id))
+  }
+}
+
+// 过滤文章 - 支持父级分类筛选（包含所有子分类的文章）
 const filteredArticles = computed(() => {
-  if (!activeCategory.value) return articles.value
-  return articles.value.filter(a => a.categoryId === activeCategory.value)
+  if (!activeCategory.value) return articles.value.slice(0, 6)
+
+  // 获取该分类及其所有子分类的ID
+  const categoryIds = getCategoryAndChildrenIds(activeCategory.value)
+
+  // 过滤属于这些分类的文章（只显示6个）
+  return articles.value.filter(a => categoryIds.includes(String(a.category?.id))).slice(0, 6)
 })
+
+// 递归获取分类及其所有子分类的ID
+function getCategoryAndChildrenIds(categoryId: string): string[] {
+  const result: Set<string> = new Set([String(categoryId)])
+
+  // 在聚合数据中找到该分类
+  const findCategory = (categories: any[], id: string): any => {
+    for (const cat of categories) {
+      if (String(cat.id) === id) return cat
+      if (cat.children?.length) {
+        const found = findCategory(cat.children, id)
+        if (found) return found
+      }
+    }
+    return null
+  }
+
+  const category = aggregated.value?.categories
+    ? findCategory(aggregated.value.categories, String(categoryId))
+    : null
+
+  // 递归添加子分类ID
+  const addChildrenIds = (cat: any) => {
+    if (cat.children?.length) {
+      for (const child of cat.children) {
+        result.add(String(child.id))
+        addChildrenIds(child)
+      }
+    }
+  }
+
+  if (category) {
+    addChildrenIds(category)
+  }
+
+  return Array.from(result)
+}
 
 // 打字机效果文字
 const heroTexts = ['记录技术成长', '探索代码世界', '分享学习心得']
@@ -244,7 +297,7 @@ watch(experience, (newVal) => {
 
             <!-- 装饰元素 - 使用主题蓝色系 -->
             <div class="absolute -right-4 top-1/2 -translate-y-1/2 transform rounded-2xl bg-gradient-to-br from-primary to-primary-light p-4 shadow-xl animate-float">
-              <el-icon class="text-3xl text-white"><Code /></el-icon>
+              <el-icon class="text-3xl text-white"><Collection /></el-icon>
             </div>
 
             <div class="absolute -left-8 bottom-10 transform rounded-2xl bg-gradient-to-br from-primary-light to-primary p-4 shadow-xl animation-delay-500 animate-float">
@@ -305,11 +358,11 @@ watch(experience, (newVal) => {
             全部
           </button>
           <button
-            v-for="cat in aggregated?.categories?.slice(0, 5)"
+            v-for="cat in aggregated?.categories?.filter(c => !c.isLeaf && c.name !== '日志' && c.name !== '项目展示').slice(0, 5)"
             :key="cat.id"
             class="pill"
-            :class="activeCategory === cat.id ? 'pill-primary' : 'pill-secondary'"
-            @click="activeCategory = cat.id"
+            :class="String(activeCategory) === String(cat.id) ? 'pill-primary' : 'pill-secondary'"
+            @click="activeCategory = String(cat.id)"
           >
             {{ cat.name }}
           </button>
@@ -352,8 +405,43 @@ watch(experience, (newVal) => {
             </div>
 
             <!-- 分类标签 -->
-            <div class="absolute bottom-4 left-4">
-              <span class="pill pill-secondary text-xs shadow-sm backdrop-blur-sm">
+            <div class="absolute bottom-4 left-4 max-w-[80%]">
+              <!-- 分类路径 -->
+              <div v-if="article.categoryPath?.length" class="flex items-center gap-1 flex-wrap">
+                <span
+                  v-for="(cat, index) in article.categoryPath"
+                  :key="cat.id"
+                  class="flex items-center gap-1"
+                >
+                  <span
+                    class="rounded-full px-2 py-1 text-xs font-medium shadow-sm backdrop-blur-sm"
+                    :style="{
+                      backgroundColor: cat.color ? cat.color + '90' : 'rgba(255,255,255,0.9)',
+                      color: cat.color ? '#fff' : '#374151'
+                    }"
+                  >
+                    {{ cat.name }}
+                  </span>
+                  <span
+                    v-if="index < article.categoryPath.length - 1"
+                    class="text-white/80 text-xs"
+                  >/</span>
+                </span>
+              </div>
+              <span
+                v-else-if="article.category"
+                class="rounded-full px-3 py-1 text-xs font-medium shadow-sm backdrop-blur-sm"
+                :style="{
+                  backgroundColor: article.category.color ? article.category.color + '90' : 'rgba(255,255,255,0.9)',
+                  color: article.category.color ? '#fff' : '#374151'
+                }"
+              >
+                {{ article.category.name }}
+              </span>
+              <span
+                v-else
+                class="rounded-full bg-surface-secondary/90 px-3 py-1 text-xs font-medium text-content-secondary shadow-sm backdrop-blur-sm"
+              >
                 {{ article.categoryName }}
               </span>
             </div>
@@ -416,10 +504,16 @@ watch(experience, (newVal) => {
 
         <div class="flex flex-wrap justify-center gap-4">
           <button
-            v-for="cat in aggregated?.categories"
+            v-for="cat in aggregated?.categories?.filter(c => !c.isLeaf).sort((a, b) => {
+              if (a.name === '日志') return -1
+              if (b.name === '日志') return 1
+              if (a.name === '项目展示') return -1
+              if (b.name === '项目展示') return 1
+              return (a.sort || 0) - (b.sort || 0)
+            })"
             :key="cat.id"
             class="group relative overflow-hidden rounded-2xl bg-surface-secondary p-6 text-left shadow-card transition-all duration-300 hover:shadow-card-hover hover:-translate-y-1"
-            @click="navigateToCategory(cat.id)"
+            @click="handleCategoryClick(cat)"
           >
             <!-- 装饰背景 -->
             <div class="absolute -right-4 -top-4 h-20 w-20 rounded-full bg-gradient-to-br from-primary/20 to-primary-light/20 opacity-0 transition-opacity group-hover:opacity-100" />
@@ -429,7 +523,15 @@ watch(experience, (newVal) => {
                 {{ cat.name }}
               </h3>
               <p class="mt-1 text-sm text-content-tertiary">
-                {{ cat.articleCount || 0 }} 篇文章
+                <template v-if="cat.name === '日志'">
+                  {{ aggregated?.stats?.dailyLogCount || 0 }} 篇日志
+                </template>
+                <template v-else-if="cat.name === '项目展示'">
+                  {{ aggregated?.stats?.projectCount || 0 }} 个项目
+                </template>
+                <template v-else>
+                  {{ cat.articleCount || 0 }} 篇文章
+                </template>
               </p>
             </div>
           </button>

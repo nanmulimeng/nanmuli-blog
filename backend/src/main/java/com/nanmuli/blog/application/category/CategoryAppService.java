@@ -109,6 +109,20 @@ public class CategoryAppService {
     }
 
     /**
+     * 批量刷新所有分类的文章数
+     */
+    @Transactional
+    public void refreshAllCategoryArticleCounts() {
+        List<Category> allCategories = categoryRepository.findAll();
+        for (Category category : allCategories) {
+            if (category.isLeaf()) {
+                // 只有叶子分类直接关联文章
+                refreshArticleCount(category.getId());
+            }
+        }
+    }
+
+    /**
      * 分页查询分类列表（平铺结构，支持筛选）
      */
     public PageResult<CategoryDTO> listPage(CategoryPageQuery query) {
@@ -294,11 +308,37 @@ public class CategoryAppService {
         // 设置子节点（已排序）
         dtoList.forEach(dto -> dto.setChildren(parentMap.get(dto.getId())));
 
-        // 返回根节点（parentId为null的节点），按sort排序
-        return dtoList.stream()
+        // 获取根节点列表
+        List<CategoryDTO> rootList = dtoList.stream()
                 .filter(dto -> dto.getParentId() == null)
                 .sorted(Comparator.comparing(CategoryDTO::getSort, Comparator.nullsLast(Integer::compareTo)))
                 .collect(Collectors.toList());
+
+        // 递归计算每个父分类的总文章数（包含所有子分类）
+        rootList.forEach(this::calculateTotalArticleCount);
+
+        return rootList;
+    }
+
+    /**
+     * 递归计算分类的总文章数（包含所有子分类）
+     */
+    private int calculateTotalArticleCount(CategoryDTO category) {
+        if (category.getChildren() == null || category.getChildren().isEmpty()) {
+            // 叶子节点，返回自身的文章数
+            return category.getArticleCount() != null ? category.getArticleCount() : 0;
+        }
+
+        // 父节点，累加所有子节点的文章数
+        int totalChildrenCount = category.getChildren().stream()
+                .mapToInt(this::calculateTotalArticleCount)
+                .sum();
+
+        // 更新父分类的文章数（自身文章数 + 子分类文章数之和）
+        int totalCount = (category.getArticleCount() != null ? category.getArticleCount() : 0) + totalChildrenCount;
+        category.setArticleCount(totalCount);
+
+        return totalCount;
     }
 
     /**

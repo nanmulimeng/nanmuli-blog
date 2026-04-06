@@ -73,9 +73,11 @@ public class ArticleRepositoryImpl implements ArticleRepository {
 
         // 根据排序参数设置排序方式
         if ("oldest".equals(sort)) {
-            wrapper.orderByAsc(Article::getPublishTime);
+            wrapper.orderByDesc(Article::getIsTop)
+                   .orderByAsc(Article::getPublishTime);
         } else if ("popular".equals(sort)) {
-            wrapper.orderByDesc(Article::getViewCount);
+            wrapper.orderByDesc(Article::getIsTop)
+                   .orderByDesc(Article::getViewCount);
         } else {
             // 默认：最新发布
             wrapper.orderByDesc(Article::getIsTop)
@@ -104,9 +106,11 @@ public class ArticleRepositoryImpl implements ArticleRepository {
 
         // 根据排序参数设置排序方式
         if ("oldest".equals(sort)) {
-            wrapper.orderByAsc(Article::getPublishTime);
+            wrapper.orderByDesc(Article::getIsTop)
+                   .orderByAsc(Article::getPublishTime);
         } else if ("popular".equals(sort)) {
-            wrapper.orderByDesc(Article::getViewCount);
+            wrapper.orderByDesc(Article::getIsTop)
+                   .orderByDesc(Article::getViewCount);
         } else {
             // 默认：最新发布
             wrapper.orderByDesc(Article::getIsTop)
@@ -141,6 +145,7 @@ public class ArticleRepositoryImpl implements ArticleRepository {
     public Long countByCategoryId(Long categoryId) {
         LambdaQueryWrapper<Article> wrapper = Wrappers.lambdaQuery();
         wrapper.eq(Article::getCategoryId, categoryId)
+               .eq(Article::getStatus, 1)
                .eq(Article::getIsDeleted, false);
         return articleMapper.selectCount(wrapper);
     }

@@ -64,12 +64,12 @@ const footerLinks = [
         <!-- Quick Links -->
         <div>
           <h3 class="text-sm font-semibold text-content-primary mb-4">快速链接</h3>
-          <nav class="space-y-3">
+          <nav class="flex flex-wrap gap-4">
             <router-link
               v-for="link in footerLinks"
               :key="link.path"
               :to="link.path"
-              class="block text-content-secondary hover:text-primary transition-colors"
+              class="text-content-secondary hover:text-primary transition-colors"
             >
               {{ link.label }}
             </router-link>
@@ -79,16 +79,16 @@ const footerLinks = [
         <!-- Admin -->
         <div>
           <h3 class="text-sm font-semibold text-content-primary mb-4">管理</h3>
-          <nav class="space-y-3">
+          <nav class="flex flex-wrap gap-4">
             <router-link
               to="/admin"
-              class="block text-content-secondary hover:text-primary transition-colors"
+              class="text-content-secondary hover:text-primary transition-colors"
             >
               管理后台
             </router-link>
             <router-link
               to="/admin/article"
-              class="block text-content-secondary hover:text-primary transition-colors"
+              class="text-content-secondary hover:text-primary transition-colors"
             >
               发布文章
             </router-link>
