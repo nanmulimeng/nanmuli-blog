@@ -16,7 +16,7 @@ services:
     ports:
       - "5433:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pgisready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -36,6 +36,30 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+
+  # Python 爬虫服务 (Crawl4AI)
+  crawler:
+    build:
+      context: ../crawler-service
+      dockerfile: Dockerfile
+    container_name: nanmuli-crawler
+    restart: always
+    environment:
+      - PORT=8500
+      - HOST=0.0.0.0
+      - MAX_PAGES_DEFAULT=10
+      - MAX_PAGES_LIMIT=20
+      - MAX_DEPTH_LIMIT=3
+      - REQUEST_TIMEOUT=60
+      - LOG_LEVEL=INFO
+    ports:
+      - "8500:8500"
+    networks:
+      - nanmuli-network
+
+networks:
+  nanmuli-network:
+    driver: bridge
 
 volumes:
   postgres_data:

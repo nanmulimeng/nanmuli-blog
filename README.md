@@ -315,6 +315,92 @@ nanmuli-blog/
 **问题**：静态资源加载失败
 - **解决**：检查Nginx的`root`路径是否指向正确的`dist`目录
 
+## Docker 部署（推荐）
+
+项目已全面支持 Docker 容器化部署，包含所有服务的一键启动。
+
+### 系统要求
+
+- Docker 20.10+
+- Docker Compose 2.0+
+- 内存：最低 2GB（推荐 4GB）
+
+### 快速启动
+
+```bash
+# 1. 克隆项目
+git clone <repository-url>
+cd nanmuli-blog
+
+# 2. 执行部署脚本
+bash deploy/deploy.sh
+
+# 3. 或直接使用 Docker Compose
+docker-compose up -d
+```
+
+### 服务架构
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Docker Network                        │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐  │
+│  │   Nginx     │  │   Backend   │  │    Crawler      │  │
+│  │  (前端)      │  │  (Java)     │  │ (Python/Crawl4AI)│  │
+│  │   :80       │  │   :8081     │  │    :8500        │  │
+│  └──────┬──────┘  └──────┬──────┘  └─────────────────┘  │
+│         │                │                                │
+│         └────────────────┼────────────────┐               │
+│                          ▼                ▼               │
+│                   ┌─────────────┐  ┌─────────────┐       │
+│                   │  PostgreSQL │  │    Redis    │       │
+│                   │    :5432    │  │    :6379    │       │
+│                   └─────────────┘  └─────────────┘       │
+└─────────────────────────────────────────────────────────┘
+```
+
+### 服务说明
+
+| 服务 | 容器名 | 端口 | 说明 |
+|------|--------|------|------|
+| Nginx | nanmuli-frontend | 80 | 前端静态资源 + 反向代理 |
+| Backend | nanmuli-backend | 8081 | Spring Boot 后端服务 |
+| Crawler | nanmuli-crawler | 8500 | Python 爬虫服务 (Crawl4AI) |
+| PostgreSQL | nanmuli-postgres | 5433 | 主数据库（映射到宿主机5433）|
+| Redis | nanmuli-redis | 6380 | 缓存/会话（映射到宿主机6380）|
+
+### 常用命令
+
+```bash
+# 查看所有服务状态
+docker-compose ps
+
+# 查看日志
+docker-compose logs -f [service_name]
+
+# 停止所有服务
+docker-compose down
+
+# 重启单个服务
+docker-compose restart backend
+
+# 进入容器调试
+docker exec -it nanmuli-backend bash
+docker exec -it nanmuli-crawler sh
+```
+
+### 爬虫服务单独部署
+
+如果只需部署爬虫服务：
+
+```bash
+cd crawler-service
+docker build -t nanmuli-crawler .
+docker run -d -p 8500:8500 --name nanmuli-crawler nanmuli-crawler
+```
+
+---
+
 ## 许可证
 
 [MIT License](./LICENSE)

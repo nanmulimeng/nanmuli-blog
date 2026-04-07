@@ -53,6 +53,25 @@ public class AsyncConfig implements AsyncConfigurer {
         return executor;
     }
 
+    /**
+     * 爬虫任务执行器
+     * 用于网页爬取异步任务（限制并发保护服务器）
+     */
+    @Bean(name = "crawlerTaskExecutor")
+    public Executor crawlerTaskExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(1);    // 2G 服务器限制并发
+        executor.setMaxPoolSize(2);
+        executor.setQueueCapacity(20);
+        executor.setThreadNamePrefix("crawler-");
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(120);
+        executor.initialize();
+        log.info("爬虫任务执行器初始化完成");
+        return executor;
+    }
+
     @Override
     public Executor getAsyncExecutor() {
         return taskExecutor();

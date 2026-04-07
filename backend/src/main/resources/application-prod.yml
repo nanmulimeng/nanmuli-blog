@@ -41,6 +41,12 @@ blog:
   ai:
     enabled: false
 
+# 爬虫服务配置
+crawler:
+  service:
+    base-url: ${CRAWLER_SERVICE_URL:http://localhost:8500}
+    timeout: 60000
+
 logging:
   level:
     root: warn
