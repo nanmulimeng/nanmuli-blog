@@ -116,7 +116,7 @@ async def lifespan(app: FastAPI):
     try:
         from crawl4ai import AsyncWebCrawler
         logger.info("✅ Crawl4AI imported successfully")
-    except ImportException as e:
+    except ImportError as e:
         logger.error(f"❌ Failed to import Crawl4AI: {e}")
         raise
 

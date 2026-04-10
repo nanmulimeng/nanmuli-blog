@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.nanmuli.blog.domain.webcollector.WebCollectPage;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
@@ -32,6 +33,6 @@ public interface WebCollectPageMapper extends BaseMapper<WebCollectPage> {
     @Select("SELECT COUNT(*) FROM web_collect_page WHERE task_id = #{taskId} AND crawl_status = #{crawlStatus}")
     long countByTaskIdAndCrawlStatus(@Param("taskId") Long taskId, @Param("crawlStatus") Integer crawlStatus);
 
-    @Select("DELETE FROM web_collect_page WHERE task_id = #{taskId}")
+    @Delete("DELETE FROM web_collect_page WHERE task_id = #{taskId}")
     void deleteByTaskId(@Param("taskId") Long taskId);
 }

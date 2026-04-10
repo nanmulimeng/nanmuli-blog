@@ -5,6 +5,7 @@
 """
 
 import re
+import asyncio
 import time
 import logging
 from typing import List, Optional
@@ -99,9 +100,9 @@ async def crawl_by_keyword(
                     metadata={'search_rank': rank, 'search_keyword': keyword}
                 ))
 
-            # 小延迟避免请求过快
+            # 小延迟避免请求过快（使用 asyncio.sleep 不阻塞事件循环）
             if rank < len(search_urls):
-                time.sleep(0.5)
+                await asyncio.sleep(0.5)
 
         total_time = int((time.time() - start_time) * 1000)
         success_count = sum(1 for r in results if r.success)

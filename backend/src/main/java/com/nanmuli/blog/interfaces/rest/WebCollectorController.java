@@ -97,11 +97,6 @@ public class WebCollectorController {
     }
 
     private Long getCurrentUserId() {
-        try {
-            return cn.dev33.satoken.stp.StpUtil.getLoginIdAsLong();
-        } catch (Exception e) {
-            log.warn("无法获取当前登录用户，使用默认用户ID=1");
-            return 1L;
-        }
+        return cn.dev33.satoken.stp.StpUtil.getLoginIdAsLong();
     }
 }
