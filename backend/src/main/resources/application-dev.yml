@@ -21,6 +21,13 @@ spring:
           max-active: 8
           max-idle: 8
           min-idle: 0
+  ai:
+    dashscope:
+      api-key: ${AI_DASHSCOPE_KEY:}
+      chat:
+        options:
+          model: qwen3.6-plus
+          temperature: 0.3
 
 # Web Collector - Crawl4AI 服务配置
 crawler:

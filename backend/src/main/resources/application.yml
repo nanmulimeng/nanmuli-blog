@@ -69,6 +69,6 @@ blog:
     access-url: /uploads/
   ai:
     enabled: false
-    model: qwen-turbo
+    model: qwen3.6-plus
     auto-tags: true
     auto-summary: true

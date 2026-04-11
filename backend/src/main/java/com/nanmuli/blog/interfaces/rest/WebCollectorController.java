@@ -1,6 +1,8 @@
 package com.nanmuli.blog.interfaces.rest;
 
 import com.nanmuli.blog.application.webcollector.WebCollectorAppService;
+import com.nanmuli.blog.application.webcollector.command.ConvertToArticleCommand;
+import com.nanmuli.blog.application.webcollector.command.ConvertToDailyLogCommand;
 import com.nanmuli.blog.application.webcollector.command.CreateCollectTaskCommand;
 import com.nanmuli.blog.application.webcollector.dto.CollectPageDTO;
 import com.nanmuli.blog.application.webcollector.dto.CollectTaskDTO;
@@ -94,6 +96,45 @@ public class WebCollectorController {
         Long userId = getCurrentUserId();
         collectorAppService.deleteTask(taskId, userId);
         return Result.success();
+    }
+
+    /**
+     * 将采集任务转为文章草稿
+     */
+    @Operation(summary = "转为文章草稿")
+    @PostMapping("/task/{taskId}/to-article")
+    public Result<Long> convertToArticle(
+            @Parameter(description = "任务ID") @PathVariable Long taskId,
+            @RequestBody @Valid ConvertToArticleCommand command) {
+        Long userId = getCurrentUserId();
+        Long articleId = collectorAppService.convertToArticle(taskId, command, userId);
+        return Result.success(articleId);
+    }
+
+    /**
+     * 将采集任务转为技术日志
+     */
+    @Operation(summary = "转为技术日志")
+    @PostMapping("/task/{taskId}/to-daily-log")
+    public Result<Long> convertToDailyLog(
+            @Parameter(description = "任务ID") @PathVariable Long taskId,
+            @RequestBody @Valid ConvertToDailyLogCommand command) {
+        Long userId = getCurrentUserId();
+        Long dailyLogId = collectorAppService.convertToDailyLog(taskId, command, userId);
+        return Result.success(dailyLogId);
+    }
+
+    /**
+     * 爬虫服务健康检查
+     */
+    @Operation(summary = "爬虫服务健康检查")
+    @GetMapping("/crawler/health")
+    public Result<Map<String, Object>> crawlerHealth() {
+        boolean available = collectorAppService.isCrawlerAvailable();
+        Map<String, Object> data = new HashMap<>();
+        data.put("available", available);
+        data.put("service", "crawl4ai");
+        return Result.success(data);
     }
 
     private Long getCurrentUserId() {

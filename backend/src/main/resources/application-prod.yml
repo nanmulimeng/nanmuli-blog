@@ -40,6 +40,16 @@ blog:
     access-url: /uploads/
   ai:
     enabled: false
+    model: qwen3.6-plus
+
+spring:
+  ai:
+    dashscope:
+      api-key: ${AI_DASHSCOPE_KEY:}
+      chat:
+        options:
+          model: qwen3.6-plus
+          temperature: 0.3
 
 # 爬虫服务配置
 crawler:

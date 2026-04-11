@@ -63,7 +63,7 @@ public class WebCollectTask extends BaseAggregateRoot<Long> {
         return CollectTaskStatus.of(this.status);
     }
 
-    public void setStatus(CollectTaskStatus status) {
+    public void updateStatus(CollectTaskStatus status) {
         this.status = status.getValue();
     }
 
@@ -74,7 +74,7 @@ public class WebCollectTask extends BaseAggregateRoot<Long> {
     public void initProgress(int totalPages) {
         this.totalPages = totalPages;
         this.completedPages = 0;
-        setStatus(CollectTaskStatus.CRAWLING);
+        updateStatus(CollectTaskStatus.CRAWLING);
     }
 
     public void updateProgress(int completedPages) {
@@ -84,7 +84,7 @@ public class WebCollectTask extends BaseAggregateRoot<Long> {
     public void markCrawlCompleted(int duration, int totalWordCount) {
         this.crawlDuration = duration;
         this.totalWordCount = totalWordCount;
-        setStatus(CollectTaskStatus.PROCESSING);
+        updateStatus(CollectTaskStatus.PROCESSING);
     }
 
     public void markAiCompleted(String title, String summary, String keyPoints,
@@ -98,12 +98,12 @@ public class WebCollectTask extends BaseAggregateRoot<Long> {
         this.aiFullContent = fullContent;
         this.aiDuration = aiDuration;
         this.tokensUsed = tokensUsed;
-        setStatus(CollectTaskStatus.COMPLETED);
+        updateStatus(CollectTaskStatus.COMPLETED);
     }
 
     public void markFailed(String errorMessage) {
         this.errorMessage = errorMessage;
-        setStatus(CollectTaskStatus.FAILED);
+        updateStatus(CollectTaskStatus.FAILED);
     }
 
     public void markArticleCreated(Long articleId) {

@@ -111,7 +111,35 @@ async def crawl_by_keyword(
         return results
 
     except Exception as e:
-        logger.error(f"[Search] Exception: {e}", exc_info=True)
+        logger.error(f"[Search] Primary search failed: {e}, attempting fallback to DuckDuckGo")
+        # 降级策略：主搜索引擎失败后尝试 DuckDuckGo
+        if engine != 'duckduckgo':
+            try:
+                fallback_urls = await _fallback_search(keyword, max_results)
+                if fallback_urls:
+                    logger.info(f"[Search] Fallback found {len(fallback_urls)} results")
+                    fallback_results = []
+                    for rank, url in enumerate(fallback_urls[:max_results], 1):
+                        try:
+                            result = await _crawl_single_page(url, config)
+                            if result and result.success:
+                                result.metadata['search_rank'] = rank
+                                result.metadata['search_keyword'] = keyword
+                                result.metadata['fallback'] = True
+                            fallback_results.append(result)
+                        except Exception as page_e:
+                            fallback_results.append(CrawlResult(
+                                success=False,
+                                url=url,
+                                error_message=str(page_e),
+                                metadata={'search_rank': rank, 'search_keyword': keyword, 'fallback': True}
+                            ))
+                        if rank < len(fallback_urls):
+                            await asyncio.sleep(0.5)
+                    return fallback_results
+            except Exception as fallback_e:
+                logger.error(f"[Search] Fallback also failed: {fallback_e}")
+
         return [CrawlResult(
             success=False,
             url="",

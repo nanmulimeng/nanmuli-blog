@@ -4,12 +4,19 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nanmuli.blog.application.article.ArticleAppService;
+import com.nanmuli.blog.application.article.command.CreateArticleCommand;
+import com.nanmuli.blog.application.dailylog.DailyLogAppService;
+import com.nanmuli.blog.application.dailylog.command.CreateDailyLogCommand;
+import com.nanmuli.blog.application.webcollector.command.ConvertToArticleCommand;
+import com.nanmuli.blog.application.webcollector.command.ConvertToDailyLogCommand;
 import com.nanmuli.blog.application.webcollector.command.CreateCollectTaskCommand;
 import com.nanmuli.blog.application.webcollector.dto.CollectPageDTO;
 import com.nanmuli.blog.application.webcollector.dto.CollectTaskDTO;
 import com.nanmuli.blog.application.webcollector.dto.CollectTaskListDTO;
 import com.nanmuli.blog.application.webcollector.query.CollectTaskPageQuery;
 import com.nanmuli.blog.domain.webcollector.*;
+import com.nanmuli.blog.infrastructure.crawler.CrawlerService;
 import com.nanmuli.blog.infrastructure.persistence.webcollector.WebCollectTaskMapper;
 import com.nanmuli.blog.shared.exception.BusinessException;
 import com.nanmuli.blog.shared.result.PageResult;
@@ -24,6 +31,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.LocalDate;
 import java.util.*;
 
 /**
@@ -38,6 +46,9 @@ public class WebCollectorAppService {
     private final WebCollectPageRepository pageRepository;
     private final WebCollectTaskMapper taskMapper;
     private final WebCollectorAsyncExecutor asyncExecutor;
+    private final ArticleAppService articleAppService;
+    private final DailyLogAppService dailyLogAppService;
+    private final CrawlerService crawlerService;
     private final ObjectMapper objectMapper;
 
     /**
@@ -72,7 +83,7 @@ public class WebCollectorAppService {
         task.setMaxPages(command.getMaxPages());
         task.setAiTemplate(command.getAiTemplate());
         task.setTriggerType("manual");
-        task.setStatus(CollectTaskStatus.PENDING);
+        task.updateStatus(CollectTaskStatus.PENDING);
         task.setTotalPages(1);
         task.setCompletedPages(0);
 
@@ -172,7 +183,129 @@ public class WebCollectorAppService {
         log.info("[DeleteTask] taskId={}, userId={}, pages cleaned", taskId, userId);
     }
 
-    // ============== 转换方法 ==============
+    /**
+     * 将采集任务转为文章草稿
+     */
+    @Transactional
+    public Long convertToArticle(Long taskId, ConvertToArticleCommand command, Long userId) {
+        WebCollectTask task = loadTaskForUser(taskId, userId);
+
+        if (task.getArticleId() != null) {
+            throw new BusinessException("该任务已转为文章，articleId=" + task.getArticleId());
+        }
+
+        String content = getTaskContent(task);
+        if (content == null || content.isBlank()) {
+            throw new BusinessException("任务内容为空，无法转为文章");
+        }
+
+        // 构建文章创建命令
+        CreateArticleCommand articleCommand = new CreateArticleCommand();
+        // 标题：用户覆盖 > AI 生成 > URL 摘要
+        articleCommand.setTitle(command.getTitle() != null && !command.getTitle().isBlank()
+                ? command.getTitle()
+                : (task.getAiTitle() != null ? task.getAiTitle() : "采集: " + truncateUrl(task.getSourceUrl())));
+        articleCommand.setContent(content);
+        articleCommand.setSummary(task.getAiSummary());
+        articleCommand.setCategoryId(command.getCategoryId());
+        articleCommand.setIsOriginal(false);
+        articleCommand.setOriginalUrl(task.getSourceUrl());
+        articleCommand.setIsTop(false);
+        articleCommand.setStatus(2); // 草稿
+
+        Long articleId = articleAppService.create(articleCommand);
+
+        // 回写关联
+        task.markArticleCreated(articleId);
+        taskRepository.save(task);
+
+        log.info("[ConvertToArticle] taskId={} -> articleId={}", taskId, articleId);
+        return articleId;
+    }
+
+    /**
+     * 将采集任务转为技术日志
+     */
+    @Transactional
+    public Long convertToDailyLog(Long taskId, ConvertToDailyLogCommand command, Long userId) {
+        WebCollectTask task = loadTaskForUser(taskId, userId);
+
+        if (task.getDailyLogId() != null) {
+            throw new BusinessException("该任务已转为日志，dailyLogId=" + task.getDailyLogId());
+        }
+
+        String content = getTaskContent(task);
+        if (content == null || content.isBlank()) {
+            throw new BusinessException("任务内容为空，无法转为日志");
+        }
+
+        // 构建日志创建命令
+        CreateDailyLogCommand logCommand = new CreateDailyLogCommand();
+        logCommand.setContent(content);
+        logCommand.setMood(command.getMood());
+        logCommand.setWeather(command.getWeather());
+        logCommand.setLogDate(command.getLogDate() != null ? command.getLogDate() : LocalDate.now());
+        logCommand.setIsPublic(command.getIsPublic() != null ? command.getIsPublic() : false);
+        logCommand.setCategoryId(command.getCategoryId());
+
+        Long dailyLogId = dailyLogAppService.create(logCommand);
+
+        // 回写关联
+        task.markDailyLogCreated(dailyLogId);
+        taskRepository.save(task);
+
+        log.info("[ConvertToDailyLog] taskId={} -> dailyLogId={}", taskId, dailyLogId);
+        return dailyLogId;
+    }
+
+    /**
+     * 爬虫服务健康检查
+     */
+    public boolean isCrawlerAvailable() {
+        return crawlerService.healthCheck();
+    }
+
+    // ============== 辅助方法 ==============
+
+    private WebCollectTask loadTaskForUser(Long taskId, Long userId) {
+        WebCollectTask task = taskRepository.findById(taskId)
+                .orElseThrow(() -> new BusinessException("任务不存在"));
+        if (!task.getUserId().equals(userId)) {
+            throw new BusinessException("无权操作此任务");
+        }
+        return task;
+    }
+
+    /**
+     * 获取任务的可用内容
+     * 优先使用 AI 整理结果，否则拼接所有成功 page 的原始 Markdown
+     */
+    private String getTaskContent(WebCollectTask task) {
+        // 1. 优先使用 AI 整理的完整内容
+        if (task.getAiFullContent() != null && !task.getAiFullContent().isBlank()) {
+            return task.getAiFullContent();
+        }
+
+        // 2. 拼接所有成功页面的原始 Markdown
+        List<WebCollectPage> pages = pageRepository.findByTaskIdOrderBySortOrder(task.getId());
+        StringBuilder sb = new StringBuilder();
+        for (WebCollectPage page : pages) {
+            if (page.getRawMarkdown() != null && !page.getRawMarkdown().isBlank()) {
+                if (!sb.isEmpty()) {
+                    sb.append("\n\n---\n\n");
+                }
+                sb.append(page.getRawMarkdown());
+            }
+        }
+        return sb.isEmpty() ? null : sb.toString();
+    }
+
+    private String truncateUrl(String url) {
+        if (url == null) return "未知来源";
+        return url.length() > 60 ? url.substring(0, 60) + "..." : url;
+    }
+
+    // ============== DTO 转换方法 ==============
 
     private CollectTaskDTO convertToDTO(WebCollectTask task) {
         CollectTaskDTO dto = new CollectTaskDTO();

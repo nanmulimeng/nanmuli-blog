@@ -41,7 +41,7 @@ public class WebCollectorAsyncExecutor {
 
         try {
             // 更新状态为爬取中
-            task.setStatus(CollectTaskStatus.CRAWLING);
+            task.updateStatus(CollectTaskStatus.CRAWLING);
             taskRepository.save(task);
 
             long crawlStartTime = System.currentTimeMillis();
@@ -90,7 +90,7 @@ public class WebCollectorAsyncExecutor {
             task.setTotalWordCount(totalWordCount);
 
             // Phase 1: 爬取完成后设为 PROCESSING（AI 整理步骤待 Phase 2 实现）
-            task.setStatus(CollectTaskStatus.PROCESSING);
+            task.updateStatus(CollectTaskStatus.PROCESSING);
             taskRepository.save(task);
 
             log.info("[CrawlAsync] Crawl completed taskId={}, pages={}, words={}. AI processing pending.",
@@ -101,7 +101,7 @@ public class WebCollectorAsyncExecutor {
             // task.markAiCompleted(...)
 
             // Phase 1 临时：AI 整理未实现时直接标记完成
-            task.setStatus(CollectTaskStatus.COMPLETED);
+            task.updateStatus(CollectTaskStatus.COMPLETED);
             taskRepository.save(task);
 
         } catch (Exception e) {
