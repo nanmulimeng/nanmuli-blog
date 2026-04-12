@@ -8,11 +8,13 @@ import com.nanmuli.blog.infrastructure.crawler.CrawlerService;
 import com.nanmuli.blog.shared.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 爬取异步执行器
@@ -27,6 +29,9 @@ public class WebCollectorAsyncExecutor {
     private final WebCollectPageRepository pageRepository;
     private final CrawlerService crawlerService;
     private final ObjectMapper objectMapper;
+
+    @Autowired(required = false)
+    private AiContentOrganizer aiContentOrganizer;
 
     /**
      * 异步执行爬取任务
@@ -89,18 +94,20 @@ public class WebCollectorAsyncExecutor {
             task.setCrawlDuration(crawlDuration);
             task.setTotalWordCount(totalWordCount);
 
-            // Phase 1: 爬取完成后设为 PROCESSING（AI 整理步骤待 Phase 2 实现）
+            // Phase 2: 爬取完成后进入 AI 整理阶段
             task.updateStatus(CollectTaskStatus.PROCESSING);
             taskRepository.save(task);
 
-            log.info("[CrawlAsync] Crawl completed taskId={}, pages={}, words={}. AI processing pending.",
+            log.info("[CrawlAsync] Crawl completed taskId={}, pages={}, words={}. Starting AI organization.",
                     taskId, crawlResults.size(), totalWordCount);
 
-            // TODO: Phase 2 - 调用 AiContentOrganizer 进行 AI 整理
-            // organizedContent = aiContentOrganizer.organize(...)
-            // task.markAiCompleted(...)
+            // AI 内容整理
+            boolean aiSuccess = organizeWithAi(task, crawlResults);
+            if (!aiSuccess) {
+                // AI 失败时仍标记完成，convertToArticle 会使用原始 Markdown
+                log.warn("[CrawlAsync] AI organization failed, task will use raw content. taskId={}", taskId);
+            }
 
-            // Phase 1 临时：AI 整理未实现时直接标记完成
             task.updateStatus(CollectTaskStatus.COMPLETED);
             taskRepository.save(task);
 
@@ -108,6 +115,71 @@ public class WebCollectorAsyncExecutor {
             log.error("[CrawlAsync] Failed taskId={}", taskId, e);
             task.markFailed(e.getMessage());
             taskRepository.save(task);
+        }
+    }
+
+    /**
+     * AI 内容整理
+     * @return true=AI 整理成功，false=失败或不可用
+     */
+    private boolean organizeWithAi(WebCollectTask task, List<CrawlResult> crawlResults) {
+        if (aiContentOrganizer == null) {
+            log.info("[AiOrganizer] No AiContentOrganizer bean available, skipping AI organization");
+            return false;
+        }
+
+        try {
+            AiTemplate template = AiTemplate.of(task.getAiTemplate());
+            AiContentOrganizer.OrganizedContent organized;
+
+            if (crawlResults.size() == 1) {
+                // 单页：直接用 organize()
+                String rawMarkdown = crawlResults.get(0).getMarkdown();
+                if (rawMarkdown == null || rawMarkdown.isBlank()) {
+                    log.warn("[AiOrganizer] No markdown content to organize, taskId={}", task.getId());
+                    return false;
+                }
+                organized = aiContentOrganizer.organize(rawMarkdown, template)
+                        .get(120, TimeUnit.SECONDS);
+            } else {
+                // 多页：用 organizeMultiple()
+                List<AiContentOrganizer.PageContent> pages = crawlResults.stream()
+                        .filter(CrawlResult::isSuccess)
+                        .map(r -> {
+                            AiContentOrganizer.PageContent pc = new AiContentOrganizer.PageContent();
+                            pc.url = r.getUrl();
+                            pc.title = r.getTitle();
+                            pc.markdown = r.getMarkdown();
+                            pc.wordCount = r.getWordCount();
+                            return pc;
+                        }).toList();
+                if (pages.isEmpty()) {
+                    log.warn("[AiOrganizer] No successful pages to organize, taskId={}", task.getId());
+                    return false;
+                }
+                organized = aiContentOrganizer.organizeMultiple(pages, template)
+                        .get(180, TimeUnit.SECONDS);
+            }
+
+            // 写回 AI 整理结果
+            task.markAiCompleted(
+                    organized.title,
+                    organized.summary,
+                    objectMapper.writeValueAsString(organized.keyPoints),
+                    objectMapper.writeValueAsString(organized.tags),
+                    organized.category,
+                    organized.fullContent,
+                    organized.durationMs,
+                    organized.tokensUsed
+            );
+            taskRepository.save(task);
+            log.info("[AiOrganizer] AI organization completed. taskId={}, title={}, aiDuration={}ms",
+                    task.getId(), organized.title, organized.durationMs);
+            return true;
+
+        } catch (Exception e) {
+            log.error("[AiOrganizer] AI organization failed. taskId={}", task.getId(), e);
+            return false;
         }
     }
 

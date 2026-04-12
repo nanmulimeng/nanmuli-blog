@@ -22,6 +22,7 @@
         <hutool.version>5.8.36</hutool.version>
         <pgvector.version>0.1.4</pgvector.version>
         <flexmark.version>0.64.8</flexmark.version>
+        <spring-ai-alibaba.version>1.1.2.2</spring-ai-alibaba.version>
     </properties>
     <dependencies>
         <dependency>
@@ -112,12 +113,12 @@
             <artifactId>jsoup</artifactId>
             <version>1.19.1</version>
         </dependency>
-        <!-- Spring AI - 阿里云DashScope (暂时禁用，等待M6发布) -->
-        <!-- <dependency>
-            <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-dashscope-spring-boot-starter</artifactId>
-            <version>1.0.0-M6</version>
-        </dependency> -->
+        <!-- Spring AI - 阿里云DashScope -->
+        <dependency>
+            <groupId>com.alibaba.cloud.ai</groupId>
+            <artifactId>spring-ai-alibaba-starter-dashscope</artifactId>
+            <version>${spring-ai-alibaba.version}</version>
+        </dependency>
     </dependencies>
     <repositories>
         <repository>
