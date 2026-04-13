@@ -137,6 +137,18 @@ public class WebCollectorController {
         return Result.success(data);
     }
 
+    /**
+     * 重试失败的任务
+     */
+    @Operation(summary = "重试失败的任务")
+    @PostMapping("/task/{taskId}/retry")
+    public Result<Long> retryTask(
+            @Parameter(description = "任务ID") @PathVariable Long taskId) {
+        Long userId = getCurrentUserId();
+        Long retriedId = collectorAppService.retryTask(taskId, userId);
+        return Result.success(retriedId);
+    }
+
     private Long getCurrentUserId() {
         return cn.dev33.satoken.stp.StpUtil.getLoginIdAsLong();
     }

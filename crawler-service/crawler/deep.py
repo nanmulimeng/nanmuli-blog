@@ -86,34 +86,40 @@ async def crawl_deep_pages(
 
         page_count = 0
         async with AsyncWebCrawler(config=browser_config) as crawler:
-            # 使用 arun 的流式接口获取每个页面结果
-            async for result in await crawler.arun(url=url, config=run_config):
+            # Crawl4AI 0.8.x: arun 返回 list（非 AsyncGenerator）
+            results_raw = await crawler.arun(url=url, config=run_config)
+            for result in results_raw:
                 page_count += 1
 
                 if result.success:
-                    # 新 API: markdown 返回 MarkdownGenerationResult 对象
-                    if hasattr(result.markdown, 'fit_markdown'):
+                    # Crawl4AI 0.8.x: markdown 可能是 StringCompatibleMarkdown 或 MarkdownGenerationResult
+                    markdown = None
+                    if hasattr(result.markdown, 'fit_markdown') and result.markdown.fit_markdown:
                         markdown = result.markdown.fit_markdown
-                    elif hasattr(result.markdown, 'raw_markdown'):
+                    elif hasattr(result.markdown, 'raw_markdown') and result.markdown.raw_markdown:
                         markdown = result.markdown.raw_markdown
-                    else:
-                        markdown = str(result.markdown)
+                    if not markdown:
+                        markdown = str(result.markdown) if result.markdown else ""
                     word_count = len(markdown.replace('\n', '').replace(' ', '')) if markdown else 0
 
-                    # 获取深度信息
-                    depth = getattr(result, 'depth', 0)
+                    # 获取深度信息（Crawl4AI 0.8.x: depth 在 metadata 中）
+                    depth = getattr(result, 'depth', None)
+                    if depth is None and isinstance(result.metadata, dict):
+                        depth = result.metadata.get('depth', 0)
+                    if depth is None:
+                        depth = 0
 
                     crawl_result = CrawlResult(
                         success=True,
                         url=result.url,
-                        title=result.metadata.get('title') if hasattr(result, 'metadata') else None,
+                        title=result.metadata.get('title') if hasattr(result, 'metadata') and isinstance(result.metadata, dict) else None,
                         markdown=markdown,
                         metadata={
-                            'depth': depth,
                             'links_found': len(getattr(result, 'links', {}).get('internal', [])),
                         },
                         word_count=word_count,
-                        crawl_time_ms=getattr(result, 'crawl_time', 0)
+                        crawl_time_ms=getattr(result, 'crawl_time', 0),
+                        depth=depth
                     )
                     results.append(crawl_result)
                     crawled_urls.add(result.url)
@@ -122,12 +128,18 @@ async def crawl_deep_pages(
 
                 else:
                     logger.warning(f"[Deep] Failed to crawl: {result.url}, error: {getattr(result, 'error_message', 'Unknown')}")
+                    fail_depth = getattr(result, 'depth', None)
+                    if fail_depth is None and isinstance(getattr(result, 'metadata', None), dict):
+                        fail_depth = result.metadata.get('depth', 0)
+                    if fail_depth is None:
+                        fail_depth = 0
 
                     results.append(CrawlResult(
                         success=False,
                         url=result.url,
                         error_message=getattr(result, 'error_message', 'Unknown error'),
-                        crawl_time_ms=getattr(result, 'crawl_time', 0)
+                        crawl_time_ms=getattr(result, 'crawl_time', 0),
+                        depth=fail_depth
                     ))
 
                 # 达到最大页面数时停止

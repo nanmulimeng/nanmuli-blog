@@ -21,10 +21,10 @@ public interface WebCollectPageMapper extends BaseMapper<WebCollectPage> {
     @Select("SELECT * FROM web_collect_page WHERE task_id = #{taskId}")
     List<WebCollectPage> selectByTaskId(@Param("taskId") Long taskId);
 
-    @Select("SELECT * FROM web_collect_page WHERE url_hash = #{urlHash} LIMIT 1")
+    @Select("SELECT * FROM web_collect_page WHERE url_hash = #{urlHash} AND created_at > NOW() - INTERVAL '30 days' LIMIT 1")
     WebCollectPage selectByUrlHash(@Param("urlHash") String urlHash);
 
-    @Select("SELECT COUNT(*) FROM web_collect_page WHERE url_hash = #{urlHash}")
+    @Select("SELECT COUNT(*) FROM web_collect_page WHERE url_hash = #{urlHash} AND created_at > NOW() - INTERVAL '30 days'")
     long countByUrlHash(@Param("urlHash") String urlHash);
 
     @Select("SELECT COUNT(*) FROM web_collect_page WHERE task_id = #{taskId}")

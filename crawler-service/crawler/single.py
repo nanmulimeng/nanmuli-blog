@@ -28,7 +28,9 @@ class CrawlResult:
         metadata: Optional[dict] = None,
         word_count: int = 0,
         crawl_time_ms: int = 0,
-        error_message: Optional[str] = None
+        error_message: Optional[str] = None,
+        depth: int = 0,
+        search_rank: int = 0
     ):
         self.success = success
         self.url = url
@@ -38,6 +40,8 @@ class CrawlResult:
         self.word_count = word_count
         self.crawl_time_ms = crawl_time_ms
         self.error_message = error_message
+        self.depth = depth
+        self.search_rank = search_rank
 
     def to_dict(self) -> dict:
         return {
@@ -48,7 +52,9 @@ class CrawlResult:
             "metadata": self.metadata,
             "word_count": self.word_count,
             "crawl_time_ms": self.crawl_time_ms,
-            "error_message": self.error_message
+            "error_message": self.error_message,
+            "depth": self.depth,
+            "search_rank": self.search_rank
         }
 
 
@@ -100,13 +106,14 @@ async def crawl_single_page(
             result = await crawler.arun(url=url, config=run_config)
 
             if result.success:
-                # 新 API: markdown 返回 MarkdownGenerationResult 对象
-                if hasattr(result.markdown, 'fit_markdown'):
+                # Crawl4AI 0.8.x: markdown 可能是 StringCompatibleMarkdown 或 MarkdownGenerationResult
+                markdown = None
+                if hasattr(result.markdown, 'fit_markdown') and result.markdown.fit_markdown:
                     markdown = result.markdown.fit_markdown
-                elif hasattr(result.markdown, 'raw_markdown'):
+                elif hasattr(result.markdown, 'raw_markdown') and result.markdown.raw_markdown:
                     markdown = result.markdown.raw_markdown
-                else:
-                    markdown = str(result.markdown)
+                if not markdown:
+                    markdown = str(result.markdown) if result.markdown else ""
 
                 # 计算字数
                 word_count = len(markdown.replace('\n', '').replace(' ', '')) if markdown else 0
@@ -118,7 +125,7 @@ async def crawl_single_page(
                 )
 
                 # 添加 Crawl4AI 提供的元数据
-                if hasattr(result, 'metadata'):
+                if hasattr(result, 'metadata') and isinstance(result.metadata, dict):
                     metadata.update({
                         'crawl4ai_title': result.metadata.get('title'),
                         'crawl4ai_description': result.metadata.get('description'),

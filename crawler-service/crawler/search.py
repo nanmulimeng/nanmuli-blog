@@ -84,8 +84,8 @@ async def crawl_by_keyword(
                 logger.debug(f"[Search] Crawling result {rank}/{len(search_urls)}: {url}")
 
                 result = await crawl_single_page(url=url, config=config)
-                # 添加搜索排名到元数据
-                result.metadata['search_rank'] = rank
+                # 设置搜索排名和关键词（顶层字段）
+                result.search_rank = rank
                 result.metadata['search_keyword'] = keyword
                 result.metadata['search_engine'] = engine
 
@@ -121,9 +121,9 @@ async def crawl_by_keyword(
                     fallback_results = []
                     for rank, url in enumerate(fallback_urls[:max_results], 1):
                         try:
-                            result = await _crawl_single_page(url, config)
+                            result = await crawl_single_page(url=url, config=config)
                             if result and result.success:
-                                result.metadata['search_rank'] = rank
+                                result.search_rank = rank
                                 result.metadata['search_keyword'] = keyword
                                 result.metadata['fallback'] = True
                             fallback_results.append(result)
@@ -132,7 +132,8 @@ async def crawl_by_keyword(
                                 success=False,
                                 url=url,
                                 error_message=str(page_e),
-                                metadata={'search_rank': rank, 'search_keyword': keyword, 'fallback': True}
+                                search_rank=rank,
+                                metadata={'search_keyword': keyword, 'fallback': True}
                             ))
                         if rank < len(fallback_urls):
                             await asyncio.sleep(0.5)

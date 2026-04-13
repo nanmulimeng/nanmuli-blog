@@ -13,7 +13,9 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -86,11 +88,10 @@ public class WebCollectorAsyncExecutor {
 
             int crawlDuration = (int) (System.currentTimeMillis() - crawlStartTime);
 
-            // 保存页面结果
-            int totalWordCount = saveCrawlResults(task.getId(), crawlResults);
+            // 保存页面结果（逐页更新进度）
+            int totalWordCount = saveCrawlResults(task, crawlResults);
 
-            // 更新任务状态
-            task.setCompletedPages((int) crawlResults.stream().filter(CrawlResult::isSuccess).count());
+            // 更新任务统计
             task.setCrawlDuration(crawlDuration);
             task.setTotalWordCount(totalWordCount);
 
@@ -130,9 +131,14 @@ public class WebCollectorAsyncExecutor {
 
         try {
             AiTemplate template = AiTemplate.of(task.getAiTemplate());
+            CollectTaskType taskType = CollectTaskType.of(task.getTaskType());
             AiContentOrganizer.OrganizedContent organized;
 
-            if (crawlResults.size() == 1) {
+            // KEYWORD 任务始终走多页路径（带 keyword 上下文），即使只有 1 条结果
+            // SINGLE / DEEP 只有 1 条结果时走单页路径
+            boolean useSinglePage = (taskType != CollectTaskType.KEYWORD) && (crawlResults.size() == 1);
+
+            if (useSinglePage) {
                 // 单页：直接用 organize()
                 String rawMarkdown = crawlResults.get(0).getMarkdown();
                 if (rawMarkdown == null || rawMarkdown.isBlank()) {
@@ -142,7 +148,7 @@ public class WebCollectorAsyncExecutor {
                 organized = aiContentOrganizer.organize(rawMarkdown, template)
                         .get(120, TimeUnit.SECONDS);
             } else {
-                // 多页：用 organizeMultiple()
+                // 多页 / KEYWORD：用 organizeMultiple()
                 List<AiContentOrganizer.PageContent> pages = crawlResults.stream()
                         .filter(CrawlResult::isSuccess)
                         .map(r -> {
@@ -151,14 +157,23 @@ public class WebCollectorAsyncExecutor {
                             pc.title = r.getTitle();
                             pc.markdown = r.getMarkdown();
                             pc.wordCount = r.getWordCount();
+                            pc.depth = r.getDepth();
                             return pc;
                         }).toList();
                 if (pages.isEmpty()) {
                     log.warn("[AiOrganizer] No successful pages to organize, taskId={}", task.getId());
                     return false;
                 }
-                organized = aiContentOrganizer.organizeMultiple(pages, template)
-                        .get(180, TimeUnit.SECONDS);
+
+                // KEYWORD 任务注入 keyword 上下文
+                if (taskType == CollectTaskType.KEYWORD
+                        && aiContentOrganizer instanceof com.nanmuli.blog.infrastructure.ai.DashScopeContentOrganizer dashScope) {
+                    organized = dashScope.organizeMultiple(pages, template, task.getKeyword())
+                            .get(180, TimeUnit.SECONDS);
+                } else {
+                    organized = aiContentOrganizer.organizeMultiple(pages, template)
+                            .get(180, TimeUnit.SECONDS);
+                }
             }
 
             // 写回 AI 整理结果
@@ -184,18 +199,30 @@ public class WebCollectorAsyncExecutor {
     }
 
     /**
-     * 保存爬取结果到页面表
+     * 保存爬取结果到页面表（逐页更新进度）
      */
-    private int saveCrawlResults(Long taskId, List<CrawlResult> results) {
+    private int saveCrawlResults(WebCollectTask task, List<CrawlResult> results) {
+        Long taskId = task.getId();
         int totalWordCount = 0;
+        int completedPages = 0;
         int sortOrder = 0;
+        Set<String> savedUrlHashes = new HashSet<>();
 
         for (CrawlResult result : results) {
+            String urlHash = WebCollectorAppService.hashUrl(result.getUrl());
+
+            // 同任务内 URL 去重：跳过重复页面
+            if (savedUrlHashes.contains(urlHash)) {
+                log.info("[SaveCrawl] Skipping duplicate URL in task: {}", result.getUrl());
+                continue;
+            }
+            savedUrlHashes.add(urlHash);
+
             WebCollectPage page = new WebCollectPage();
             page.setTaskId(taskId);
             page.setUrl(result.getUrl());
             page.setPageTitle(result.getTitle());
-            page.setUrlHash(WebCollectorAppService.hashUrl(result.getUrl()));
+            page.setUrlHash(urlHash);
             page.setSortOrder(sortOrder++);
             page.setDepth(result.getDepth());
 
@@ -205,6 +232,7 @@ public class WebCollectorAsyncExecutor {
                 page.setWordCount(result.getWordCount());
                 page.setCrawlDuration((int) result.getCrawlTimeMs());
                 totalWordCount += result.getWordCount();
+                completedPages++;
 
                 // 保存元数据
                 if (result.getMetadata() != null) {
@@ -227,6 +255,10 @@ public class WebCollectorAsyncExecutor {
             }
 
             pageRepository.save(page);
+
+            // 逐页更新进度
+            task.setCompletedPages(completedPages);
+            taskRepository.save(task);
         }
 
         return totalWordCount;

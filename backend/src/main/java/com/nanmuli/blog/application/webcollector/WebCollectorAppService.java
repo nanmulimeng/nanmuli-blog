@@ -265,6 +265,43 @@ public class WebCollectorAppService {
         return crawlerService.healthCheck();
     }
 
+    /**
+     * 重试失败的任务
+     * 清除旧的页面数据和错误信息，重置状态后重新触发异步爬取
+     */
+    @Transactional
+    public Long retryTask(Long taskId, Long userId) {
+        WebCollectTask task = loadTaskForUser(taskId, userId);
+
+        // 只有失败状态才允许重试
+        if (task.getStatus() != CollectTaskStatus.FAILED.getValue()) {
+            throw new BusinessException("只有失败的任务才能重试");
+        }
+
+        // 清除旧的页面数据
+        pageRepository.deleteByTaskId(taskId);
+
+        // 重置任务状态
+        task.setErrorMessage(null);
+        task.setCrawlDuration(null);
+        task.setAiDuration(null);
+        task.setTotalWordCount(null);
+        task.setCompletedPages(0);
+        task.updateStatus(CollectTaskStatus.PENDING);
+        taskRepository.save(task);
+
+        // 事务提交后再触发异步爬取
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                asyncExecutor.executeCrawlAsync(taskId);
+            }
+        });
+
+        log.info("[RetryTask] taskId={}, type={}, userId={}", taskId, task.getTaskType(), userId);
+        return taskId;
+    }
+
     // ============== 辅助方法 ==============
 
     private WebCollectTask loadTaskForUser(Long taskId, Long userId) {

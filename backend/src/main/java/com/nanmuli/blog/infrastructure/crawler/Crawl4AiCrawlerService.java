@@ -172,6 +172,10 @@ public class Crawl4AiCrawlerService implements CrawlerService {
         result.setCrawlTimeMs(node.path("crawl_time_ms").asLong(0));
         result.setErrorMessage(node.path("error_message").asText(null));
 
+        // 解析深度（深度爬取）和搜索排名（关键词搜索）
+        result.setDepth(node.path("depth").asInt(0));
+        result.setSearchRank(node.path("search_rank").asInt(0));
+
         // Parse metadata
         JsonNode metadataNode = node.path("metadata");
         if (metadataNode.isObject()) {

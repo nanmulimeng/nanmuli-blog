@@ -1,6 +1,7 @@
 package com.nanmuli.blog.infrastructure.config.ai;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.AsyncConfigurer;
@@ -12,63 +13,76 @@ import java.util.concurrent.ThreadPoolExecutor;
 
 /**
  * 异步任务配置
- * 配置AI生成、统计更新等非关键任务的线程池
+ * 从 application.yml 读取线程池参数，支持 dev/prod 差异化配置
  */
 @Slf4j
 @Configuration
 @EnableAsync
 public class AsyncConfig implements AsyncConfigurer {
 
-    /**
-     * AI任务执行器
-     * 用于AI生成标签、摘要、向量等异步任务
-     */
+    @Value("${async.executor.ai.core-pool-size:2}")
+    private int aiCorePoolSize;
+    @Value("${async.executor.ai.max-pool-size:5}")
+    private int aiMaxPoolSize;
+    @Value("${async.executor.ai.queue-capacity:50}")
+    private int aiQueueCapacity;
+
+    @Value("${async.executor.task.core-pool-size:3}")
+    private int taskCorePoolSize;
+    @Value("${async.executor.task.max-pool-size:8}")
+    private int taskMaxPoolSize;
+    @Value("${async.executor.task.queue-capacity:100}")
+    private int taskQueueCapacity;
+
+    @Value("${async.executor.crawler.core-pool-size:1}")
+    private int crawlerCorePoolSize;
+    @Value("${async.executor.crawler.max-pool-size:2}")
+    private int crawlerMaxPoolSize;
+    @Value("${async.executor.crawler.queue-capacity:20}")
+    private int crawlerQueueCapacity;
+    @Value("${async.executor.crawler.thread-name-prefix:crawler-}")
+    private String crawlerThreadPrefix;
+
     @Bean(name = "aiTaskExecutor")
     public Executor aiTaskExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(2);
-        executor.setMaxPoolSize(5);
-        executor.setQueueCapacity(50);
+        executor.setCorePoolSize(aiCorePoolSize);
+        executor.setMaxPoolSize(aiMaxPoolSize);
+        executor.setQueueCapacity(aiQueueCapacity);
         executor.setThreadNamePrefix("ai-task-");
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
         executor.setWaitForTasksToCompleteOnShutdown(true);
         executor.setAwaitTerminationSeconds(60);
         executor.initialize();
-        log.info("AI任务执行器初始化完成");
+        log.info("AI任务执行器初始化完成: core={}, max={}, queue={}", aiCorePoolSize, aiMaxPoolSize, aiQueueCapacity);
         return executor;
     }
 
-    /**
-     * 通用任务执行器
-     */
     @Bean(name = "taskExecutor")
     public Executor taskExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(3);
-        executor.setMaxPoolSize(8);
-        executor.setQueueCapacity(100);
+        executor.setCorePoolSize(taskCorePoolSize);
+        executor.setMaxPoolSize(taskMaxPoolSize);
+        executor.setQueueCapacity(taskQueueCapacity);
         executor.setThreadNamePrefix("async-task-");
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
         executor.initialize();
+        log.info("通用任务执行器初始化完成: core={}, max={}, queue={}", taskCorePoolSize, taskMaxPoolSize, taskQueueCapacity);
         return executor;
     }
 
-    /**
-     * 爬虫任务执行器
-     * 用于网页爬取异步任务（限制并发保护服务器）
-     */
     @Bean(name = "crawlerTaskExecutor")
     public Executor crawlerTaskExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(1);    // 2G 服务器限制并发
-        executor.setMaxPoolSize(2);
-        executor.setQueueCapacity(20);
-        executor.setThreadNamePrefix("crawler-");
+        executor.setCorePoolSize(crawlerCorePoolSize);
+        executor.setMaxPoolSize(crawlerMaxPoolSize);
+        executor.setQueueCapacity(crawlerQueueCapacity);
+        executor.setThreadNamePrefix(crawlerThreadPrefix);
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
         executor.setWaitForTasksToCompleteOnShutdown(true);
         executor.setAwaitTerminationSeconds(120);
         executor.initialize();
-        log.info("爬虫任务执行器初始化完成");
+        log.info("爬虫任务执行器初始化完成: core={}, max={}, queue={}", crawlerCorePoolSize, crawlerMaxPoolSize, crawlerQueueCapacity);
         return executor;
     }
 

@@ -64,12 +64,32 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
     public CompletableFuture<OrganizedContent> organizeMultiple(List<PageContent> pages, AiTemplate template) {
         long start = System.currentTimeMillis();
         try {
-            String prompt = buildMultiPagePrompt(pages);
+            String prompt = buildMultiPagePrompt(pages, template, null);
             String response = callAi(prompt);
             OrganizedContent result = parseOrganizedContent(response);
             result.durationMs = (int) (System.currentTimeMillis() - start);
             log.info("[AiOrganizer] Multi-page organized: title={}, pages={}, duration={}ms",
                     result.title, pages.size(), result.durationMs);
+            return CompletableFuture.completedFuture(result);
+        } catch (Exception e) {
+            log.error("[AiOrganizer] organizeMultiple failed", e);
+            return CompletableFuture.failedFuture(e);
+        }
+    }
+
+    /**
+     * 多页整理（带关键词上下文）
+     * 供 AsyncExecutor 调用时注入 keyword
+     */
+    public CompletableFuture<OrganizedContent> organizeMultiple(List<PageContent> pages, AiTemplate template, String keyword) {
+        long start = System.currentTimeMillis();
+        try {
+            String prompt = buildMultiPagePrompt(pages, template, keyword);
+            String response = callAi(prompt);
+            OrganizedContent result = parseOrganizedContent(response);
+            result.durationMs = (int) (System.currentTimeMillis() - start);
+            log.info("[AiOrganizer] Multi-page organized: title={}, pages={}, keyword={}, duration={}ms",
+                    result.title, pages.size(), keyword, result.durationMs);
             return CompletableFuture.completedFuture(result);
         } catch (Exception e) {
             log.error("[AiOrganizer] organizeMultiple failed", e);
@@ -124,9 +144,28 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
         return rolePrompt + "\n## 原始内容\n" + truncated + "\n" + OUTPUT_FORMAT;
     }
 
-    private String buildMultiPagePrompt(List<PageContent> pages) {
+    private String buildMultiPagePrompt(List<PageContent> pages, AiTemplate template, String keyword) {
         StringBuilder sb = new StringBuilder();
-        sb.append("你是一位技术研究专家。以下是从多个来源收集的内容，请进行综合分析整理。\n\n");
+
+        // 按 template 切换角色设定
+        String rolePrompt = switch (template) {
+            case TUTORIAL -> "你是一位技术教育专家。以下是从多个来源收集的教程相关内容，请整合为一篇循序渐进的 step-by-step 教程。\n"
+                    + "重点：统一学习路径、去重合并相同步骤、补充缺失环节、标注各来源差异。\n";
+            case COMPARISON -> "你是一位技术选型顾问。以下是从多个来源收集的内容，请进行横向技术方案对比分析。\n"
+                    + "重点：提取各方案优缺点、制作对比表格、给出不同场景下的推荐。\n";
+            case KNOWLEDGE_REPORT -> "你是一位技术研究分析师。以下是从多个来源收集的内容，请生成一份综合性知识报告。\n"
+                    + "重点：背景概述、技术原理、现状分析、趋势预测、参考来源。\n";
+            default -> "你是一位技术研究专家。以下是从多个来源收集的内容，请进行综合分析整理。\n";
+        };
+        sb.append(rolePrompt).append("\n");
+
+        // 注入关键词上下文（KEYWORD 任务专用）
+        if (keyword != null && !keyword.isBlank()) {
+            sb.append("## 搜索关键词\n");
+            sb.append("用户通过搜索引擎搜索「").append(keyword).append("」找到了以下页面。");
+            sb.append("请围绕该关键词组织内容，重点关注与关键词直接相关的技术信息。\n\n");
+        }
+
         sb.append("## 来源内容\n\n");
 
         for (int i = 0; i < pages.size(); i++) {

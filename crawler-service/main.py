@@ -95,6 +95,8 @@ class CrawlResult(BaseModel):
     word_count: int = 0
     crawl_time_ms: int = 0
     error_message: Optional[str] = None
+    depth: int = 0
+    search_rank: int = 0
 
 
 class MultiPageResult(BaseModel):
@@ -160,7 +162,7 @@ async def crawl_single(request: SingleCrawlRequest):
             config=request.config
         )
         logger.info(f"[Single Crawl] Success: {result.url}, words: {result.word_count}")
-        return result
+        return result.to_dict()
 
     except Exception as e:
         logger.error(f"[Single Crawl] Failed: {request.url}, error: {str(e)}")
@@ -194,7 +196,7 @@ async def crawl_deep(request: DeepCrawlRequest):
 
         return MultiPageResult(
             success=success_count > 0,
-            pages=pages,
+            pages=[p.to_dict() for p in pages],
             total_pages=len(pages),
             total_crawl_time_ms=total_time
         )
@@ -231,7 +233,7 @@ async def crawl_search(request: SearchCrawlRequest):
 
         return MultiPageResult(
             success=success_count > 0,
-            pages=pages,
+            pages=[p.to_dict() for p in pages],
             total_pages=len(pages),
             total_crawl_time_ms=total_time,
             keyword=request.keyword

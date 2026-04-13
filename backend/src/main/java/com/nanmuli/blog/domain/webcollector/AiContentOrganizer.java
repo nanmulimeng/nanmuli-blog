@@ -60,6 +60,7 @@ public interface AiContentOrganizer {
         public String title;
         public String markdown;
         public int wordCount;
+        public int depth;
     }
 
     /**
