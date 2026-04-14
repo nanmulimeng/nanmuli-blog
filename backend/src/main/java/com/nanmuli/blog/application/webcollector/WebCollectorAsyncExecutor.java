@@ -95,6 +95,19 @@ public class WebCollectorAsyncExecutor {
             task.setCrawlDuration(crawlDuration);
             task.setTotalWordCount(totalWordCount);
 
+            // 检查是否有成功爬取的页面，全部失败则直接标记 FAILED
+            if (task.getCompletedPages() == null || task.getCompletedPages() == 0) {
+                String errorMsg = crawlResults.stream()
+                        .filter(r -> r.getErrorMessage() != null)
+                        .map(CrawlResult::getErrorMessage)
+                        .findFirst()
+                        .orElse("所有页面爬取失败，未获取到有效内容");
+                task.markFailed(errorMsg);
+                taskRepository.save(task);
+                log.warn("[CrawlAsync] All pages failed, taskId={}, total={}, error={}", taskId, crawlResults.size(), errorMsg);
+                return;
+            }
+
             // Phase 2: 爬取完成后进入 AI 整理阶段
             task.updateStatus(CollectTaskStatus.PROCESSING);
             taskRepository.save(task);
