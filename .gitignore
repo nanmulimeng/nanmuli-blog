@@ -31,3 +31,9 @@ frontend/package-lock.json
 
 # Build output
 frontend/dist/
+META-INF/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
