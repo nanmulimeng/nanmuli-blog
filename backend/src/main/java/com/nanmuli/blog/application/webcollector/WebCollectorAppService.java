@@ -82,7 +82,11 @@ public class WebCollectorAppService {
         task.setAiTemplate(command.getAiTemplate());
         task.setTriggerType("manual");
         task.updateStatus(CollectTaskStatus.PENDING);
-        task.setTotalPages(1);
+        task.setTotalPages(switch (command.getTaskType()) {
+            case "deep" -> command.getMaxPages() != null ? command.getMaxPages() : 10;
+            case "keyword" -> command.getMaxPages() != null ? command.getMaxPages() : 10;
+            default -> 1;
+        });
         task.setCompletedPages(0);
 
         taskRepository.save(task);
@@ -185,6 +189,9 @@ public class WebCollectorAppService {
         if (content == null || content.isBlank()) {
             throw new BusinessException("任务内容为空，无法转为文章");
         }
+
+        // 将 AI keyPoints/tags 作为结构化元数据插入内容头部
+        content = prependAiMetadata(task, content);
 
         // 构建文章创建命令
         CreateArticleCommand articleCommand = new CreateArticleCommand();
@@ -298,6 +305,45 @@ public class WebCollectorAppService {
             throw new BusinessException("无权操作此任务");
         }
         return task;
+    }
+
+    /**
+     * 将 AI 整理的 keyPoints/tags/category 作为结构化摘要插入内容头部
+     */
+    private String prependAiMetadata(WebCollectTask task, String content) {
+        StringBuilder header = new StringBuilder();
+        List<String> keyPoints = null;
+        List<String> tags = null;
+
+        try {
+            if (task.getAiKeyPoints() != null && !task.getAiKeyPoints().isBlank()) {
+                keyPoints = objectMapper.readValue(task.getAiKeyPoints(), List.class);
+            }
+        } catch (Exception ignored) {}
+        try {
+            if (task.getAiTags() != null && !task.getAiTags().isBlank()) {
+                tags = objectMapper.readValue(task.getAiTags(), List.class);
+            }
+        } catch (Exception ignored) {}
+
+        if ((keyPoints != null && !keyPoints.isEmpty()) || (tags != null && !tags.isEmpty())) {
+            header.append("## AI 摘要\n\n");
+            if (task.getAiCategory() != null) {
+                header.append("> 分类：").append(task.getAiCategory()).append("\n\n");
+            }
+            if (tags != null && !tags.isEmpty()) {
+                header.append("> 标签：").append(String.join("、", tags)).append("\n\n");
+            }
+            if (keyPoints != null && !keyPoints.isEmpty()) {
+                header.append("**关键要点：**\n\n");
+                for (Object point : keyPoints) {
+                    header.append("- ").append(point).append("\n");
+                }
+                header.append("\n---\n\n");
+            }
+        }
+
+        return header.isEmpty() ? content : header.append(content).toString();
     }
 
     /**
