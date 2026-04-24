@@ -46,16 +46,16 @@ async def crawl_deep_pages(
         # 转换配置
         if config is None:
             text_mode = True
-            light_mode = True
-            word_count_threshold = 3
-            excluded_tags = ["nav", "footer", "aside", "header", "script", "style"]
+            light_mode = False
+            word_count_threshold = 5
+            excluded_tags = ["nav", "footer", "aside", "header", "script", "style", "noscript", "iframe"]
             wait_until = "networkidle"
             page_timeout = 60000
         else:
             text_mode = getattr(config, 'text_mode', True)
-            light_mode = getattr(config, 'light_mode', True)
-            word_count_threshold = getattr(config, 'word_count_threshold', 3)
-            excluded_tags = getattr(config, 'excluded_tags', ["nav", "footer", "aside", "header", "script", "style"])
+            light_mode = getattr(config, 'light_mode', False)
+            word_count_threshold = getattr(config, 'word_count_threshold', 5)
+            excluded_tags = getattr(config, 'excluded_tags', ["nav", "footer", "aside", "header", "script", "style", "noscript", "iframe"])
             wait_until = getattr(config, 'wait_until', "networkidle")
             page_timeout = getattr(config, 'page_timeout', 60000)
 
@@ -92,12 +92,12 @@ async def crawl_deep_pages(
                 page_count += 1
 
                 if result.success:
-                    # Crawl4AI 0.8.x: markdown 可能是 StringCompatibleMarkdown 或 MarkdownGenerationResult
+                    # Crawl4AI 0.8.x: 优先 fit_markdown（经过 PruningContentFilter 去噪），raw_markdown 作 fallback
                     markdown = None
-                    if hasattr(result.markdown, 'raw_markdown') and result.markdown.raw_markdown:
-                        markdown = result.markdown.raw_markdown
-                    elif hasattr(result.markdown, 'fit_markdown') and result.markdown.fit_markdown:
+                    if hasattr(result.markdown, 'fit_markdown') and result.markdown.fit_markdown:
                         markdown = result.markdown.fit_markdown
+                    elif hasattr(result.markdown, 'raw_markdown') and result.markdown.raw_markdown:
+                        markdown = result.markdown.raw_markdown
                     if not markdown:
                         markdown = str(result.markdown) if result.markdown else ""
                     word_count = len(markdown.replace('\n', '').replace(' ', '')) if markdown else 0
