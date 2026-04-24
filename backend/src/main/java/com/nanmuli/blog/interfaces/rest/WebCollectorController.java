@@ -103,12 +103,12 @@ public class WebCollectorController {
      */
     @Operation(summary = "转为文章草稿")
     @PostMapping("/task/{taskId}/to-article")
-    public Result<Long> convertToArticle(
+    public Result<String> convertToArticle(
             @Parameter(description = "任务ID") @PathVariable Long taskId,
             @RequestBody @Valid ConvertToArticleCommand command) {
         Long userId = getCurrentUserId();
         Long articleId = collectorAppService.convertToArticle(taskId, command, userId);
-        return Result.success(articleId);
+        return Result.success(String.valueOf(articleId));
     }
 
     /**
@@ -116,12 +116,12 @@ public class WebCollectorController {
      */
     @Operation(summary = "转为技术日志")
     @PostMapping("/task/{taskId}/to-daily-log")
-    public Result<Long> convertToDailyLog(
+    public Result<String> convertToDailyLog(
             @Parameter(description = "任务ID") @PathVariable Long taskId,
             @RequestBody @Valid ConvertToDailyLogCommand command) {
         Long userId = getCurrentUserId();
         Long dailyLogId = collectorAppService.convertToDailyLog(taskId, command, userId);
-        return Result.success(dailyLogId);
+        return Result.success(String.valueOf(dailyLogId));
     }
 
     /**
@@ -142,11 +142,11 @@ public class WebCollectorController {
      */
     @Operation(summary = "重试失败的任务")
     @PostMapping("/task/{taskId}/retry")
-    public Result<Long> retryTask(
+    public Result<String> retryTask(
             @Parameter(description = "任务ID") @PathVariable Long taskId) {
         Long userId = getCurrentUserId();
         Long retriedId = collectorAppService.retryTask(taskId, userId);
-        return Result.success(retriedId);
+        return Result.success(String.valueOf(retriedId));
     }
 
     private Long getCurrentUserId() {

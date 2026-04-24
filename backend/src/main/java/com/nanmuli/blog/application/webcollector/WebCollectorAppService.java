@@ -120,7 +120,7 @@ public class WebCollectorAppService {
         IPage<WebCollectTask> page = new Page<>(query.getCurrent(), query.getSize());
 
         IPage<WebCollectTask> result = taskRepository.findPageFiltered(
-                page, userId, query.getStatus(), query.getTaskType());
+                page, userId, query.getStatus(), query.getTaskType(), query.getKeyword());
 
         List<CollectTaskListDTO> records = result.getRecords().stream()
                 .map(this::convertToListDTO)

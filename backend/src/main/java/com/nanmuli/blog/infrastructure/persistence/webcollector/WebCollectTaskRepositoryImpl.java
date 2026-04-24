@@ -53,7 +53,7 @@ public class WebCollectTaskRepositoryImpl implements WebCollectTaskRepository {
     }
 
     @Override
-    public IPage<WebCollectTask> findPageFiltered(IPage<WebCollectTask> page, Long userId, Integer status, String taskType) {
+    public IPage<WebCollectTask> findPageFiltered(IPage<WebCollectTask> page, Long userId, Integer status, String taskType, String keyword) {
         LambdaQueryWrapper<WebCollectTask> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(WebCollectTask::getUserId, userId)
                .eq(WebCollectTask::getIsDeleted, false);
@@ -62,6 +62,11 @@ public class WebCollectTaskRepositoryImpl implements WebCollectTaskRepository {
         }
         if (taskType != null && !taskType.isBlank()) {
             wrapper.eq(WebCollectTask::getTaskType, taskType);
+        }
+        if (keyword != null && !keyword.isBlank()) {
+            wrapper.and(w -> w.like(WebCollectTask::getSourceUrl, keyword)
+                             .or()
+                             .like(WebCollectTask::getKeyword, keyword));
         }
         wrapper.orderByDesc(WebCollectTask::getCreatedAt);
         return taskMapper.selectPage(page, wrapper);
