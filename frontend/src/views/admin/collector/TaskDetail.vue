@@ -5,6 +5,7 @@ import { getCollectTaskDetail, getCollectTaskPages, deleteCollectTask, retryColl
 import type { CollectTask, CollectPage } from '@/types/collector'
 import { CollectTaskStatusMap, CollectTaskTypeMap } from '@/types/collector'
 import { formatDateCN } from '@/utils/format'
+import { renderMarkdown } from '@/utils/markdown'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, Delete, Refresh, Document, Notebook } from '@element-plus/icons-vue'
 import ConvertArticleDialog from '@/components/collector/ConvertArticleDialog.vue'
@@ -24,6 +25,7 @@ const showConvertArticle = ref(false)
 const showConvertDailyLog = ref(false)
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
+let lastStatus: number | null = null
 
 const isTerminal = computed(() => {
   if (!task.value) return false
@@ -49,8 +51,14 @@ async function fetchTask(): Promise<void> {
   loading.value = true
   try {
     task.value = await getCollectTaskDetail(taskId)
+    const prev = lastStatus
+    lastStatus = task.value?.status ?? null
+    // 状态变为终态时拉一次 pages
     if (task.value?.status === 3 || task.value?.status === 4) {
       stopPolling()
+      if (prev !== null && prev !== task.value.status) {
+        await fetchPages()
+      }
     }
   } finally {
     loading.value = false
@@ -101,7 +109,6 @@ function startPolling(): void {
   pollTimer = setInterval(() => {
     if (isActive.value && !loading.value) {
       fetchTask()
-      fetchPages()
     } else if (!isActive.value) {
       stopPolling()
     }
@@ -302,9 +309,10 @@ onUnmounted(stopPolling)
       <div v-if="task.aiFullContent" class="mt-4">
         <el-collapse>
           <el-collapse-item title="查看 AI 完整内容">
-            <div class="prose prose-sm max-w-none dark:prose-invert whitespace-pre-wrap text-sm text-content-secondary">
-              {{ task.aiFullContent }}
-            </div>
+            <div
+              class="prose prose-sm max-w-none dark:prose-invert text-sm text-content-secondary"
+              v-html="renderMarkdown(task.aiFullContent)"
+            />
           </el-collapse-item>
         </el-collapse>
       </div>
@@ -367,8 +375,13 @@ onUnmounted(stopPolling)
                 </el-button>
               </div>
               <div
-                class="text-sm text-content-secondary whitespace-pre-wrap font-mono leading-relaxed"
-                :class="markdownExpanded[idx] ? '' : 'line-clamp-6'"
+                v-if="markdownExpanded[idx]"
+                class="prose prose-sm max-w-none dark:prose-invert text-sm text-content-secondary"
+                v-html="renderMarkdown(page.rawMarkdown)"
+              />
+              <div
+                v-else
+                class="text-sm text-content-secondary whitespace-pre-wrap font-mono leading-relaxed line-clamp-6"
               >
                 {{ page.rawMarkdown }}
               </div>
