@@ -283,4 +283,23 @@ public class ArticleRepositoryImpl implements ArticleRepository {
                       .replace("%", "\\%")
                       .replace("_", "\\_");
     }
+
+    @Override
+    public IPage<Article> findAllByKeyword(String keyword, List<Long> categoryIds, IPage<Article> page) {
+        String escapedKeyword = escapeLikeKeyword(keyword);
+        LambdaQueryWrapper<Article> wrapper = Wrappers.lambdaQuery();
+        wrapper.eq(Article::getIsDeleted, false)
+               .and(kw -> {
+                   kw.like(Article::getTitle, escapedKeyword)
+                     .or()
+                     .like(Article::getContent, escapedKeyword)
+                     .or()
+                     .like(Article::getSummary, escapedKeyword);
+                   if (categoryIds != null && !categoryIds.isEmpty()) {
+                       kw.or().in(Article::getCategoryId, categoryIds);
+                   }
+               })
+               .orderByDesc(Article::getCreatedAt);
+        return articleMapper.selectPage(page, wrapper);
+    }
 }

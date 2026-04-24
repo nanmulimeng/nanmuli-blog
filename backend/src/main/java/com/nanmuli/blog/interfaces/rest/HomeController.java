@@ -5,11 +5,11 @@ import com.nanmuli.blog.application.article.dto.ArticleDTO;
 import com.nanmuli.blog.application.article.dto.HomeAggregatedDTO;
 import com.nanmuli.blog.application.category.CategoryAppService;
 import com.nanmuli.blog.application.category.dto.CategoryDTO;
+import com.nanmuli.blog.application.dailylog.DailyLogAppService;
 import com.nanmuli.blog.application.project.ProjectAppService;
 import com.nanmuli.blog.application.project.dto.ProjectDTO;
 import com.nanmuli.blog.application.skill.SkillAppService;
 import com.nanmuli.blog.application.skill.dto.SkillDTO;
-import com.nanmuli.blog.domain.dailylog.DailyLogRepository;
 import com.nanmuli.blog.shared.result.Result;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -29,7 +29,7 @@ public class HomeController {
     private final CategoryAppService categoryAppService;
     private final SkillAppService skillAppService;
     private final ProjectAppService projectAppService;
-    private final DailyLogRepository dailyLogRepository;
+    private final DailyLogAppService dailyLogAppService;
 
     @GetMapping("/home/aggregated")
     public Result<HomeAggregatedDTO> aggregated() {
@@ -45,7 +45,7 @@ public class HomeController {
         HomeAggregatedDTO.SiteStatsDTO stats = new HomeAggregatedDTO.SiteStatsDTO();
         stats.setArticleCount(articleAppService.countPublished());
         stats.setProjectCount((long) dto.getProjects().size());
-        stats.setDailyLogCount(dailyLogRepository.count());
+        stats.setDailyLogCount(dailyLogAppService.count());
         dto.setStats(stats);
 
         return Result.success(dto);

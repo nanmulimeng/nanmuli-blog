@@ -21,9 +21,7 @@ import java.util.Map;
 public class Crawl4AiCrawlerService implements CrawlerService {
 
     private final RestTemplate crawlerRestTemplate;
-
-    @Value("${crawler.service.base-url:http://localhost:8500}")
-    private String baseUrl;
+    private final String baseUrl;
 
     public Crawl4AiCrawlerService(
             @Value("${crawler.service.base-url:http://localhost:8500}") String baseUrl,

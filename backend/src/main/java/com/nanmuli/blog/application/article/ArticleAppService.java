@@ -1,11 +1,8 @@
 package com.nanmuli.blog.application.article;
 
 import cn.dev33.satoken.stp.StpUtil;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.nanmuli.blog.infrastructure.persistence.article.ArticleMapper;
 import com.nanmuli.blog.application.article.command.CreateArticleCommand;
 import com.nanmuli.blog.application.article.command.UpdateArticleCommand;
 import com.nanmuli.blog.application.article.dto.ArticleArchiveDTO;
@@ -65,7 +62,6 @@ public class ArticleAppService {
     private final CategoryAppService categoryAppService;
     private final ApplicationEventPublisher eventPublisher;
     private final MarkdownUtil markdownUtil;
-    private final ArticleMapper articleMapper;
 
     @Transactional
     @Caching(evict = {
@@ -234,20 +230,7 @@ public class ArticleAppService {
         if (StringUtils.hasText(query.getKeyword())) {
             // 先查询匹配关键词的分类ID
             List<Long> matchingCategoryIds = findCategoryIdsByKeyword(query.getKeyword());
-            LambdaQueryWrapper<Article> wrapper = Wrappers.lambdaQuery();
-            wrapper.and(kw -> {
-                kw.like(Article::getTitle, query.getKeyword())
-                  .or()
-                  .like(Article::getContent, query.getKeyword())
-                  .or()
-                  .like(Article::getSummary, query.getKeyword());
-                // 如果有关键词匹配的分类，也加入搜索条件
-                if (matchingCategoryIds != null && !matchingCategoryIds.isEmpty()) {
-                    kw.or().in(Article::getCategoryId, matchingCategoryIds);
-                }
-            })
-            .orderByDesc(Article::getCreatedAt);
-            result = articleMapper.selectPage(page, wrapper);
+            result = articleRepository.findAllByKeyword(query.getKeyword(), matchingCategoryIds, page);
         } else {
             result = articleRepository.findAllPage(page);
         }

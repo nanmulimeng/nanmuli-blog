@@ -119,4 +119,8 @@ public class DailyLogAppService {
         dto.setUpdateTime(category.getUpdatedAt());
         return dto;
     }
+
+    public Long count() {
+        return dailyLogRepository.count();
+    }
 }

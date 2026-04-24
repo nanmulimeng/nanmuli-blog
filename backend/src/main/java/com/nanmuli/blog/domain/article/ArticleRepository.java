@@ -69,4 +69,9 @@ public interface ArticleRepository {
      * 根据关键词搜索已发布文章（包含分类ID匹配）
      */
     IPage<Article> findPublishedByKeyword(String keyword, List<Long> categoryIds, IPage<Article> page, String sort);
+
+    /**
+     * 管理端关键词搜索（搜索所有状态的文章，包含content字段）
+     */
+    IPage<Article> findAllByKeyword(String keyword, List<Long> categoryIds, IPage<Article> page);
 }

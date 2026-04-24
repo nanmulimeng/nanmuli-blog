@@ -10,6 +10,7 @@ import org.slf4j.MDC;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.UUID;
@@ -52,6 +53,12 @@ public class GlobalExceptionHandler {
         log.warn("参数类型不匹配: uri={}, param={}, value={}, error={}",
                 request.getRequestURI(), e.getName(), e.getValue(), e.getMessage());
         return Result.error(400, "请求参数格式错误");
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public Result<Void> handleHttpMessageNotReadableException(HttpMessageNotReadableException e, HttpServletRequest request) {
+        log.warn("请求体解析失败: uri={}, error={}", request.getRequestURI(), e.getMessage());
+        return Result.error(400, "请求数据格式错误");
     }
 
     @ExceptionHandler(Exception.class)
