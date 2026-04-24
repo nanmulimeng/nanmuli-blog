@@ -1,10 +1,10 @@
 package com.nanmuli.blog.infrastructure.crawler;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
@@ -18,13 +18,23 @@ import java.util.Map;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class Crawl4AiCrawlerService implements CrawlerService {
 
-    private final RestTemplate restTemplate;
+    private final RestTemplate crawlerRestTemplate;
 
     @Value("${crawler.service.base-url:http://localhost:8500}")
     private String baseUrl;
+
+    public Crawl4AiCrawlerService(
+            @Value("${crawler.service.base-url:http://localhost:8500}") String baseUrl,
+            @Value("${crawler.service.timeout:180000}") int timeout) {
+        this.baseUrl = baseUrl;
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(10000);
+        factory.setReadTimeout(timeout);
+        this.crawlerRestTemplate = new RestTemplate(factory);
+        log.info("[Crawler] RestTemplate initialized: baseUrl={}, timeout={}ms", baseUrl, timeout);
+    }
 
     @Override
     public CrawlResult crawlSingle(String url, CrawlConfig config) {
@@ -40,7 +50,7 @@ public class Crawl4AiCrawlerService implements CrawlerService {
 
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(request, headers);
 
-            ResponseEntity<JsonNode> response = restTemplate.postForEntity(
+            ResponseEntity<JsonNode> response = crawlerRestTemplate.postForEntity(
                 baseUrl + "/crawl/single",
                 entity,
                 JsonNode.class
@@ -74,7 +84,7 @@ public class Crawl4AiCrawlerService implements CrawlerService {
 
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(request, headers);
 
-            ResponseEntity<JsonNode> response = restTemplate.postForEntity(
+            ResponseEntity<JsonNode> response = crawlerRestTemplate.postForEntity(
                 baseUrl + "/crawl/deep",
                 entity,
                 JsonNode.class
@@ -110,7 +120,7 @@ public class Crawl4AiCrawlerService implements CrawlerService {
 
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(request, headers);
 
-            ResponseEntity<JsonNode> response = restTemplate.postForEntity(
+            ResponseEntity<JsonNode> response = crawlerRestTemplate.postForEntity(
                 baseUrl + "/crawl/search",
                 entity,
                 JsonNode.class
@@ -135,7 +145,7 @@ public class Crawl4AiCrawlerService implements CrawlerService {
     @Override
     public boolean healthCheck() {
         try {
-            ResponseEntity<JsonNode> response = restTemplate.getForEntity(
+            ResponseEntity<JsonNode> response = crawlerRestTemplate.getForEntity(
                 baseUrl + "/health",
                 JsonNode.class
             );
@@ -176,12 +186,25 @@ public class Crawl4AiCrawlerService implements CrawlerService {
         result.setDepth(node.path("depth").asInt(0));
         result.setSearchRank(node.path("search_rank").asInt(0));
 
-        // Parse metadata
+        // Parse metadata - 保留原始类型（数值、布尔等），不全部转为字符串
         JsonNode metadataNode = node.path("metadata");
         if (metadataNode.isObject()) {
             Map<String, Object> metadata = new HashMap<>();
             metadataNode.fields().forEachRemaining(entry -> {
-                metadata.put(entry.getKey(), entry.getValue().asText());
+                JsonNode val = entry.getValue();
+                if (val.isBoolean()) {
+                    metadata.put(entry.getKey(), val.asBoolean());
+                } else if (val.isInt()) {
+                    metadata.put(entry.getKey(), val.asInt());
+                } else if (val.isLong()) {
+                    metadata.put(entry.getKey(), val.asLong());
+                } else if (val.isDouble()) {
+                    metadata.put(entry.getKey(), val.asDouble());
+                } else if (val.isNull()) {
+                    metadata.put(entry.getKey(), null);
+                } else {
+                    metadata.put(entry.getKey(), val.asText());
+                }
             });
             result.setMetadata(metadata);
         }

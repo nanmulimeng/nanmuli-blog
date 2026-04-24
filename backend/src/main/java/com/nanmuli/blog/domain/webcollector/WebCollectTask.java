@@ -1,6 +1,7 @@
 package com.nanmuli.blog.domain.webcollector;
 
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.Version;
 import com.nanmuli.blog.shared.domain.BaseAggregateRoot;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
@@ -15,6 +16,9 @@ import lombok.Setter;
 @TableName("web_collect_task")
 public class WebCollectTask extends BaseAggregateRoot<Long> {
     private static final long serialVersionUID = 1L;
+
+    @Version
+    private Integer version;
 
     // 任务类型与输入
     private String taskType; // single / deep / keyword / digest

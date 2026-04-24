@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nanmuli.blog.domain.webcollector.AiContentOrganizer;
 import com.nanmuli.blog.domain.webcollector.AiTemplate;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
@@ -19,6 +20,7 @@ import java.util.regex.Pattern;
  */
 @Slf4j
 @Service
+@ConditionalOnExpression("!'${spring.ai.dashscope.api-key:}'.isEmpty()")
 public class DashScopeContentOrganizer implements AiContentOrganizer {
 
     private final RestClient restClient;
@@ -48,11 +50,12 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
         long start = System.currentTimeMillis();
         try {
             String prompt = buildSinglePagePrompt(rawMarkdown, template);
-            String response = callAi(prompt);
-            OrganizedContent result = parseOrganizedContent(response);
+            AiResponse aiResponse = callAi(prompt);
+            OrganizedContent result = parseOrganizedContent(aiResponse.content);
             result.durationMs = (int) (System.currentTimeMillis() - start);
-            log.info("[AiOrganizer] Single page organized: title={}, duration={}ms",
-                    result.title, result.durationMs);
+            result.tokensUsed = aiResponse.totalTokens;
+            log.info("[AiOrganizer] Single page organized: title={}, duration={}ms, tokens={}",
+                    result.title, result.durationMs, result.tokensUsed);
             return CompletableFuture.completedFuture(result);
         } catch (Exception e) {
             log.error("[AiOrganizer] organize failed, template={}", template, e);
@@ -65,11 +68,12 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
         long start = System.currentTimeMillis();
         try {
             String prompt = buildMultiPagePrompt(pages, template, null);
-            String response = callAi(prompt);
-            OrganizedContent result = parseOrganizedContent(response);
+            AiResponse aiResponse = callAi(prompt);
+            OrganizedContent result = parseOrganizedContent(aiResponse.content);
             result.durationMs = (int) (System.currentTimeMillis() - start);
-            log.info("[AiOrganizer] Multi-page organized: title={}, pages={}, duration={}ms",
-                    result.title, pages.size(), result.durationMs);
+            result.tokensUsed = aiResponse.totalTokens;
+            log.info("[AiOrganizer] Multi-page organized: title={}, pages={}, duration={}ms, tokens={}",
+                    result.title, pages.size(), result.durationMs, result.tokensUsed);
             return CompletableFuture.completedFuture(result);
         } catch (Exception e) {
             log.error("[AiOrganizer] organizeMultiple failed", e);
@@ -85,11 +89,12 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
         long start = System.currentTimeMillis();
         try {
             String prompt = buildMultiPagePrompt(pages, template, keyword);
-            String response = callAi(prompt);
-            OrganizedContent result = parseOrganizedContent(response);
+            AiResponse aiResponse = callAi(prompt);
+            OrganizedContent result = parseOrganizedContent(aiResponse.content);
             result.durationMs = (int) (System.currentTimeMillis() - start);
-            log.info("[AiOrganizer] Multi-page organized: title={}, pages={}, keyword={}, duration={}ms",
-                    result.title, pages.size(), keyword, result.durationMs);
+            result.tokensUsed = aiResponse.totalTokens;
+            log.info("[AiOrganizer] Multi-page organized: title={}, pages={}, keyword={}, duration={}ms, tokens={}",
+                    result.title, pages.size(), keyword, result.durationMs, result.tokensUsed);
             return CompletableFuture.completedFuture(result);
         } catch (Exception e) {
             log.error("[AiOrganizer] organizeMultiple failed", e);
@@ -184,7 +189,15 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
 
     // ============== AI 调用（OpenAI 兼容格式） ==============
 
-    private String callAi(String prompt) {
+    /**
+     * AI 响应数据：包含内容文本和 token 使用量
+     */
+    private static class AiResponse {
+        String content;
+        int totalTokens;
+    }
+
+    private AiResponse callAi(String prompt) {
         Map<String, Object> requestBody = new LinkedHashMap<>();
         requestBody.put("model", model);
         requestBody.put("temperature", temperature);
@@ -198,17 +211,36 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
                 .retrieve()
                 .body(String.class);
 
-        // 解析 OpenAI 格式响应：choices[0].message.content
         try {
+            @SuppressWarnings("unchecked")
             Map<String, Object> respMap = objectMapper.readValue(response, Map.class);
+
+            AiResponse aiResponse = new AiResponse();
+
+            // 提取内容：choices[0].message.content
+            @SuppressWarnings("unchecked")
             List<Map<String, Object>> choices = (List<Map<String, Object>>) respMap.get("choices");
             if (choices != null && !choices.isEmpty()) {
+                @SuppressWarnings("unchecked")
                 Map<String, Object> message = (Map<String, Object>) choices.get(0).get("message");
                 if (message != null) {
-                    return (String) message.get("content");
+                    aiResponse.content = (String) message.get("content");
                 }
             }
-            throw new RuntimeException("Unexpected API response format");
+            if (aiResponse.content == null) {
+                throw new RuntimeException("Unexpected API response format: no content");
+            }
+
+            // 提取 token 使用量：usage.total_tokens
+            @SuppressWarnings("unchecked")
+            Map<String, Object> usage = (Map<String, Object>) respMap.get("usage");
+            if (usage != null && usage.get("total_tokens") != null) {
+                aiResponse.totalTokens = ((Number) usage.get("total_tokens")).intValue();
+            }
+
+            return aiResponse;
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to parse AI response: " + e.getMessage(), e);
         }
@@ -230,7 +262,6 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
         content.tags = toStringList(map.get("tags"));
         content.category = (String) map.getOrDefault("category", "");
         content.fullContent = (String) map.getOrDefault("fullContent", "");
-        content.tokensUsed = 0;
         return content;
     }
 

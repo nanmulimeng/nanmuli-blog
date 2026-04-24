@@ -23,6 +23,7 @@
 | 分类管理 | 树形分类结构，仅叶子分类可关联文章 |
 | 系统配置 | 动态配置项管理 |
 | AI辅助 | 智能标签、文章摘要（预留，当前禁用） |
+| Web采集器 | 网页采集、深度爬取、关键词搜索、AI内容整理、转为文章/日志 |
 
 ---
 
@@ -41,8 +42,15 @@
 | 工具库 | Hutool | 5.8.36 |
 | Markdown | Flexmark | 0.64.8 |
 | 向量扩展 | pgvector | 0.1.4 |
+| AI内容整理 | DashScope (Qwen 3.6-plus) | OpenAI兼容端点 |
 
-### 2.2 前端
+### 2.2 爬虫服务（Python）
+| 技术 | 版本 | 说明 |
+|------|------|------|
+| FastAPI | 0.100+ | Python Web框架 |
+| Crawl4AI | 0.8.x | 无头Chromium爬虫 |
+
+### 2.3 前端
 | 技术 | 版本 |
 |------|------|
 | 框架 | Vue 3 | 3.4.15 |
@@ -374,6 +382,17 @@ public class ArticlePageQuery {
 }
 ```
 
+### 4.7 WebCollector 编码模式
+
+| 模式 | 说明 |
+|------|------|
+| `@ConditionalOnExpression("!'${prop:}'.isEmpty()")` | 空字符串感知的条件注册，优于 `@ConditionalOnProperty` |
+| `@Version private Integer version` | 所有可变聚合根必须加乐观锁字段 + Flyway 迁移 |
+| 独立 RestTemplate | 不同超时需求的外部服务用独立 RestTemplate，不复用全局实例 |
+| JSONB 手动序列化 | 无 TypeHandler 时用 ObjectMapper 手动读写字符串列 |
+| 事务后异步 | `TransactionSynchronization.afterCommit()` 触发异步任务，避免读未提交数据 |
+| 5态任务机 | PENDING(0) → CRAWLING(1) → PROCESSING(2) → COMPLETED(3) / FAILED(4) |
+
 ---
 
 ## 五、数据访问规范
@@ -682,6 +701,23 @@ git commit -m "chore(deps): 升级MyBatis Plus至3.5.9"
 | docs | 文档更新 |
 | test | 测试相关 |
 | chore | 构建/依赖/工具 |
+
+---
+
+### 9.3 模块开发状态（2026-04-24）
+
+| 模块 | 后端 | 前端 | 测试 | 说明 |
+|------|------|------|------|------|
+| 文章管理 | ✅ 100% | ✅ 100% | ⬜ 5% | 核心功能完整 |
+| 技术日志 | ✅ 100% | ✅ 100% | ⬜ 5% | 核心功能完整 |
+| 分类管理 | ✅ 100% | ✅ 100% | ⬜ 5% | 树形结构完整 |
+| 个人展示 | ✅ 100% | ✅ 100% | ⬜ 5% | 技能+项目 |
+| 系统配置 | ✅ 100% | ✅ 100% | ⬜ 5% | 动态配置 |
+| 文件管理 | ✅ 100% | ✅ 90% | ⬜ 5% | 上传/预览 |
+| 认证授权 | ✅ 100% | ✅ 100% | ⬜ 5% | Sa-Token |
+| Web采集器 | ✅ 80% | ✅ 90% | ⬜ 5% | Phase1-4完成，Phase5日报20% |
+| 标签系统 | ⬜ 0% | ⬜ 0% | ⬜ 0% | 仅有数据库表，无Java代码 |
+| 友链管理 | ✅ 100% | ✅ 100% | ⬜ 5% | 完整CRUD |
 
 ---
 

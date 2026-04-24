@@ -18,6 +18,8 @@ public interface WebCollectTaskRepository {
 
     IPage<WebCollectTask> findPage(IPage<WebCollectTask> page, Long userId);
 
+    IPage<WebCollectTask> findPageFiltered(IPage<WebCollectTask> page, Long userId, Integer status, String taskType);
+
     IPage<WebCollectTask> findPageByStatus(IPage<WebCollectTask> page, Long userId, Integer status);
 
     List<WebCollectTask> findPendingTasks(int limit);

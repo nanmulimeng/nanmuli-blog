@@ -1,6 +1,5 @@
 package com.nanmuli.blog.application.webcollector;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -17,7 +16,6 @@ import com.nanmuli.blog.application.webcollector.dto.CollectTaskListDTO;
 import com.nanmuli.blog.application.webcollector.query.CollectTaskPageQuery;
 import com.nanmuli.blog.domain.webcollector.*;
 import com.nanmuli.blog.infrastructure.crawler.CrawlerService;
-import com.nanmuli.blog.infrastructure.persistence.webcollector.WebCollectTaskMapper;
 import com.nanmuli.blog.shared.exception.BusinessException;
 import com.nanmuli.blog.shared.result.PageResult;
 import lombok.RequiredArgsConstructor;
@@ -40,11 +38,11 @@ import java.util.*;
 @Slf4j
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class WebCollectorAppService {
 
     private final WebCollectTaskRepository taskRepository;
     private final WebCollectPageRepository pageRepository;
-    private final WebCollectTaskMapper taskMapper;
     private final WebCollectorAsyncExecutor asyncExecutor;
     private final ArticleAppService articleAppService;
     private final DailyLogAppService dailyLogAppService;
@@ -104,7 +102,6 @@ public class WebCollectorAppService {
     /**
      * 查询任务详情
      */
-    @Transactional(readOnly = true)
     public CollectTaskDTO getTask(Long taskId, Long userId) {
         WebCollectTask task = taskRepository.findById(taskId)
                 .orElseThrow(() -> new BusinessException("任务不存在"));
@@ -119,24 +116,11 @@ public class WebCollectorAppService {
     /**
      * 分页查询任务列表
      */
-    @Transactional(readOnly = true)
     public PageResult<CollectTaskListDTO> listTasks(CollectTaskPageQuery query, Long userId) {
         IPage<WebCollectTask> page = new Page<>(query.getCurrent(), query.getSize());
 
-        // 构建查询条件
-        LambdaQueryWrapper<WebCollectTask> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(WebCollectTask::getUserId, userId)
-               .eq(WebCollectTask::getIsDeleted, false);
-
-        if (query.getStatus() != null) {
-            wrapper.eq(WebCollectTask::getStatus, query.getStatus());
-        }
-        if (query.getTaskType() != null) {
-            wrapper.eq(WebCollectTask::getTaskType, query.getTaskType());
-        }
-        wrapper.orderByDesc(WebCollectTask::getCreatedAt);
-
-        IPage<WebCollectTask> result = taskMapper.selectPage(page, wrapper);
+        IPage<WebCollectTask> result = taskRepository.findPageFiltered(
+                page, userId, query.getStatus(), query.getTaskType());
 
         List<CollectTaskListDTO> records = result.getRecords().stream()
                 .map(this::convertToListDTO)
@@ -148,7 +132,6 @@ public class WebCollectorAppService {
     /**
      * 查询任务的页面列表
      */
-    @Transactional(readOnly = true)
     public List<CollectPageDTO> listTaskPages(Long taskId, Long userId) {
         WebCollectTask task = taskRepository.findById(taskId)
                 .orElseThrow(() -> new BusinessException("任务不存在"));
@@ -174,10 +157,14 @@ public class WebCollectorAppService {
             throw new BusinessException("无权删除此任务");
         }
 
-        // 先清理关联的页面数据（逻辑删除不会触发 DB CASCADE）
+        if (!task.isTerminal()) {
+            throw new BusinessException("任务正在处理中，无法删除，请等待完成后再试");
+        }
+
+        // 先清理关联的页面数据（物理删除，非逻辑删除）
         pageRepository.deleteByTaskId(taskId);
 
-        // 再逻辑删除任务
+        // 再逻辑删除任务（@Version 乐观锁保护）
         taskRepository.deleteById(taskId);
 
         log.info("[DeleteTask] taskId={}, userId={}, pages cleaned", taskId, userId);

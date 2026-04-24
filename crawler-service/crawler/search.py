@@ -220,7 +220,6 @@ def _is_excluded_domain(url: str) -> bool:
         'instagram.com',
         'amazon.com',
         'ebay.com',
-        'wikipedia.org',  # 可选：如果需要可以移除
         'pinterest.com',
         'linkedin.com',
     ]

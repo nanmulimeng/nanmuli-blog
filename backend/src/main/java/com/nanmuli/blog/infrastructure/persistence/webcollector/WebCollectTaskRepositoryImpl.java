@@ -53,6 +53,21 @@ public class WebCollectTaskRepositoryImpl implements WebCollectTaskRepository {
     }
 
     @Override
+    public IPage<WebCollectTask> findPageFiltered(IPage<WebCollectTask> page, Long userId, Integer status, String taskType) {
+        LambdaQueryWrapper<WebCollectTask> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(WebCollectTask::getUserId, userId)
+               .eq(WebCollectTask::getIsDeleted, false);
+        if (status != null) {
+            wrapper.eq(WebCollectTask::getStatus, status);
+        }
+        if (taskType != null && !taskType.isBlank()) {
+            wrapper.eq(WebCollectTask::getTaskType, taskType);
+        }
+        wrapper.orderByDesc(WebCollectTask::getCreatedAt);
+        return taskMapper.selectPage(page, wrapper);
+    }
+
+    @Override
     public IPage<WebCollectTask> findPageByStatus(IPage<WebCollectTask> page, Long userId, Integer status) {
         LambdaQueryWrapper<WebCollectTask> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(WebCollectTask::getUserId, userId)
