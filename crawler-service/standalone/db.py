@@ -75,4 +75,5 @@ async def get_db():
     """返回 aiosqlite 连接（在连接打开后设置 UTF-8 text_factory）"""
     async with aiosqlite.connect(settings.db_path) as db:
         db.text_factory = lambda b: b.decode("utf-8", errors="replace")
+        await db.execute("PRAGMA foreign_keys=ON")
         yield db

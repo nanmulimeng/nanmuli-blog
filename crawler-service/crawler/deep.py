@@ -47,17 +47,17 @@ async def crawl_deep_pages(
         if config is None:
             text_mode = True
             light_mode = True
-            word_count_threshold = 10
+            word_count_threshold = 3
             excluded_tags = ["nav", "footer", "aside", "header", "script", "style"]
             wait_until = "networkidle"
-            page_timeout = 30000
+            page_timeout = 60000
         else:
             text_mode = getattr(config, 'text_mode', True)
             light_mode = getattr(config, 'light_mode', True)
-            word_count_threshold = getattr(config, 'word_count_threshold', 10)
+            word_count_threshold = getattr(config, 'word_count_threshold', 3)
             excluded_tags = getattr(config, 'excluded_tags', ["nav", "footer", "aside", "header", "script", "style"])
             wait_until = getattr(config, 'wait_until', "networkidle")
-            page_timeout = getattr(config, 'page_timeout', 30000)
+            page_timeout = getattr(config, 'page_timeout', 60000)
 
         # 提取域名
         parsed = urlparse(url)
@@ -94,10 +94,10 @@ async def crawl_deep_pages(
                 if result.success:
                     # Crawl4AI 0.8.x: markdown 可能是 StringCompatibleMarkdown 或 MarkdownGenerationResult
                     markdown = None
-                    if hasattr(result.markdown, 'fit_markdown') and result.markdown.fit_markdown:
-                        markdown = result.markdown.fit_markdown
-                    elif hasattr(result.markdown, 'raw_markdown') and result.markdown.raw_markdown:
+                    if hasattr(result.markdown, 'raw_markdown') and result.markdown.raw_markdown:
                         markdown = result.markdown.raw_markdown
+                    elif hasattr(result.markdown, 'fit_markdown') and result.markdown.fit_markdown:
+                        markdown = result.markdown.fit_markdown
                     if not markdown:
                         markdown = str(result.markdown) if result.markdown else ""
                     word_count = len(markdown.replace('\n', '').replace(' ', '')) if markdown else 0

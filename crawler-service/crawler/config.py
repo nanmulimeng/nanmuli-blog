@@ -6,7 +6,6 @@ Crawl4AI 配置模块
 
 from crawl4ai import BrowserConfig, CrawlerRunConfig, CacheMode
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
-from crawl4ai.content_filter_strategy import PruningContentFilter
 
 
 def get_browser_config(text_mode: bool = True, light_mode: bool = True) -> BrowserConfig:
@@ -38,10 +37,10 @@ def get_browser_config(text_mode: bool = True, light_mode: bool = True) -> Brows
 
 
 def get_crawler_run_config(
-    word_count_threshold: int = 10,
+    word_count_threshold: int = 3,
     excluded_tags: list[str] = None,
     wait_until: str = "networkidle",
-    page_timeout: int = 30000
+    page_timeout: int = 60000
 ) -> CrawlerRunConfig:
     """
     获取爬虫运行配置
@@ -67,10 +66,5 @@ def get_crawler_run_config(
         exclude_external_links=False,
         wait_until=wait_until,
         page_timeout=page_timeout,
-        markdown_generator=DefaultMarkdownGenerator(
-            content_filter=PruningContentFilter(
-                threshold=0.48,
-                threshold_type="fixed"
-            )
-        )
+        markdown_generator=DefaultMarkdownGenerator()
     )

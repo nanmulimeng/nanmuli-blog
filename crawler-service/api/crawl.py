@@ -18,11 +18,11 @@ router = APIRouter()
 # ============== Pydantic Models ==============
 
 class CrawlConfig(BaseModel):
-    word_count_threshold: int = Field(default=10, ge=0)
+    word_count_threshold: int = Field(default=3, ge=0)
     excluded_tags: list[str] = Field(default=["nav", "footer", "aside", "header", "script", "style"])
     remove_overlay_elements: bool = Field(default=True)
     wait_until: str = Field(default="networkidle")
-    page_timeout: int = Field(default=30000, ge=5000, le=120000)
+    page_timeout: int = Field(default=60000, ge=5000, le=120000)
     text_mode: bool = Field(default=True)
     light_mode: bool = Field(default=True)
 
