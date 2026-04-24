@@ -42,9 +42,9 @@ def extract_metadata(html_content: str, base_url: str) -> Dict[str, Any]:
     try:
         # 1. 提取标题（优先级：og:title > twitter:title > title）
         metadata['title'] = (
-            _get_meta_content(soup, 'og:title') or
-            _get_meta_content(soup, 'twitter:title') or
-            soup.title.string if soup.title else None
+            _get_meta_content(soup, 'og:title')
+            or _get_meta_content(soup, 'twitter:title')
+            or (soup.title.string if soup.title else None)
         )
 
         # 2. 提取描述

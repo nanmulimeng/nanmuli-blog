@@ -37,3 +37,14 @@ META-INF/
 __pycache__/
 *.pyc
 *.pyo
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+*.db
+crawler-service/data/
+crawler-service/exports/
