@@ -133,7 +133,7 @@ public class WebCollectorAsyncExecutor {
     }
 
     /**
-     * AI 内容整理
+     * AI 内容整理（含重试：2次重试 + 指数退避）
      * @return true=AI 整理成功，false=失败或不可用
      */
     private boolean organizeWithAi(WebCollectTask task, List<CrawlResult> crawlResults) {
@@ -142,73 +142,90 @@ public class WebCollectorAsyncExecutor {
             return false;
         }
 
-        try {
-            AiTemplate template = AiTemplate.of(task.getAiTemplate());
-            CollectTaskType taskType = CollectTaskType.of(task.getTaskType());
-            AiContentOrganizer.OrganizedContent organized;
+        int maxRetries = 2;
+        Exception lastException = null;
 
-            // KEYWORD 任务始终走多页路径（带 keyword 上下文），即使只有 1 条结果
-            // SINGLE / DEEP 只有 1 条结果时走单页路径
-            boolean useSinglePage = (taskType != CollectTaskType.KEYWORD) && (crawlResults.size() == 1);
+        for (int attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+                AiContentOrganizer.OrganizedContent organized = callAiOrganize(task, crawlResults);
 
-            if (useSinglePage) {
-                // 单页：直接用 organize()
-                String rawMarkdown = crawlResults.get(0).getMarkdown();
-                if (rawMarkdown == null || rawMarkdown.isBlank()) {
-                    log.warn("[AiOrganizer] No markdown content to organize, taskId={}", task.getId());
-                    return false;
-                }
-                organized = aiContentOrganizer.organize(rawMarkdown, template)
-                        .get(120, TimeUnit.SECONDS);
-            } else {
-                // 多页 / KEYWORD：用 organizeMultiple()
-                List<AiContentOrganizer.PageContent> pages = crawlResults.stream()
-                        .filter(CrawlResult::isSuccess)
-                        .map(r -> {
-                            AiContentOrganizer.PageContent pc = new AiContentOrganizer.PageContent();
-                            pc.url = r.getUrl();
-                            pc.title = r.getTitle();
-                            pc.markdown = r.getMarkdown();
-                            pc.wordCount = r.getWordCount();
-                            pc.depth = r.getDepth();
-                            return pc;
-                        }).toList();
-                if (pages.isEmpty()) {
-                    log.warn("[AiOrganizer] No successful pages to organize, taskId={}", task.getId());
-                    return false;
-                }
+                // 写回 AI 整理结果
+                task.markAiCompleted(
+                        organized.title,
+                        organized.summary,
+                        objectMapper.writeValueAsString(organized.keyPoints),
+                        objectMapper.writeValueAsString(organized.tags),
+                        organized.category,
+                        organized.fullContent,
+                        organized.durationMs,
+                        organized.tokensUsed
+                );
+                taskRepository.save(task);
+                log.info("[AiOrganizer] AI organization completed. taskId={}, title={}, aiDuration={}ms",
+                        task.getId(), organized.title, organized.durationMs);
+                return true;
 
-                // KEYWORD 任务注入 keyword 上下文
-                if (taskType == CollectTaskType.KEYWORD
-                        && aiContentOrganizer instanceof com.nanmuli.blog.infrastructure.ai.DashScopeContentOrganizer dashScope) {
-                    organized = dashScope.organizeMultiple(pages, template, task.getKeyword())
-                            .get(180, TimeUnit.SECONDS);
-                } else {
-                    organized = aiContentOrganizer.organizeMultiple(pages, template)
-                            .get(180, TimeUnit.SECONDS);
+            } catch (Exception e) {
+                lastException = e;
+                if (attempt < maxRetries) {
+                    long backoffMs = (long) Math.pow(2, attempt) * 1000;
+                    log.warn("[AiOrganizer] Attempt {}/{} failed, retrying in {}ms. taskId={}",
+                            attempt + 1, maxRetries + 1, backoffMs, task.getId(), e);
+                    try {
+                        Thread.sleep(backoffMs);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
                 }
             }
-
-            // 写回 AI 整理结果
-            task.markAiCompleted(
-                    organized.title,
-                    organized.summary,
-                    objectMapper.writeValueAsString(organized.keyPoints),
-                    objectMapper.writeValueAsString(organized.tags),
-                    organized.category,
-                    organized.fullContent,
-                    organized.durationMs,
-                    organized.tokensUsed
-            );
-            taskRepository.save(task);
-            log.info("[AiOrganizer] AI organization completed. taskId={}, title={}, aiDuration={}ms",
-                    task.getId(), organized.title, organized.durationMs);
-            return true;
-
-        } catch (Exception e) {
-            log.error("[AiOrganizer] AI organization failed. taskId={}", task.getId(), e);
-            return false;
         }
+
+        log.error("[AiOrganizer] AI organization failed after {} attempts. taskId={}",
+                maxRetries + 1, task.getId(), lastException);
+        return false;
+    }
+
+    /**
+     * 执行一次 AI 整理调用
+     */
+    private AiContentOrganizer.OrganizedContent callAiOrganize(WebCollectTask task, List<CrawlResult> crawlResults) throws Exception {
+        AiTemplate template = AiTemplate.of(task.getAiTemplate());
+        CollectTaskType taskType = CollectTaskType.of(task.getTaskType());
+
+        boolean useSinglePage = (taskType != CollectTaskType.KEYWORD) && (crawlResults.size() == 1);
+
+        if (useSinglePage) {
+            String rawMarkdown = crawlResults.get(0).getMarkdown();
+            if (rawMarkdown == null || rawMarkdown.isBlank()) {
+                throw new RuntimeException("No markdown content to organize");
+            }
+            return aiContentOrganizer.organize(rawMarkdown, template)
+                    .get(120, TimeUnit.SECONDS);
+        }
+
+        List<AiContentOrganizer.PageContent> pages = crawlResults.stream()
+                .filter(CrawlResult::isSuccess)
+                .map(r -> {
+                    AiContentOrganizer.PageContent pc = new AiContentOrganizer.PageContent();
+                    pc.url = r.getUrl();
+                    pc.title = r.getTitle();
+                    pc.markdown = r.getMarkdown();
+                    pc.wordCount = r.getWordCount();
+                    pc.depth = r.getDepth();
+                    return pc;
+                }).toList();
+        if (pages.isEmpty()) {
+            throw new RuntimeException("No successful pages to organize");
+        }
+
+        if (taskType == CollectTaskType.KEYWORD
+                && aiContentOrganizer instanceof com.nanmuli.blog.infrastructure.ai.DashScopeContentOrganizer dashScope) {
+            return dashScope.organizeMultiple(pages, template, task.getKeyword())
+                    .get(180, TimeUnit.SECONDS);
+        }
+        return aiContentOrganizer.organizeMultiple(pages, template)
+                .get(180, TimeUnit.SECONDS);
     }
 
     /**

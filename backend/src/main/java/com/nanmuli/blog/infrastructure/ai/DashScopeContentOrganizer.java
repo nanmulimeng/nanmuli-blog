@@ -49,8 +49,8 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
     public CompletableFuture<OrganizedContent> organize(String rawMarkdown, AiTemplate template) {
         long start = System.currentTimeMillis();
         try {
-            String prompt = buildSinglePagePrompt(rawMarkdown, template);
-            AiResponse aiResponse = callAi(prompt);
+            String userPrompt = buildSinglePagePrompt(rawMarkdown, template);
+            AiResponse aiResponse = callAi(SYSTEM_PROMPT, userPrompt);
             OrganizedContent result = parseOrganizedContent(aiResponse.content);
             result.durationMs = (int) (System.currentTimeMillis() - start);
             result.tokensUsed = aiResponse.totalTokens;
@@ -67,8 +67,8 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
     public CompletableFuture<OrganizedContent> organizeMultiple(List<PageContent> pages, AiTemplate template) {
         long start = System.currentTimeMillis();
         try {
-            String prompt = buildMultiPagePrompt(pages, template, null);
-            AiResponse aiResponse = callAi(prompt);
+            String userPrompt = buildMultiPagePrompt(pages, template, null);
+            AiResponse aiResponse = callAi(SYSTEM_PROMPT, userPrompt);
             OrganizedContent result = parseOrganizedContent(aiResponse.content);
             result.durationMs = (int) (System.currentTimeMillis() - start);
             result.tokensUsed = aiResponse.totalTokens;
@@ -88,8 +88,8 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
     public CompletableFuture<OrganizedContent> organizeMultiple(List<PageContent> pages, AiTemplate template, String keyword) {
         long start = System.currentTimeMillis();
         try {
-            String prompt = buildMultiPagePrompt(pages, template, keyword);
-            AiResponse aiResponse = callAi(prompt);
+            String userPrompt = buildMultiPagePrompt(pages, template, keyword);
+            AiResponse aiResponse = callAi(SYSTEM_PROMPT, userPrompt);
             OrganizedContent result = parseOrganizedContent(aiResponse.content);
             result.durationMs = (int) (System.currentTimeMillis() - start);
             result.tokensUsed = aiResponse.totalTokens;
@@ -114,9 +114,21 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
 
     // ============== Prompt 构建 ==============
 
-    private static final String OUTPUT_FORMAT = """
+    private static final String SYSTEM_PROMPT = """
+            你是一位资深技术内容编辑，擅长从网页原始内容中提取、整理、重组高质量技术文章。
 
-            ## 输出要求（严格 JSON 格式，不要包裹在代码块中）
+            ## 输出规则
+            1. 严格输出 JSON 格式，不要包裹在 markdown 代码块中
+            2. fullContent 使用 Markdown 格式，代码块用 ```language 标记
+            3. 保留原文有价值的代码示例，不要丢弃
+            4. 英文内容翻译为中文，保留专有名词原文（如 React、Kubernetes）
+            5. 标签是具体技术关键词（如 "Spring Boot 3" 而非 "Java"），3-7 个
+            6. category 必须是以下之一：后端开发/前端开发/数据库/DevOps/AI与机器学习/安全/其他
+            """;
+
+    private static final String OUTPUT_SCHEMA = """
+
+            ## 输出格式
             {
                 "title": "吸引人的中文标题（15-30字）",
                 "summary": "200-300字核心摘要",
@@ -125,12 +137,24 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
                 "category": "后端开发/前端开发/数据库/DevOps/AI与机器学习/安全/其他",
                 "fullContent": "完整 Markdown 格式整理文章"
             }
+            """;
 
-            ## 规则
-            1. 输出合法 JSON，fullContent 中代码块用 ```language 标记
-            2. 保留原文有价值的代码示例
-            3. 英文内容翻译为中文，保留专有名词原文
-            4. 标签是技术关键词，不要太泛也不要太窄
+    private static final String FEW_SHOT_EXAMPLE = """
+
+            ## 输出示例
+            {
+                "title": "Spring Boot 3 中实现优雅停机的完整指南",
+                "summary": "本文深入讲解 Spring Boot 3 的优雅停机机制，包括 Graceful Shutdown 原理、内置配置方式、自定义 ShutdownHook 实现以及容器化环境下的注意事项。通过实际案例演示如何确保服务在关闭时正确处理进行中的请求。",
+                "keyPoints": [
+                    "server.shutdown=graceful 配置实现内置优雅停机",
+                    "max-swallow-size 控制停机期间请求缓冲",
+                    "自定义 SmartLifecycle 接口处理资源释放",
+                    "Docker/K8s 环境需配合 terminationGracePeriodSeconds"
+                ],
+                "tags": ["Spring Boot 3", "优雅停机", "Graceful Shutdown", "Kubernetes", "微服务"],
+                "category": "后端开发",
+                "fullContent": "## Spring Boot 3 优雅停机\\n\\n### 什么是优雅停机\\n\\n优雅停机是指...\\n\\n### 内置配置\\n\\n```yaml\\nserver:\\n  shutdown: graceful\\n```\n..."
+            }
             """;
 
     private String buildSinglePagePrompt(String rawMarkdown, AiTemplate template) {
@@ -138,33 +162,33 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
                 ? rawMarkdown.substring(0, 80000) + "\n\n[...内容过长已截断]"
                 : rawMarkdown;
 
-        String rolePrompt = switch (template) {
-            case TUTORIAL -> "你是一位技术教育专家。请将以下内容整理为 step-by-step 教程。\n"
+        String roleInstruction = switch (template) {
+            case TECH_SUMMARY -> "请对以下网页内容进行深度阅读和结构化整理。"
+                    + "重点：提炼核心技术要点、梳理逻辑脉络、补充必要的技术背景、生成结构清晰的技术摘要。\n";
+            case TUTORIAL -> "请将以下内容整理为 step-by-step 教程。"
                     + "重点：循序渐进的学习路径、每步配代码和预期结果、常见坑和注意事项。\n";
-            case COMPARISON -> "你是一位技术选型顾问。请对以下内容进行分析，提取技术方案对比信息。\n"
+            case COMPARISON -> "请对以下内容进行分析，提取技术方案对比信息。"
                     + "输出包含：技术方案概述、对比表格（功能/性能/适用场景）、推荐场景。\n";
-            default -> "你是一位资深技术内容编辑。请对以下网页内容进行深度阅读和结构化整理。\n";
+            default -> "请对以下网页内容进行深度阅读和结构化整理。\n";
         };
 
-        return rolePrompt + "\n## 原始内容\n" + truncated + "\n" + OUTPUT_FORMAT;
+        return roleInstruction + "\n## 原始内容\n" + truncated + "\n" + OUTPUT_SCHEMA + FEW_SHOT_EXAMPLE;
     }
 
     private String buildMultiPagePrompt(List<PageContent> pages, AiTemplate template, String keyword) {
         StringBuilder sb = new StringBuilder();
 
-        // 按 template 切换角色设定
-        String rolePrompt = switch (template) {
-            case TUTORIAL -> "你是一位技术教育专家。以下是从多个来源收集的教程相关内容，请整合为一篇循序渐进的 step-by-step 教程。\n"
+        String roleInstruction = switch (template) {
+            case TUTORIAL -> "以下是从多个来源收集的教程相关内容，请整合为一篇循序渐进的 step-by-step 教程。"
                     + "重点：统一学习路径、去重合并相同步骤、补充缺失环节、标注各来源差异。\n";
-            case COMPARISON -> "你是一位技术选型顾问。以下是从多个来源收集的内容，请进行横向技术方案对比分析。\n"
+            case COMPARISON -> "以下是从多个来源收集的内容，请进行横向技术方案对比分析。"
                     + "重点：提取各方案优缺点、制作对比表格、给出不同场景下的推荐。\n";
-            case KNOWLEDGE_REPORT -> "你是一位技术研究分析师。以下是从多个来源收集的内容，请生成一份综合性知识报告。\n"
+            case KNOWLEDGE_REPORT -> "以下是从多个来源收集的内容，请生成一份综合性知识报告。"
                     + "重点：背景概述、技术原理、现状分析、趋势预测、参考来源。\n";
-            default -> "你是一位技术研究专家。以下是从多个来源收集的内容，请进行综合分析整理。\n";
+            default -> "以下是从多个来源收集的内容，请进行综合分析整理，去重合并，生成结构化的技术文章。\n";
         };
-        sb.append(rolePrompt).append("\n");
+        sb.append(roleInstruction).append("\n");
 
-        // 注入关键词上下文（KEYWORD 任务专用）
         if (keyword != null && !keyword.isBlank()) {
             sb.append("## 搜索关键词\n");
             sb.append("用户通过搜索引擎搜索「").append(keyword).append("」找到了以下页面。");
@@ -183,7 +207,8 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
             sb.append(md).append("\n\n---\n\n");
         }
 
-        sb.append(OUTPUT_FORMAT);
+        sb.append(OUTPUT_SCHEMA);
+        sb.append(FEW_SHOT_EXAMPLE);
         return sb.toString();
     }
 
@@ -197,12 +222,13 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
         int totalTokens;
     }
 
-    private AiResponse callAi(String prompt) {
+    private AiResponse callAi(String systemPrompt, String userPrompt) {
         Map<String, Object> requestBody = new LinkedHashMap<>();
         requestBody.put("model", model);
         requestBody.put("temperature", temperature);
         requestBody.put("messages", List.of(
-                Map.of("role", "user", "content", prompt)
+                Map.of("role", "system", "content", systemPrompt),
+                Map.of("role", "user", "content", userPrompt)
         ));
 
         String response = restClient.post()
