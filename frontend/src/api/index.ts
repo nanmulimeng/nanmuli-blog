@@ -10,6 +10,9 @@ export * from './category'
 // 日志相关 API
 export * from './dailyLog'
 
+// 内容采集 API
+export * from './collector'
+
 // 项目相关 API
 export * from './project'
 

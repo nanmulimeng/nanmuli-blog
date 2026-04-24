@@ -128,6 +128,18 @@ export const adminRoutes: RouteRecordRaw[] = [
     meta: { layout: AdminLayout, title: '技能管理', requiresAuth: true },
   },
   {
+    path: '/admin/collector',
+    name: 'AdminCollector',
+    component: () => import('@/views/admin/collector/TaskList.vue'),
+    meta: { layout: AdminLayout, title: '内容采集', requiresAuth: true },
+  },
+  {
+    path: '/admin/collector/:id',
+    name: 'AdminCollectorDetail',
+    component: () => import('@/views/admin/collector/TaskDetail.vue'),
+    meta: { layout: AdminLayout, title: '采集详情', requiresAuth: true },
+  },
+  {
     path: '/admin/config',
     name: 'AdminConfig',
     component: () => import('@/views/admin/config/Index.vue'),

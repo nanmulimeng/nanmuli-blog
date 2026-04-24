@@ -13,6 +13,9 @@ export * from './category'
 // 日志类型
 export * from './dailyLog'
 
+// 内容采集类型
+export * from './collector'
+
 // 项目类型
 export * from './project'
 
