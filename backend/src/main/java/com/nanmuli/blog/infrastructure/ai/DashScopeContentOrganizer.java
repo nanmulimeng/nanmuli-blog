@@ -7,8 +7,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.regex.Matcher;
@@ -36,10 +39,14 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
             @Value("${spring.ai.dashscope.api-key:}") String apiKey,
             @Value("${spring.ai.dashscope.base-url:https://dashscope.aliyuncs.com/compatible-mode/v1}") String baseUrl,
             ObjectMapper objectMapper) {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(Duration.ofSeconds(10));
+        factory.setReadTimeout(Duration.ofSeconds(90));
         this.restClient = RestClient.builder()
                 .baseUrl(baseUrl)
                 .defaultHeader("Authorization", "Bearer " + apiKey)
                 .defaultHeader("Content-Type", "application/json")
+                .requestFactory(factory)
                 .build();
         this.objectMapper = objectMapper;
         log.info("[AiOrganizer] DashScopeContentOrganizer initialized, baseUrl={}", baseUrl);
@@ -119,11 +126,13 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
 
             ## 输出规则
             1. 严格输出 JSON 格式，不要包裹在 markdown 代码块中
-            2. fullContent 使用 Markdown 格式，代码块用 ```language 标记
+            2. fullContent 使用 Markdown 格式，代码块用 ```language 标记，长度 1000-5000 字
             3. 保留原文有价值的代码示例，不要丢弃
             4. 英文内容翻译为中文，保留专有名词原文（如 React、Kubernetes）
             5. 标签是具体技术关键词（如 "Spring Boot 3" 而非 "Java"），3-7 个
             6. category 必须是以下之一：后端开发/前端开发/数据库/DevOps/AI与机器学习/安全/其他
+            7. 如果输入内容不是技术文章（如登录页、错误页、空白页），输出：{"title":"无效内容","summary":"输入非有效技术文档","keyPoints":[],"tags":[],"category":"其他","fullContent":""}
+            8. 忽略原始内容中的导航栏、Cookie 提示、评论区、分享按钮、广告等无关文本
             """;
 
     private static final String OUTPUT_SCHEMA = """
@@ -141,26 +150,23 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
 
     private static final String FEW_SHOT_EXAMPLE = """
 
-            ## 输出示例
+            ## 输出示例（注意：fullContent 必须是完整文章，不要用省略号截断）
             {
-                "title": "Spring Boot 3 中实现优雅停机的完整指南",
-                "summary": "本文深入讲解 Spring Boot 3 的优雅停机机制，包括 Graceful Shutdown 原理、内置配置方式、自定义 ShutdownHook 实现以及容器化环境下的注意事项。通过实际案例演示如何确保服务在关闭时正确处理进行中的请求。",
+                "title": "Spring Boot 3 优雅停机配置详解",
+                "summary": "本文讲解 Spring Boot 3 的优雅停机机制，包括 server.shutdown=graceful 配置、SmartLifecycle 接口处理资源释放、以及 Docker/K8s 环境下的 terminationGracePeriodSeconds 配合方案。",
                 "keyPoints": [
-                    "server.shutdown=graceful 配置实现内置优雅停机",
-                    "max-swallow-size 控制停机期间请求缓冲",
+                    "server.shutdown=graceful 开启内置优雅停机",
                     "自定义 SmartLifecycle 接口处理资源释放",
-                    "Docker/K8s 环境需配合 terminationGracePeriodSeconds"
+                    "K8s 环境需配合 terminationGracePeriodSeconds"
                 ],
-                "tags": ["Spring Boot 3", "优雅停机", "Graceful Shutdown", "Kubernetes", "微服务"],
+                "tags": ["Spring Boot 3", "优雅停机", "Kubernetes", "微服务"],
                 "category": "后端开发",
-                "fullContent": "## Spring Boot 3 优雅停机\\n\\n### 什么是优雅停机\\n\\n优雅停机是指...\\n\\n### 内置配置\\n\\n```yaml\\nserver:\\n  shutdown: graceful\\n```\n..."
+                "fullContent": "## Spring Boot 3 优雅停机\\n\\n### 开启优雅停机\\n\\n在 application.yml 中配置：\\n\\n```yaml\\nserver:\\n  shutdown: graceful\\n```\\n\\n启用后，应用关闭时会等待活跃请求完成。\\n\\n### K8s 环境配置\\n\\n需在 Pod spec 中设置：\\n\\n```yaml\\nterminationGracePeriodSeconds: 60\\n```\\n\\n确保 K8s 给予足够的停机等待时间。"
             }
             """;
 
     private String buildSinglePagePrompt(String rawMarkdown, AiTemplate template) {
-        String truncated = rawMarkdown.length() > 80000
-                ? rawMarkdown.substring(0, 80000) + "\n\n[...内容过长已截断]"
-                : rawMarkdown;
+        String truncated = truncateAtParagraphBoundary(rawMarkdown, 80000);
 
         String roleInstruction = switch (template) {
             case TECH_SUMMARY -> "请对以下网页内容进行深度阅读和结构化整理。"
@@ -203,7 +209,7 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
                     .append(page.title != null ? page.title : "未知标题").append("\n");
             sb.append("URL: ").append(page.url != null ? page.url : "未知").append("\n\n");
             String md = page.markdown != null ? page.markdown : "";
-            if (md.length() > 20000) md = md.substring(0, 20000) + "\n[...截断]";
+            md = truncateAtParagraphBoundary(md, 20000);
             sb.append(md).append("\n\n---\n\n");
         }
 
@@ -220,6 +226,7 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
     private static class AiResponse {
         String content;
         int totalTokens;
+        String finishReason;
     }
 
     private AiResponse callAi(String systemPrompt, String userPrompt) {
@@ -235,6 +242,24 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
                 .uri("/chat/completions")
                 .body(requestBody)
                 .retrieve()
+                .onStatus(status -> status.is4xxClientError() && status.value() != 429,
+                        (req, resp) -> {
+                            String body = new String(resp.getBody().readAllBytes(), StandardCharsets.UTF_8);
+                            log.error("[AiOrganizer] Unrecoverable API error: status={}, body={}", resp.getStatusCode(), body);
+                            throw new AiUnrecoverableException("API client error " + resp.getStatusCode() + ": " + body);
+                        })
+                .onStatus(status -> status.value() == 429,
+                        (req, resp) -> {
+                            String body = new String(resp.getBody().readAllBytes(), StandardCharsets.UTF_8);
+                            log.warn("[AiOrganizer] Rate limited by API: {}", body);
+                            throw new AiRateLimitException("Rate limited");
+                        })
+                .onStatus(status -> status.is5xxServerError(),
+                        (req, resp) -> {
+                            String body = new String(resp.getBody().readAllBytes(), StandardCharsets.UTF_8);
+                            log.warn("[AiOrganizer] API server error: status={}, body={}", resp.getStatusCode(), body);
+                            throw new RuntimeException("API server error " + resp.getStatusCode());
+                        })
                 .body(String.class);
 
         try {
@@ -255,6 +280,16 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
             }
             if (aiResponse.content == null) {
                 throw new RuntimeException("Unexpected API response format: no content");
+            }
+
+            // 检查 finish_reason：如果为 "length" 说明输出被截断，不应重试
+            if (choices != null && !choices.isEmpty()) {
+                Object fr = choices.get(0).get("finish_reason");
+                aiResponse.finishReason = fr != null ? fr.toString() : "unknown";
+            }
+            if ("length".equals(aiResponse.finishReason)) {
+                log.warn("[AiOrganizer] finish_reason=length, output truncated, tokens={}", aiResponse.totalTokens);
+                throw new AiTruncatedException("AI output truncated (finish_reason=length), tokens=" + aiResponse.totalTokens);
             }
 
             // 提取 token 使用量：usage.total_tokens
@@ -279,16 +314,22 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
     @SuppressWarnings("unchecked")
     private OrganizedContent parseOrganizedContent(String response) throws Exception {
         String json = extractJson(response);
-        Map<String, Object> map = objectMapper.readValue(json, Map.class);
+        try {
+            Map<String, Object> map = objectMapper.readValue(json, Map.class);
 
-        OrganizedContent content = new OrganizedContent();
-        content.title = (String) map.getOrDefault("title", "");
-        content.summary = (String) map.getOrDefault("summary", "");
-        content.keyPoints = toStringList(map.get("keyPoints"));
-        content.tags = toStringList(map.get("tags"));
-        content.category = (String) map.getOrDefault("category", "");
-        content.fullContent = (String) map.getOrDefault("fullContent", "");
-        return content;
+            OrganizedContent content = new OrganizedContent();
+            content.title = (String) map.getOrDefault("title", "");
+            content.summary = (String) map.getOrDefault("summary", "");
+            content.keyPoints = toStringList(map.get("keyPoints"));
+            content.tags = toStringList(map.get("tags"));
+            content.category = (String) map.getOrDefault("category", "");
+            content.fullContent = (String) map.getOrDefault("fullContent", "");
+            return content;
+        } catch (Exception e) {
+            log.error("[AiOrganizer] JSON parse failed. Raw (first 500): {}",
+                    json.substring(0, Math.min(500, json.length())));
+            throw e;
+        }
     }
 
     private String extractJson(String response) {
@@ -296,12 +337,21 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
         if (matcher.find()) {
             return matcher.group(1).trim();
         }
+        // 大括号计数法：从第一个 { 找到最外层平衡的 JSON
         int start = response.indexOf('{');
-        int end = response.lastIndexOf('}');
-        if (start >= 0 && end > start) {
-            return response.substring(start, end + 1);
+        if (start < 0) {
+            throw new RuntimeException("No JSON found in AI response");
         }
-        throw new RuntimeException("No JSON found in AI response");
+        int depth = 0;
+        for (int i = start; i < response.length(); i++) {
+            char c = response.charAt(i);
+            if (c == '{') depth++;
+            else if (c == '}') {
+                depth--;
+                if (depth == 0) return response.substring(start, i + 1);
+            }
+        }
+        throw new RuntimeException("No balanced JSON found in AI response");
     }
 
     private List<String> toStringList(Object obj) {
@@ -309,5 +359,44 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
             return list.stream().map(Object::toString).toList();
         }
         return Collections.emptyList();
+    }
+
+    /**
+     * 按段落边界截断，避免切断代码块或表格
+     */
+    private static String truncateAtParagraphBoundary(String text, int maxLen) {
+        if (text.length() <= maxLen) return text;
+        // 在 maxLen 附近找最近的双换行（段落边界）
+        int cutPos = text.lastIndexOf("\n\n", maxLen);
+        if (cutPos < maxLen * 0.8) {
+            // 如果最近的段落边界太靠前，退而求其次找单换行
+            cutPos = text.lastIndexOf('\n', maxLen);
+        }
+        if (cutPos < maxLen * 0.5) {
+            // 连单换行都太靠前，暴力截断
+            cutPos = maxLen;
+        }
+        return text.substring(0, cutPos) + "\n\n[...内容过长已截断]";
+    }
+
+    /**
+     * AI 输出被 token 限制截断，重试无意义
+     */
+    static class AiTruncatedException extends RuntimeException {
+        AiTruncatedException(String message) { super(message); }
+    }
+
+    /**
+     * API 客户端错误（401/403/400），重试无法恢复
+     */
+    static class AiUnrecoverableException extends RuntimeException {
+        AiUnrecoverableException(String message) { super(message); }
+    }
+
+    /**
+     * API 限速（429），需更长退避
+     */
+    static class AiRateLimitException extends RuntimeException {
+        AiRateLimitException(String message) { super(message); }
     }
 }

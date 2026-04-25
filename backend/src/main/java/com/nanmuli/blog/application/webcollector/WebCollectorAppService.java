@@ -233,6 +233,9 @@ public class WebCollectorAppService {
             throw new BusinessException("任务内容为空，无法转为日志");
         }
 
+        // 将 AI keyPoints/tags 作为结构化元数据插入内容头部
+        content = prependAiMetadata(task, content);
+
         // 构建日志创建命令
         CreateDailyLogCommand logCommand = new CreateDailyLogCommand();
         logCommand.setContent(content);
@@ -319,12 +322,16 @@ public class WebCollectorAppService {
             if (task.getAiKeyPoints() != null && !task.getAiKeyPoints().isBlank()) {
                 keyPoints = objectMapper.readValue(task.getAiKeyPoints(), List.class);
             }
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            log.warn("[prependAiMetadata] Failed to parse aiKeyPoints for task {}: {}", task.getId(), e.getMessage());
+        }
         try {
             if (task.getAiTags() != null && !task.getAiTags().isBlank()) {
                 tags = objectMapper.readValue(task.getAiTags(), List.class);
             }
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            log.warn("[prependAiMetadata] Failed to parse aiTags for task {}: {}", task.getId(), e.getMessage());
+        }
 
         if ((keyPoints != null && !keyPoints.isEmpty()) || (tags != null && !tags.isEmpty())) {
             header.append("## AI 摘要\n\n");

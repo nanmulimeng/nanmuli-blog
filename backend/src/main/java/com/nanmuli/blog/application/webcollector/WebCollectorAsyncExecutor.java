@@ -167,8 +167,16 @@ public class WebCollectorAsyncExecutor {
 
             } catch (Exception e) {
                 lastException = e;
+                String simpleName = e.getClass().getSimpleName();
+                // 不可恢复错误：token 截断、API 客户端错误（401/403），直接失败
+                if (simpleName.equals("AiTruncatedException") || simpleName.equals("AiUnrecoverableException")) {
+                    log.warn("[AiOrganizer] Unrecoverable error ({}), skipping retry. taskId={}", simpleName, task.getId());
+                    break;
+                }
                 if (attempt < maxRetries) {
-                    long backoffMs = (long) Math.pow(2, attempt) * 1000;
+                    // 429 限速用更长退避（10s），其他错误用指数退避
+                    long backoffMs = simpleName.equals("AiRateLimitException")
+                            ? 10000 : (long) Math.pow(2, attempt) * 1000;
                     log.warn("[AiOrganizer] Attempt {}/{} failed, retrying in {}ms. taskId={}",
                             attempt + 1, maxRetries + 1, backoffMs, task.getId(), e);
                     try {
