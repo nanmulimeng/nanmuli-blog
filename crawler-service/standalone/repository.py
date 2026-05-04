@@ -30,14 +30,14 @@ def _row_to_dict(row) -> Optional[dict]:
 
 async def create_task(task_type: str, source_url: str = None, keyword: str = None,
                       search_engine: str = "bing", max_depth: int = 1,
-                      max_pages: int = 10) -> int:
+                      max_pages: int = 10, config_json: str = None) -> int:
     """创建任务，返回 task_id"""
     async with get_db() as db:
         db.row_factory = sqlite3.Row
         await db.execute(
-            """INSERT INTO crawl_task (task_type, source_url, keyword, search_engine, max_depth, max_pages)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (task_type, source_url, keyword, search_engine, max_depth, max_pages)
+            """INSERT INTO crawl_task (task_type, source_url, keyword, search_engine, max_depth, max_pages, crawl_config)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (task_type, source_url, keyword, search_engine, max_depth, max_pages, config_json)
         )
         await db.commit()
         cursor = await db.execute("SELECT last_insert_rowid()")
@@ -139,36 +139,39 @@ async def reset_task_for_retry(task_id: int):
 async def save_pages(task_id: int, results: list) -> int:
     """批量保存爬取结果页面，返回总字数"""
     total_words = 0
-    async with get_db() as db:
-        for i, r in enumerate(results):
-            rdict = r.to_dict() if hasattr(r, 'to_dict') else r
-            status = PageStatus.COMPLETED if rdict.get("success") else PageStatus.FAILED
-            metadata_json = json.dumps(rdict.get("metadata", {}), ensure_ascii=False) if rdict.get("metadata") else None
-            wc = rdict.get("word_count", 0)
-            total_words += wc
+    rows = []
+    for i, r in enumerate(results):
+        rdict = r.to_dict() if hasattr(r, 'to_dict') else r
+        status = PageStatus.COMPLETED if rdict.get("success") else PageStatus.FAILED
+        metadata_json = json.dumps(rdict.get("metadata", {}), ensure_ascii=False) if rdict.get("metadata") else None
+        wc = rdict.get("word_count", 0)
+        total_words += wc
 
-            await db.execute(
-                """INSERT INTO crawl_page
-                   (task_id, url, page_title, raw_markdown, page_metadata,
-                    crawl_status, error_message, crawl_duration, word_count,
-                    url_hash, sort_order, depth, search_rank)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    task_id,
-                    rdict.get("url", ""),
-                    rdict.get("title"),
-                    rdict.get("markdown"),
-                    metadata_json,
-                    status,
-                    rdict.get("error_message"),
-                    rdict.get("crawl_time_ms"),
-                    wc,
-                    _hash_url(rdict.get("url", "")),
-                    i,
-                    rdict.get("depth", 0),
-                    rdict.get("search_rank", 0),
-                )
-            )
+        rows.append((
+            task_id,
+            rdict.get("url", ""),
+            rdict.get("title"),
+            rdict.get("markdown"),
+            metadata_json,
+            status,
+            rdict.get("error_message"),
+            rdict.get("crawl_time_ms"),
+            wc,
+            _hash_url(rdict.get("url", "")),
+            i,
+            rdict.get("depth", 0),
+            rdict.get("search_rank", 0),
+        ))
+
+    async with get_db() as db:
+        await db.executemany(
+            """INSERT INTO crawl_page
+               (task_id, url, page_title, raw_markdown, page_metadata,
+                crawl_status, error_message, crawl_duration, word_count,
+                url_hash, sort_order, depth, search_rank)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            rows
+        )
         await db.commit()
     return total_words
 
@@ -182,12 +185,6 @@ async def get_pages_by_task(task_id: int) -> list[dict]:
         )
         rows = await cursor.fetchall()
         return [_row_to_dict(r) for r in rows]
-
-
-async def exists_url_hash(url_hash: str) -> bool:
-    async with get_db() as db:
-        cursor = await db.execute("SELECT 1 FROM crawl_page WHERE url_hash = ? LIMIT 1", (url_hash,))
-        return await cursor.fetchone() is not None
 
 
 # ============== Stats ==============

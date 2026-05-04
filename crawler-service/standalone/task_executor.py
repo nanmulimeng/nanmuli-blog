@@ -43,7 +43,12 @@ class TaskExecutor:
         try:
             await repo.update_task_status(task_id, TaskStatus.CRAWLING)
 
-            config = CrawlConfig()
+            # 从 DB 恢复用户提交的 config，若无则用默认值
+            config_json = task.get("crawl_config")
+            if config_json:
+                config = CrawlConfig.model_validate_json(config_json)
+            else:
+                config = CrawlConfig()
 
             if task["task_type"] == "single":
                 result = await crawl_single_page(url=task["source_url"], config=config)

@@ -7,15 +7,15 @@ BFS 遍历同域名下的多个页面
 import time
 import logging
 from typing import List, Optional
-from urllib.parse import urljoin, urlparse
-from collections import deque
+from urllib.parse import urlparse
 
 from crawl4ai import AsyncWebCrawler
 from crawl4ai.deep_crawling import BFSDeepCrawlStrategy
-from crawl4ai.deep_crawling.filters import FilterChain, DomainFilter, URLFilter
+from crawl4ai.deep_crawling.filters import FilterChain, DomainFilter
 
-from .config import get_browser_config, get_crawler_run_config
-from .single import CrawlResult, crawl_single_page
+from .config import get_browser_config, get_crawler_run_config, RunParams, extract_markdown
+from .metadata import extract_metadata
+from .single import CrawlResult
 
 logger = logging.getLogger(__name__)
 
@@ -43,21 +43,7 @@ async def crawl_deep_pages(
     crawled_urls = set()
 
     try:
-        # 转换配置
-        if config is None:
-            text_mode = True
-            light_mode = False
-            word_count_threshold = 5
-            excluded_tags = ["nav", "footer", "aside", "header", "script", "style", "noscript", "iframe"]
-            wait_until = "networkidle"
-            page_timeout = 60000
-        else:
-            text_mode = getattr(config, 'text_mode', True)
-            light_mode = getattr(config, 'light_mode', False)
-            word_count_threshold = getattr(config, 'word_count_threshold', 5)
-            excluded_tags = getattr(config, 'excluded_tags', ["nav", "footer", "aside", "header", "script", "style", "noscript", "iframe"])
-            wait_until = getattr(config, 'wait_until', "networkidle")
-            page_timeout = getattr(config, 'page_timeout', 60000)
+        params = RunParams(config)
 
         # 提取域名
         parsed = urlparse(url)
@@ -66,12 +52,12 @@ async def crawl_deep_pages(
 
         logger.info(f"[Deep] Starting BFS crawl: {url}, depth={max_depth}, max_pages={max_pages}, domain={base_domain}")
 
-        browser_config = get_browser_config(text_mode=text_mode, light_mode=light_mode)
+        browser_config = get_browser_config(text_mode=params.text_mode, light_mode=params.light_mode)
         run_config = get_crawler_run_config(
-            word_count_threshold=word_count_threshold,
-            excluded_tags=excluded_tags,
-            wait_until=wait_until,
-            page_timeout=page_timeout
+            word_count_threshold=params.word_count_threshold,
+            excluded_tags=params.excluded_tags,
+            wait_until=params.wait_until,
+            page_timeout=params.page_timeout
         )
 
         # 配置深度爬取策略
@@ -92,14 +78,9 @@ async def crawl_deep_pages(
                 page_count += 1
 
                 if result.success:
-                    # Crawl4AI 0.8.x: 优先 fit_markdown（经过 PruningContentFilter 去噪），raw_markdown 作 fallback
-                    markdown = None
-                    if hasattr(result.markdown, 'fit_markdown') and result.markdown.fit_markdown:
-                        markdown = result.markdown.fit_markdown
-                    elif hasattr(result.markdown, 'raw_markdown') and result.markdown.raw_markdown:
-                        markdown = result.markdown.raw_markdown
-                    if not markdown:
-                        markdown = str(result.markdown) if result.markdown else ""
+                    # 智能提取 markdown：fit_markdown 优先，过度裁剪时自动回退 raw_markdown
+                    markdown = extract_markdown(result)
+
                     word_count = len(markdown.replace('\n', '').replace(' ', '')) if markdown else 0
 
                     # 获取深度信息（Crawl4AI 0.8.x: depth 在 metadata 中）
@@ -109,14 +90,28 @@ async def crawl_deep_pages(
                     if depth is None:
                         depth = 0
 
+                    # 提取丰富元数据（与 single.py 一致）
+                    page_metadata = extract_metadata(
+                        html_content=result.html,
+                        base_url=result.url
+                    ) if result.html else {}
+
+                    page_metadata['links_found'] = len(getattr(result, 'links', {}).get('internal', []))
+
+                    if hasattr(result, 'metadata') and isinstance(result.metadata, dict):
+                        page_metadata.update({
+                            'crawl4ai_title': result.metadata.get('title'),
+                            'crawl4ai_description': result.metadata.get('description'),
+                        })
+
+                    page_title = page_metadata.get('title') or page_metadata.get('crawl4ai_title')
+
                     crawl_result = CrawlResult(
                         success=True,
                         url=result.url,
-                        title=result.metadata.get('title') if hasattr(result, 'metadata') and isinstance(result.metadata, dict) else None,
+                        title=page_title,
                         markdown=markdown,
-                        metadata={
-                            'links_found': len(getattr(result, 'links', {}).get('internal', [])),
-                        },
+                        metadata=page_metadata,
                         word_count=word_count,
                         crawl_time_ms=getattr(result, 'crawl_time', 0),
                         depth=depth

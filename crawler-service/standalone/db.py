@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS crawl_task (
     search_engine   TEXT DEFAULT 'bing',
     max_depth       INTEGER DEFAULT 1,
     max_pages       INTEGER DEFAULT 10,
+    crawl_config    TEXT,
     status          INTEGER NOT NULL DEFAULT 0,
     error_message   TEXT,
     total_pages     INTEGER DEFAULT 1,
@@ -63,6 +64,7 @@ async def init_db():
         db.text_factory = lambda b: b.decode("utf-8", errors="replace")
         await db.execute("PRAGMA journal_mode=WAL")
         await db.execute("PRAGMA foreign_keys=ON")
+        await db.execute("PRAGMA busy_timeout=5000")
         await db.execute("PRAGMA encoding = 'UTF-8'")
         await db.executescript(DDL)
         await db.commit()
@@ -76,4 +78,5 @@ async def get_db():
     async with aiosqlite.connect(settings.db_path) as db:
         db.text_factory = lambda b: b.decode("utf-8", errors="replace")
         await db.execute("PRAGMA foreign_keys=ON")
+        await db.execute("PRAGMA busy_timeout=5000")
         yield db

@@ -4,16 +4,18 @@
 基于搜索引擎的关键词搜索，爬取搜索结果页面的内容
 """
 
-import re
 import asyncio
 import time
 import logging
 from typing import List, Optional
-from urllib.parse import quote_plus, urljoin, urlparse
+from urllib.parse import quote_plus
 
 import httpx
 from bs4 import BeautifulSoup
 
+from crawl4ai import AsyncWebCrawler
+
+from .config import get_browser_config, RunParams
 from .single import CrawlResult, crawl_single_page
 
 logger = logging.getLogger(__name__)
@@ -77,32 +79,14 @@ async def crawl_by_keyword(
 
         logger.info(f"[Search] Found {len(search_urls)} URLs for keyword '{keyword}'")
 
-        # 逐个爬取搜索结果页面
-        results = []
-        for rank, url in enumerate(search_urls, 1):
-            try:
-                logger.debug(f"[Search] Crawling result {rank}/{len(search_urls)}: {url}")
+        # 共享浏览器实例 + 并发控制
+        params = RunParams(config)
+        browser_config = get_browser_config(text_mode=params.text_mode, light_mode=params.light_mode)
 
-                result = await crawl_single_page(url=url, config=config)
-                # 设置搜索排名和关键词（顶层字段）
-                result.search_rank = rank
-                result.metadata['search_keyword'] = keyword
-                result.metadata['search_engine'] = engine
-
-                results.append(result)
-
-            except Exception as e:
-                logger.warning(f"[Search] Failed to crawl {url}: {e}")
-                results.append(CrawlResult(
-                    success=False,
-                    url=url,
-                    error_message=str(e),
-                    metadata={'search_rank': rank, 'search_keyword': keyword}
-                ))
-
-            # 小延迟避免请求过快（使用 asyncio.sleep 不阻塞事件循环）
-            if rank < len(search_urls):
-                await asyncio.sleep(0.5)
+        results = await _crawl_urls_with_shared_browser(
+            urls=search_urls, keyword=keyword, engine=engine,
+            config=config, browser_config=browser_config
+        )
 
         total_time = int((time.time() - start_time) * 1000)
         success_count = sum(1 for r in results if r.success)
@@ -111,32 +95,23 @@ async def crawl_by_keyword(
         return results
 
     except Exception as e:
-        logger.error(f"[Search] Primary search failed: {e}, attempting fallback to DuckDuckGo")
+        logger.error(f"[Search] Primary search failed: {e}")
+
         # 降级策略：主搜索引擎失败后尝试 DuckDuckGo
         if engine != 'duckduckgo':
             try:
                 fallback_urls = await _fallback_search(keyword, max_results)
                 if fallback_urls:
                     logger.info(f"[Search] Fallback found {len(fallback_urls)} results")
-                    fallback_results = []
-                    for rank, url in enumerate(fallback_urls[:max_results], 1):
-                        try:
-                            result = await crawl_single_page(url=url, config=config)
-                            if result and result.success:
-                                result.search_rank = rank
-                                result.metadata['search_keyword'] = keyword
-                                result.metadata['fallback'] = True
-                            fallback_results.append(result)
-                        except Exception as page_e:
-                            fallback_results.append(CrawlResult(
-                                success=False,
-                                url=url,
-                                error_message=str(page_e),
-                                search_rank=rank,
-                                metadata={'search_keyword': keyword, 'fallback': True}
-                            ))
-                        if rank < len(fallback_urls):
-                            await asyncio.sleep(0.5)
+                    fallback_urls = fallback_urls[:max_results]
+
+                    params = RunParams(config)
+                    browser_config = get_browser_config(text_mode=params.text_mode, light_mode=params.light_mode)
+                    fallback_results = await _crawl_urls_with_shared_browser(
+                        urls=fallback_urls, keyword=keyword, engine='duckduckgo',
+                        config=config, browser_config=browser_config,
+                        is_fallback=True
+                    )
                     return fallback_results
             except Exception as fallback_e:
                 logger.error(f"[Search] Fallback also failed: {fallback_e}")
@@ -146,6 +121,46 @@ async def crawl_by_keyword(
             url="",
             error_message=f"Search crawl failed: {str(e)}"
         )]
+
+
+async def _crawl_urls_with_shared_browser(
+    urls: List[str],
+    keyword: str,
+    engine: str,
+    config: Optional[object],
+    browser_config,
+    is_fallback: bool = False
+) -> List[CrawlResult]:
+    """共享浏览器实例 + 并发信号量爬取多个 URL"""
+    sem = asyncio.Semaphore(3)
+
+    async def _crawl_one(rank: int, url: str) -> CrawlResult:
+        async with sem:
+            try:
+                result = await crawl_single_page(url=url, config=config, crawler=crawler)
+                result.search_rank = rank
+                result.metadata['search_keyword'] = keyword
+                result.metadata['search_engine'] = engine
+                if is_fallback:
+                    result.metadata['fallback'] = True
+                return result
+            except Exception as e:
+                logger.warning(f"[Search] Failed to crawl {url}: {e}")
+                meta = {'search_rank': rank, 'search_keyword': keyword}
+                if is_fallback:
+                    meta['fallback'] = True
+                return CrawlResult(
+                    success=False,
+                    url=url,
+                    error_message=str(e),
+                    search_rank=rank,
+                    metadata=meta
+                )
+
+    async with AsyncWebCrawler(config=browser_config) as crawler:
+        tasks = [_crawl_one(rank, url) for rank, url in enumerate(urls, 1)]
+        results = await asyncio.gather(*tasks)
+        return list(results)
 
 
 async def _get_search_results(
@@ -174,9 +189,9 @@ async def _get_search_results(
     )
 
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.5',
     }
 
     async with httpx.AsyncClient(follow_redirects=True, timeout=30) as client:

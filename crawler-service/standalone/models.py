@@ -8,7 +8,6 @@ class TaskStatus:
     FAILED = 3
 
     LABELS = {0: "待处理", 1: "爬取中", 2: "已完成", 3: "失败"}
-    DISPLAY = {0: "PENDING", 1: "CRAWLING", 2: "COMPLETED", 3: "FAILED"}
 
     @classmethod
     def label(cls, status: int) -> str:

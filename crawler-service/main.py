@@ -17,12 +17,17 @@ Web Collector - Python Crawler Service
 from __future__ import annotations
 
 import os
+import sys
 import logging
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
-# Windows UTF-8 模式：确保 sqlite3 和 IO 操作使用 UTF-8 而非系统编码（GBK）
+# Windows UTF-8 全局保护：Crawl4AI/Playwright 输出包含 Unicode 字符，
+# Windows 默认 GBK 编码会崩溃，必须在任何 IO 操作前强制 UTF-8
 os.environ.setdefault("PYTHONUTF8", "1")
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 from dotenv import load_dotenv
 from config import settings

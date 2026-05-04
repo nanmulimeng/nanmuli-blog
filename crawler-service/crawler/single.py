@@ -7,11 +7,10 @@
 import time
 import logging
 from typing import Optional
-from urllib.parse import urljoin, urlparse
 
 from crawl4ai import AsyncWebCrawler
 
-from .config import get_browser_config, get_crawler_run_config
+from .config import get_browser_config, get_crawler_run_config, RunParams, extract_markdown
 from .metadata import extract_metadata
 
 logger = logging.getLogger(__name__)
@@ -60,7 +59,8 @@ class CrawlResult:
 
 async def crawl_single_page(
     url: str,
-    config: Optional[object] = None
+    config: Optional[object] = None,
+    crawler: Optional[AsyncWebCrawler] = None
 ) -> CrawlResult:
     """
     爬取单个页面
@@ -68,53 +68,38 @@ async def crawl_single_page(
     Args:
         url: 目标 URL
         config: 爬取配置（Pydantic 模型或 dict）
+        crawler: 外部传入的浏览器实例（复用时不启停浏览器）
 
     Returns:
         CrawlResult 对象
     """
     start_time = time.time()
+    own_crawler = crawler is None
 
     try:
-        # 转换配置
-        if config is None:
-            text_mode = True
-            light_mode = False
-            word_count_threshold = 5
-            excluded_tags = ["nav", "footer", "aside", "header", "script", "style", "noscript", "iframe"]
-            wait_until = "networkidle"
-            page_timeout = 60000
-        else:
-            text_mode = getattr(config, 'text_mode', True)
-            light_mode = getattr(config, 'light_mode', False)
-            word_count_threshold = getattr(config, 'word_count_threshold', 5)
-            excluded_tags = getattr(config, 'excluded_tags', ["nav", "footer", "aside", "header", "script", "style", "noscript", "iframe"])
-            wait_until = getattr(config, 'wait_until', "networkidle")
-            page_timeout = getattr(config, 'page_timeout', 60000)
+        params = RunParams(config)
 
         logger.info(f"[Single] Crawling: {url}")
 
-        browser_config = get_browser_config(text_mode=text_mode, light_mode=light_mode)
+        browser_config = get_browser_config(text_mode=params.text_mode, light_mode=params.light_mode)
         run_config = get_crawler_run_config(
-            word_count_threshold=word_count_threshold,
-            excluded_tags=excluded_tags,
-            wait_until=wait_until,
-            page_timeout=page_timeout
+            word_count_threshold=params.word_count_threshold,
+            excluded_tags=params.excluded_tags,
+            wait_until=params.wait_until,
+            page_timeout=params.page_timeout
         )
 
-        async with AsyncWebCrawler(config=browser_config) as crawler:
+        if own_crawler:
+            crawler = AsyncWebCrawler(config=browser_config)
+            await crawler.__aenter__()
+
+        try:
             result = await crawler.arun(url=url, config=run_config)
 
             if result.success:
-                # Crawl4AI 0.8.x: 优先 fit_markdown（经过 PruningContentFilter 去噪），raw_markdown 作 fallback
-                markdown = None
-                if hasattr(result.markdown, 'fit_markdown') and result.markdown.fit_markdown:
-                    markdown = result.markdown.fit_markdown
-                elif hasattr(result.markdown, 'raw_markdown') and result.markdown.raw_markdown:
-                    markdown = result.markdown.raw_markdown
-                if not markdown:
-                    markdown = str(result.markdown) if result.markdown else ""
+                # 智能提取 markdown：fit_markdown 优先，过度裁剪时自动回退 raw_markdown
+                markdown = extract_markdown(result)
 
-                # 计算字数
                 word_count = len(markdown.replace('\n', '').replace(' ', '')) if markdown else 0
 
                 # 提取元数据
@@ -123,7 +108,6 @@ async def crawl_single_page(
                     base_url=url
                 )
 
-                # 添加 Crawl4AI 提供的元数据
                 if hasattr(result, 'metadata') and isinstance(result.metadata, dict):
                     metadata.update({
                         'crawl4ai_title': result.metadata.get('title'),
@@ -153,6 +137,9 @@ async def crawl_single_page(
                     error_message=error_msg,
                     crawl_time_ms=int((time.time() - start_time) * 1000)
                 )
+        finally:
+            if own_crawler:
+                await crawler.__aexit__(None, None, None)
 
     except Exception as e:
         logger.error(f"[Single] Exception: {url}, {str(e)}", exc_info=True)

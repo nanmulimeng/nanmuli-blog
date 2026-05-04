@@ -1,5 +1,6 @@
 """独立模式管理 API 路由"""
 
+import json
 import logging
 
 from fastapi import APIRouter, HTTPException, Query
@@ -41,6 +42,8 @@ async def create_task(request: CreateTaskRequest):
 
     source_url = str(request.url) if request.url else None
 
+    config_json = request.config.model_dump_json() if request.config else None
+
     task_id = await repo.create_task(
         task_type=request.task_type,
         source_url=source_url,
@@ -48,6 +51,7 @@ async def create_task(request: CreateTaskRequest):
         search_engine=request.search_engine,
         max_depth=request.max_depth,
         max_pages=request.max_pages,
+        config_json=config_json,
     )
 
     # 提交异步执行
