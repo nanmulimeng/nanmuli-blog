@@ -27,12 +27,14 @@ import java.util.regex.Pattern;
 @ConditionalOnExpression("!'${spring.ai.dashscope.api-key:}'.isEmpty()")
 public class DashScopeContentOrganizer implements AiContentOrganizer {
 
-    /** 单页最大输入字符数 */
-    private static final int SINGLE_PAGE_MAX_CHARS = 80_000;
-    /** 多页每页最大字符数 */
-    private static final int MULTI_PAGE_PER_MAX_CHARS = 20_000;
-    /** 多页总输入字符预算上限 */
-    private static final int MULTI_PAGE_TOTAL_BUDGET = 150_000;
+    @Value("${blog.ai.organizer.single-page-max-chars:80000}")
+    private int singlePageMaxChars;
+
+    @Value("${blog.ai.organizer.multi-page-per-max-chars:20000}")
+    private int multiPagePerMaxChars;
+
+    @Value("${blog.ai.organizer.multi-page-total-budget:150000}")
+    private int multiPageTotalBudget;
 
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
@@ -46,10 +48,12 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
     public DashScopeContentOrganizer(
             @Value("${spring.ai.dashscope.api-key:}") String apiKey,
             @Value("${spring.ai.dashscope.base-url:https://dashscope.aliyuncs.com/compatible-mode/v1}") String baseUrl,
+            @Value("${blog.ai.organizer.connect-timeout-seconds:10}") int connectTimeoutSeconds,
+            @Value("${blog.ai.organizer.read-timeout-seconds:90}") int readTimeoutSeconds,
             ObjectMapper objectMapper) {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(Duration.ofSeconds(10));
-        factory.setReadTimeout(Duration.ofSeconds(90));
+        factory.setConnectTimeout(Duration.ofSeconds(connectTimeoutSeconds));
+        factory.setReadTimeout(Duration.ofSeconds(readTimeoutSeconds));
         this.restClient = RestClient.builder()
                 .baseUrl(baseUrl)
                 .defaultHeader("Authorization", "Bearer " + apiKey)
@@ -159,7 +163,7 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
             """;
 
     private String buildSinglePagePrompt(String rawMarkdown, AiTemplate template) {
-        String truncated = truncateAtParagraphBoundary(rawMarkdown, SINGLE_PAGE_MAX_CHARS);
+        String truncated = truncateAtParagraphBoundary(rawMarkdown, singlePageMaxChars);
 
         String roleInstruction = switch (template) {
             case TECH_SUMMARY -> "请对以下网页内容进行深度阅读和结构化整理。"
@@ -197,7 +201,7 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
         sb.append("## 来源内容\n\n");
 
         // [B3] 多页总输入预算上限：先截断每页，再按总预算裁剪后面的页面
-        int remainingBudget = MULTI_PAGE_TOTAL_BUDGET;
+        int remainingBudget = multiPageTotalBudget;
         for (int i = 0; i < pages.size(); i++) {
             PageContent page = pages.get(i);
             sb.append("### 来源 ").append(i + 1).append(": ")
@@ -205,7 +209,7 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
             sb.append("URL: ").append(page.url != null ? page.url : "未知").append("\n\n");
 
             String md = page.markdown != null ? page.markdown : "";
-            int perPageBudget = Math.min(MULTI_PAGE_PER_MAX_CHARS, remainingBudget);
+            int perPageBudget = Math.min(multiPagePerMaxChars, remainingBudget);
             if (perPageBudget <= 0) {
                 sb.append("[已达到总输入预算上限，后续来源已省略]\n\n");
                 continue;

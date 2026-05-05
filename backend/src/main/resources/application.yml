@@ -72,3 +72,17 @@ blog:
     model: qwen3.6-plus
     auto-tags: true
     auto-summary: true
+    organizer:
+      # 输入预算(字符数)
+      single-page-max-chars: 80000
+      multi-page-per-max-chars: 20000
+      multi-page-total-budget: 150000
+      # HTTP 超时(秒)
+      connect-timeout-seconds: 10
+      read-timeout-seconds: 90
+      # 重试策略
+      max-retries: 2
+      rate-limit-backoff-ms: 10000
+      # 整理 Future 等待超时(秒)
+      single-page-future-timeout-seconds: 120
+      multi-page-future-timeout-seconds: 180

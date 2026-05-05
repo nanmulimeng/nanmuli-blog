@@ -9,6 +9,7 @@ import com.nanmuli.blog.shared.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -34,6 +35,18 @@ public class WebCollectorAsyncExecutor {
 
     @Autowired(required = false)
     private AiContentOrganizer aiContentOrganizer;
+
+    @Value("${blog.ai.organizer.max-retries:2}")
+    private int maxRetries;
+
+    @Value("${blog.ai.organizer.rate-limit-backoff-ms:10000}")
+    private long rateLimitBackoffMs;
+
+    @Value("${blog.ai.organizer.single-page-future-timeout-seconds:120}")
+    private int singlePageFutureTimeoutSeconds;
+
+    @Value("${blog.ai.organizer.multi-page-future-timeout-seconds:180}")
+    private int multiPageFutureTimeoutSeconds;
 
     /**
      * 异步执行爬取任务
@@ -142,7 +155,6 @@ public class WebCollectorAsyncExecutor {
             return false;
         }
 
-        int maxRetries = 2;
         Exception lastException = null;
 
         for (int attempt = 0; attempt <= maxRetries; attempt++) {
@@ -175,9 +187,9 @@ public class WebCollectorAsyncExecutor {
                     break;
                 }
                 if (attempt < maxRetries) {
-                    // 429 限速用更长退避（10s），其他错误用指数退避
+                    // 429 限速用更长退避，其他错误用指数退避
                     long backoffMs = e instanceof AiOrganizerException.RateLimitException
-                            ? 10000 : (long) Math.pow(2, attempt) * 1000;
+                            ? rateLimitBackoffMs : (long) Math.pow(2, attempt) * 1000;
                     log.warn("[AiOrganizer] Attempt {}/{} failed, retrying in {}ms. taskId={}",
                             attempt + 1, maxRetries + 1, backoffMs, task.getId(), e);
                     try {
@@ -210,7 +222,7 @@ public class WebCollectorAsyncExecutor {
                 throw new RuntimeException("No markdown content to organize");
             }
             return aiContentOrganizer.organize(rawMarkdown, template)
-                    .get(120, TimeUnit.SECONDS);
+                    .get(singlePageFutureTimeoutSeconds, TimeUnit.SECONDS);
         }
 
         List<AiContentOrganizer.PageContent> pages = crawlResults.stream()
@@ -229,7 +241,7 @@ public class WebCollectorAsyncExecutor {
         }
 
         return aiContentOrganizer.organizeMultiple(pages, template, task.getKeyword())
-                .get(180, TimeUnit.SECONDS);
+                .get(multiPageFutureTimeoutSeconds, TimeUnit.SECONDS);
     }
 
     /**
