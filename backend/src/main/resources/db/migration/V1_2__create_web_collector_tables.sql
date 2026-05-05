@@ -66,8 +66,8 @@ CREATE TABLE IF NOT EXISTS web_collect_task (
     -- AI 整理结果（汇总级别）
     ai_title        VARCHAR(500),                   -- AI 生成的标题
     ai_summary      TEXT,                           -- AI 生成的汇总摘要
-    ai_key_points   JSONB,                          -- 关键要点 ["point1", "point2"]
-    ai_tags         JSONB,                          -- 标签建议 ["tag1", "tag2"]
+    ai_key_points   TEXT,                           -- 关键要点 JSON 字符串
+    ai_tags         TEXT,                           -- 标签建议 JSON 字符串
     ai_category     VARCHAR(100),                   -- 分类建议
     ai_full_content TEXT,                           -- AI 整理后的完整 Markdown
 
