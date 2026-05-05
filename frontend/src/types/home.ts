@@ -13,7 +13,7 @@ export interface HomeAggregated {
   stats: SiteStats
 }
 
-export interface SiteStats {
+interface SiteStats {
   articleCount: number
   projectCount: number
   dailyLogCount: number

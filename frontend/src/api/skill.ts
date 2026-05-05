@@ -21,6 +21,3 @@ export function deleteSkill(id: string): Promise<void> {
   return del<void>(`/admin/skill/${id}`)
 }
 
-export function getSkillById(id: string): Promise<Skill> {
-  return get<Skill>(`/skill/${id}`)
-}

@@ -1,7 +1,7 @@
 import { get } from '@/utils/request'
 import type { Article } from '@/types/article'
 
-export interface DashboardStats {
+interface DashboardStats {
   articleCount: number
   projectCount: number  // 项目数量
   visitCount: number    // 访问量（PV）

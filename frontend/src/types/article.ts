@@ -34,22 +34,8 @@ export interface ArticleQuery extends PageQuery {
   sort?: string
 }
 
-export interface ArticleListResult {
-  list: Article[]
-  total: number
-}
-
-
 export interface ArticleArchive {
   year: string
   month: string
   count: number
-  articles?: ArticleSimple[]
-}
-
-export interface ArticleSimple {
-  id: string
-  title: string
-  slug: string
-  publishTime: string
 }

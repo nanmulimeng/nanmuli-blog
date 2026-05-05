@@ -18,7 +18,7 @@ function getSystemTheme(): 'light' | 'dark' {
 }
 
 // 应用主题到 DOM - 只切换 class，CSS 变量由 scss 文件控制
-export function applyTheme(mode: ThemeMode) {
+function applyTheme(mode: ThemeMode) {
   const root = document.documentElement
   currentMode = mode
 
@@ -73,7 +73,7 @@ function handleSystemThemeChange(e: MediaQueryListEvent) {
 }
 
 // 获取保存的主题
-export function getSavedTheme(): ThemeMode {
+function getSavedTheme(): ThemeMode {
   if (typeof window === 'undefined') return 'light'
   return (localStorage.getItem('blog-theme-mode') as ThemeMode) || 'light'
 }
@@ -108,7 +108,3 @@ export function isDarkMode(): boolean {
   return currentMode === 'dark'
 }
 
-// 清理主题监听器（用于组件卸载时）
-export function cleanupTheme() {
-  removeSystemThemeListener()
-}

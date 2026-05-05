@@ -6,7 +6,7 @@ import BlankLayout from '@/layouts/BlankLayout.vue'
 /**
  * 公开路由 - 不需要登录
  */
-export const publicRoutes: RouteRecordRaw[] = [
+const publicRoutes: RouteRecordRaw[] = [
   {
     path: '/',
     name: 'Home',
@@ -66,7 +66,7 @@ export const publicRoutes: RouteRecordRaw[] = [
 /**
  * 管理后台路由 - 需要登录
  */
-export const adminRoutes: RouteRecordRaw[] = [
+const adminRoutes: RouteRecordRaw[] = [
   {
     path: '/admin',
     name: 'AdminDashboard',
@@ -150,7 +150,7 @@ export const adminRoutes: RouteRecordRaw[] = [
 /**
  * 错误页面路由
  */
-export const errorRoutes: RouteRecordRaw[] = [
+const errorRoutes: RouteRecordRaw[] = [
   {
     path: '/:pathMatch(.*)*',
     name: 'NotFound',

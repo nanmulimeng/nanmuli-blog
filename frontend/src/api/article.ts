@@ -1,5 +1,5 @@
 import { get, post, put, del } from '@/utils/request'
-import type { Article, ArticleQuery, ArticleArchive } from '@/types/article'
+import type { Article, ArticleQuery } from '@/types/article'
 import type { PageResult } from '@/types/api'
 
 // 公开接口：获取已发布文章列表
@@ -34,14 +34,6 @@ export function updateArticle(id: string, data: Partial<Article>): Promise<void>
 
 export function deleteArticle(id: string): Promise<void> {
   return del<void>(`/admin/article/${id}`)
-}
-
-export function getArticleArchive(): Promise<ArticleArchive[]> {
-  return get<ArticleArchive[]>('/article/archive')
-}
-
-export function recordArticleView(slug: string): Promise<void> {
-  return post<void>(`/article/${slug}/view`)
 }
 
 // 记录文章阅读用户（UV统计）

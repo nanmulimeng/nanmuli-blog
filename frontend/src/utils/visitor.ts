@@ -21,16 +21,3 @@ export function generateVisitorId(): string {
   return visitorId
 }
 
-/**
- * 获取访客ID（不生成新的）
- */
-export function getVisitorId(): string | null {
-  return localStorage.getItem('blog_visitor_id')
-}
-
-/**
- * 清除访客ID
- */
-export function clearVisitorId(): void {
-  localStorage.removeItem('blog_visitor_id')
-}

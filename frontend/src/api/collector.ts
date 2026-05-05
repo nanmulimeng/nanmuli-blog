@@ -42,7 +42,3 @@ export function convertToDailyLog(taskId: string, data: ConvertToDailyLogCommand
   return post<string>(`/admin/collector/task/${taskId}/to-daily-log`, data)
 }
 
-// 爬虫服务健康检查
-export function checkCrawlerHealth(): Promise<Record<string, any>> {
-  return get<Record<string, any>>('/admin/collector/crawler/health')
-}

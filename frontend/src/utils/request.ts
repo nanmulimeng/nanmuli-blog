@@ -121,16 +121,6 @@ request.interceptors.response.use(
   }
 )
 
-// 取消所有待处理的请求
-export function cancelAllRequests(message?: string): void {
-  pendingControllers.forEach((controller) => {
-    controller.abort(message || '请求被取消')
-  })
-  pendingControllers.clear()
-}
-
-export default request
-
 export function get<T>(url: string, config?: AxiosRequestConfig): Promise<T> {
   return request.get(url, config) as Promise<T>
 }

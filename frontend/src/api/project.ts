@@ -21,6 +21,3 @@ export function deleteProject(id: string): Promise<void> {
   return del<void>(`/admin/project/${id}`)
 }
 
-export function getProjectById(id: string): Promise<Project> {
-  return get<Project>(`/project/${id}`)
-}
