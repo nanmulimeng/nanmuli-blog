@@ -4,6 +4,7 @@
 爬取单个 URL 的内容，返回 Markdown 格式文本
 """
 
+import re
 import time
 import logging
 from typing import Optional
@@ -100,7 +101,8 @@ async def crawl_single_page(
                 # 智能提取 markdown：fit_markdown 优先，过度裁剪时自动回退 raw_markdown
                 markdown = extract_markdown(result)
 
-                word_count = len(markdown.replace('\n', '').replace(' ', '')) if markdown else 0
+                # 字数统计：中文字符 + 英文单词
+                word_count = _count_words(markdown) if markdown else 0
 
                 # 提取元数据
                 metadata = extract_metadata(
@@ -150,3 +152,17 @@ async def crawl_single_page(
             error_message=str(e),
             crawl_time_ms=int((time.time() - start_time) * 1000)
         )
+
+
+def _count_words(text: str) -> int:
+    """
+    统计文本字数：中文字符 + 英文单词。
+    比纯字符数更能反映实际内容量。
+    """
+    if not text:
+        return 0
+    # 中文字符计数
+    cn_chars = len(re.findall(r'[一-鿿]', text))
+    # 英文单词计数（字母序列）
+    en_words = len(re.findall(r'[a-zA-Z]+', text))
+    return cn_chars + en_words

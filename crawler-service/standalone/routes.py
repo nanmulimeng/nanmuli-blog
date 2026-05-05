@@ -23,7 +23,7 @@ class CreateTaskRequest(BaseModel):
     task_type: str = Field(..., pattern="^(single|deep|keyword)$")
     url: Opt[HttpUrl] = None
     keyword: Opt[str] = None
-    search_engine: str = Field(default="bing", pattern="^(bing|duckduckgo)$")
+    search_engine: str = Field(default="sogou", pattern="^(sogou|bing|duckduckgo|google)$")
     max_depth: int = Field(default=1, ge=1, le=5)
     max_pages: int = Field(default=10, ge=1, le=20)
     config: Opt[CrawlConfig] = None

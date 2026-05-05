@@ -18,7 +18,7 @@ router = APIRouter()
 # ============== Pydantic Models ==============
 
 class CrawlConfig(BaseModel):
-    word_count_threshold: int = Field(default=3, ge=0)
+    word_count_threshold: int = Field(default=15, ge=0)
     excluded_tags: list[str] = Field(default=["nav", "footer", "aside", "script", "style", "noscript", "iframe"])
     remove_overlay_elements: bool = Field(default=True)
     wait_until: str = Field(default="networkidle")
@@ -51,7 +51,7 @@ class DeepCrawlRequest(BaseModel):
 
 class SearchCrawlRequest(BaseModel):
     keyword: str = Field(..., min_length=1, max_length=500)
-    engine: str = Field(default="bing", pattern="^(bing|duckduckgo)$")
+    engine: str = Field(default="sogou", pattern="^(sogou|bing|duckduckgo|google)$")
     max_results: int = Field(default=10, ge=1, le=20)
     config: Optional[CrawlConfig] = Field(default_factory=CrawlConfig)
 

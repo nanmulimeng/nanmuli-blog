@@ -28,14 +28,14 @@ class RunParams:
         if config is None:
             self.text_mode = True
             self.light_mode = False
-            self.word_count_threshold = 3
+            self.word_count_threshold = 15
             self.excluded_tags = DEFAULT_EXCLUDED_TAGS.copy()
             self.wait_until = "networkidle"
             self.page_timeout = 60000
         else:
             self.text_mode = getattr(config, 'text_mode', True)
             self.light_mode = getattr(config, 'light_mode', False)
-            self.word_count_threshold = getattr(config, 'word_count_threshold', 3)
+            self.word_count_threshold = getattr(config, 'word_count_threshold', 15)
             self.excluded_tags = getattr(config, 'excluded_tags', DEFAULT_EXCLUDED_TAGS.copy())
             self.wait_until = getattr(config, 'wait_until', "networkidle")
             self.page_timeout = getattr(config, 'page_timeout', 60000)
@@ -60,11 +60,15 @@ def get_browser_config(text_mode: bool = True, light_mode: bool = False) -> Brow
         java_script_enabled=True,
         viewport_width=1280,
         viewport_height=720,
+        enable_stealth=True,       # 启用 stealth 模式反检测
+        avoid_ads=True,            # 阻止广告/追踪域名请求
+        ignore_https_errors=True,  # 忽略 HTTPS 证书错误
         extra_args=[
             "--disable-gpu",
             "--disable-dev-shm-usage",
             "--disable-setuid-sandbox",
             "--no-sandbox",
+            "--disable-blink-features=AutomationControlled",
         ]
     )
 
@@ -100,11 +104,13 @@ def get_crawler_run_config(
         wait_until=wait_until,
         page_timeout=page_timeout,
         magic=True,
+        simulate_user=True,        # 模拟人类交互（鼠标移动等）
+        override_navigator=True,   # 伪造 navigator 属性绕过检测
         scan_full_page=True,
         scroll_delay=0.5,
         markdown_generator=DefaultMarkdownGenerator(
             content_filter=PruningContentFilter(
-                threshold=0.2,
+                threshold=0.5,
                 threshold_type="fixed"
             )
         )

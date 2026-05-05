@@ -5,10 +5,11 @@
 """
 
 import asyncio
+import random
 import time
 import logging
 from typing import List, Optional
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
@@ -22,35 +23,50 @@ logger = logging.getLogger(__name__)
 
 # 搜索引擎配置
 SEARCH_ENGINES = {
+    'sogou': {
+        'result_selector': '.vrwrap',
+        'title_selector': '.vrTitle a, h3 a',
+        'link_selector': '.vrTitle a, h3 a',
+        'snippet_selector': '.str-text, .star-w',
+    },
     'bing': {
-        'url': 'https://www.bing.com/search?q={query}&count={count}',
         'result_selector': 'li.b_algo',
         'title_selector': 'h2 a',
         'link_selector': 'h2 a',
         'snippet_selector': 'p',
     },
     'duckduckgo': {
-        'url': 'https://html.duckduckgo.com/html/?q={query}',
+        'url': 'https://html.duckduckgo.com/html/?q={query}&kl=cn-zh',
         'result_selector': '.result',
         'title_selector': '.result__a',
         'link_selector': '.result__a',
         'snippet_selector': '.result__snippet',
-    }
+    },
+    'google': {
+        'result_selector': 'div.g',
+        'title_selector': 'h3 a',
+        'link_selector': 'h3 a',
+        'snippet_selector': '.VwiC3b, .s3v94d',
+    },
 }
+
+# 引擎优先级（主引擎失败时按此顺序自动轮换）
+ENGINE_PRIORITY = ['sogou', 'bing', 'duckduckgo', 'google']
 
 
 async def crawl_by_keyword(
     keyword: str,
-    engine: str = 'bing',
+    engine: str = 'sogou',
     max_results: int = 10,
     config: Optional[object] = None
 ) -> List[CrawlResult]:
     """
-    通过搜索引擎查找关键词，爬取前 N 个结果
+    通过搜索引擎查找关键词，爬取前 N 个结果。
+    支持多引擎自动轮换：当主引擎返回 0 结果时，自动按优先级尝试其他引擎。
 
     Args:
         keyword: 搜索关键词
-        engine: 搜索引擎 ('bing' 或 'duckduckgo')
+        engine: 首选搜索引擎
         max_results: 最大结果数
         config: 爬取配置
 
@@ -59,68 +75,76 @@ async def crawl_by_keyword(
     """
     start_time = time.time()
 
-    logger.info(f"[Search] Keyword: '{keyword}', engine: {engine}, max_results: {max_results}")
+    logger.info(f"[Search] Keyword: '{keyword}', engine: {engine}, max_results={max_results}")
 
-    try:
-        # 获取搜索结果 URL 列表
-        search_urls = await _get_search_results(
-            keyword=keyword,
-            engine=engine,
-            max_results=max_results
-        )
+    # 构建引擎尝试顺序：首选引擎优先，其余按 ENGINE_PRIORITY 排序
+    engines_to_try = [engine]
+    for e in ENGINE_PRIORITY:
+        if e != engine and e not in engines_to_try:
+            engines_to_try.append(e)
 
-        if not search_urls:
-            logger.warning(f"[Search] No results found for keyword: '{keyword}'")
-            return [CrawlResult(
-                success=False,
-                url="",
-                error_message=f"No search results found for keyword: '{keyword}'"
-            )]
+    all_search_urls = []
+    tried_engines = []
 
-        logger.info(f"[Search] Found {len(search_urls)} URLs for keyword '{keyword}'")
+    # 阶段1：尝试各搜索引擎获取 URL 列表
+    for current_engine in engines_to_try:
+        try:
+            logger.info(f"[Search] Trying engine '{current_engine}' for keyword: '{keyword}'")
+            search_urls = await _get_search_results(
+                keyword=keyword,
+                engine=current_engine,
+                max_results=max_results
+            )
+            tried_engines.append(current_engine)
 
-        # 共享浏览器实例 + 并发控制
-        params = RunParams(config)
-        browser_config = get_browser_config(text_mode=params.text_mode, light_mode=params.light_mode)
+            if search_urls:
+                # 合并去重（跨引擎）
+                new_urls = [u for u in search_urls if u not in all_search_urls]
+                all_search_urls.extend(new_urls)
+                logger.info(
+                    f"[Search] Engine '{current_engine}' returned {len(search_urls)} URLs "
+                    f"({len(new_urls)} new, total unique={len(all_search_urls)})"
+                )
 
-        results = await _crawl_urls_with_shared_browser(
-            urls=search_urls, keyword=keyword, engine=engine,
-            config=config, browser_config=browser_config
-        )
+                # 如果已经拿到足够结果，提前停止
+                if len(all_search_urls) >= max_results:
+                    break
+            else:
+                logger.warning(f"[Search] Engine '{current_engine}' returned 0 results for '{keyword}'")
 
-        total_time = int((time.time() - start_time) * 1000)
-        success_count = sum(1 for r in results if r.success)
-        logger.info(f"[Search] Completed: {success_count}/{len(results)} pages crawled, keyword='{keyword}', time={total_time}ms")
+        except Exception as e:
+            logger.warning(f"[Search] Engine '{current_engine}' failed for '{keyword}': {e}")
+            tried_engines.append(current_engine)
 
-        return results
-
-    except Exception as e:
-        logger.error(f"[Search] Primary search failed: {e}")
-
-        # 降级策略：主搜索引擎失败后尝试 DuckDuckGo
-        if engine != 'duckduckgo':
-            try:
-                fallback_urls = await _fallback_search(keyword, max_results)
-                if fallback_urls:
-                    logger.info(f"[Search] Fallback found {len(fallback_urls)} results")
-                    fallback_urls = fallback_urls[:max_results]
-
-                    params = RunParams(config)
-                    browser_config = get_browser_config(text_mode=params.text_mode, light_mode=params.light_mode)
-                    fallback_results = await _crawl_urls_with_shared_browser(
-                        urls=fallback_urls, keyword=keyword, engine='duckduckgo',
-                        config=config, browser_config=browser_config,
-                        is_fallback=True
-                    )
-                    return fallback_results
-            except Exception as fallback_e:
-                logger.error(f"[Search] Fallback also failed: {fallback_e}")
-
+    if not all_search_urls:
+        logger.error(f"[Search] All engines failed for keyword: '{keyword}'. Tried: {tried_engines}")
         return [CrawlResult(
             success=False,
             url="",
-            error_message=f"Search crawl failed: {str(e)}"
+            error_message=f"No search results found for keyword: '{keyword}' (tried engines: {', '.join(tried_engines)})"
         )]
+
+    # 截断到 max_results
+    all_search_urls = all_search_urls[:max_results]
+    logger.info(f"[Search] Total {len(all_search_urls)} unique URLs from {len(tried_engines)} engine(s) for '{keyword}'")
+
+    # 阶段2：用共享浏览器实例并发爬取
+    params = RunParams(config)
+    browser_config = get_browser_config(text_mode=params.text_mode, light_mode=params.light_mode)
+
+    # 记录每个 URL 来自哪个引擎（取第一个成功返回该 URL 的引擎）
+    source_engine = engine if engine in tried_engines else (tried_engines[0] if tried_engines else 'unknown')
+
+    results = await _crawl_urls_with_shared_browser(
+        urls=all_search_urls, keyword=keyword, engine=source_engine,
+        config=config, browser_config=browser_config
+    )
+
+    total_time = int((time.time() - start_time) * 1000)
+    success_count = sum(1 for r in results if r.success)
+    logger.info(f"[Search] Completed: {success_count}/{len(results)} pages crawled, keyword='{keyword}', time={total_time}ms")
+
+    return results
 
 
 async def _crawl_urls_with_shared_browser(
@@ -138,6 +162,16 @@ async def _crawl_urls_with_shared_browser(
         async with sem:
             try:
                 result = await crawl_single_page(url=url, config=config, crawler=crawler)
+
+                # 内容质量后处理：字数过少的视为低质量
+                if result.success and result.word_count < 50:
+                    logger.warning(
+                        f"[Search] Content too short ({result.word_count} words), "
+                        f"marking as low quality: {url}"
+                    )
+                    result.success = False
+                    result.error_message = f"Content too short ({result.word_count} words, min 50)"
+
                 result.search_rank = rank
                 result.metadata['search_keyword'] = keyword
                 result.metadata['search_engine'] = engine
@@ -169,7 +203,8 @@ async def _get_search_results(
     max_results: int
 ) -> List[str]:
     """
-    获取搜索结果页面的 URL 列表
+    获取搜索结果页面的 URL 列表（含预筛选与去重）
+    Bing支持分页：第一页first=1，第二页first=11，以此类推
 
     Args:
         keyword: 搜索关键词
@@ -177,70 +212,304 @@ async def _get_search_results(
         max_results: 最大结果数
 
     Returns:
-        URL 列表
+        经过过滤的 URL 列表
     """
     if engine not in SEARCH_ENGINES:
         raise ValueError(f"Unsupported search engine: {engine}. Supported: {list(SEARCH_ENGINES.keys())}")
 
     config = SEARCH_ENGINES[engine]
-    search_url = config['url'].format(
-        query=quote_plus(keyword),
-        count=max(min(max_results * 2, 30), 10)  # 请求更多结果以过滤
-    )
-
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
         'Accept-Language': 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
     }
 
-    async with httpx.AsyncClient(follow_redirects=True, timeout=30) as client:
-        response = await client.get(search_url, headers=headers)
-        response.raise_for_status()
+    # 搜狗反爬较强，需要额外伪装
+    if engine == 'sogou':
+        headers.update({
+            'Referer': 'https://www.sogou.com/',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'same-origin',
+            'Upgrade-Insecure-Requests': '1',
+        })
 
-        soup = BeautifulSoup(response.text, 'lxml')
+    urls = []
+    seen_domains = set()
+    total_raw = 0
+    page = 0
 
-        urls = []
-        result_items = soup.select(config['result_selector'])
+    # 各引擎分页策略
+    while len(urls) < max_results and page < 3:  # 最多翻3页
+        if engine == 'bing':
+            first = page * 10 + 1
+            search_url = (
+                f"https://www.bing.com/search?q={quote_plus(keyword)}"
+                f"&count=10&setmkt=zh-CN&setlang=zh&first={first}"
+            )
+        elif engine == 'sogou':
+            search_url = (
+                f"https://www.sogou.com/web?query={quote_plus(keyword)}"
+                f"&page={page + 1}"
+            )
+        elif engine == 'google':
+            start = page * 10
+            search_url = (
+                f"https://www.google.com/search?q={quote_plus(keyword)}"
+                f"&num=10&start={start}&hl=zh-CN"
+            )
+        else:
+            # duckduckgo 等使用配置中的 URL 模板
+            search_url = config['url'].format(
+                query=quote_plus(keyword),
+                count=max_results * 4
+            )
 
-        for item in result_items[:max_results]:
-            link_elem = item.select_one(config['link_selector'])
-            if link_elem:
-                href = link_elem.get('href', '')
-                # 清理 Bing 的跳转链接
-                if engine == 'bing' and '/url?u=' in href:
-                    import urllib.parse
-                    parsed = urllib.parse.parse_qs(urllib.parse.urlparse(href).query)
-                    if 'u' in parsed:
-                        href = parsed['u'][0]
+        try:
+            async with httpx.AsyncClient(follow_redirects=True, timeout=30) as client:
+                response = await client.get(search_url, headers=headers)
+                response.raise_for_status()
+                soup = BeautifulSoup(response.text, 'lxml')
+                result_items = soup.select(config['result_selector'])
 
-                # 验证 URL
-                if href and href.startswith(('http://', 'https://')):
-                    # 排除常见广告/无关域名
-                    if not _is_excluded_domain(href):
-                        urls.append(href)
+                if not result_items:
+                    break  # 没有更多结果了
 
-        return urls[:max_results]
+                total_raw += len(result_items)
+                page_new = 0
+
+                for item in result_items:
+                    if len(urls) >= max_results:
+                        break
+
+                    link_elem = item.select_one(config['link_selector'])
+                    if not link_elem:
+                        continue
+
+                    href = link_elem.get('href', '')
+                    title = link_elem.get_text(strip=True) or ''
+
+                    # 提取摘要用于预筛选
+                    snippet_elem = item.select_one(config['snippet_selector'])
+                    snippet = snippet_elem.get_text(strip=True) if snippet_elem else ''
+
+                    # 清理搜索引擎跳转链接
+                    if engine == 'bing' and '/url?u=' in href:
+                        import urllib.parse
+                        parsed = urllib.parse.parse_qs(urllib.parse.urlparse(href).query)
+                        if 'u' in parsed:
+                            href = parsed['u'][0]
+                    elif engine == 'google' and href.startswith('/url?'):
+                        import urllib.parse
+                        parsed = urllib.parse.parse_qs(urllib.parse.urlparse(href).query)
+                        if 'q' in parsed:
+                            href = parsed['q'][0]
+                    elif engine == 'sogou' and 'weixin.sogou.com' in href:
+                        # 跳过搜狗微信搜索结果（已在排除列表中，此处做二次防护）
+                        continue
+
+                    # 验证 URL
+                    if not href or not href.startswith(('http://', 'https://')):
+                        continue
+
+                    # 排除广告/无关域名
+                    if _is_excluded_domain(href):
+                        continue
+
+                    # 基于标题/摘要的相关度预筛选
+                    if not _is_relevant_to_keyword(keyword, title, snippet):
+                        continue
+
+                    # 同域名去重：每个域名最多保留 1 个结果
+                    from urllib.parse import urlparse
+                    domain = urlparse(href).netloc
+                    if domain in seen_domains:
+                        continue
+                    seen_domains.add(domain)
+
+                    urls.append(href)
+                    page_new += 1
+
+                logger.debug(f"[Search] Page {page + 1}: {page_new} new URLs from {len(result_items)} raw results")
+
+                if len(result_items) < 5:
+                    break  # 结果太少，没有更多页了
+
+                page += 1
+                # 翻页间隔随机化，降低被反爬检测的概率
+                if page < 3:
+                    await asyncio.sleep(random.uniform(0.8, 2.0))
+
+        except Exception as e:
+            logger.warning(f"[Search] Page {page + 1} failed for '{keyword}': {e}")
+            break
+
+    logger.info(f"[Search] Filtered {len(urls)} URLs from {total_raw} raw results (pages={page}) for keyword='{keyword}'")
+    return urls
 
 
 def _is_excluded_domain(url: str) -> bool:
-    """检查 URL 是否属于排除列表（广告、社交等）"""
-    excluded_patterns = [
-        'google.com/search',
-        'bing.com/search',
-        'duckduckgo.com',
-        'youtube.com',
-        'facebook.com',
-        'twitter.com',
-        'instagram.com',
-        'amazon.com',
-        'ebay.com',
-        'pinterest.com',
-        'linkedin.com',
-    ]
+    """检查 URL 是否属于排除列表（广告、低质量站点、非文本内容等）
 
-    url_lower = url.lower()
-    return any(pattern in url_lower for pattern in excluded_patterns)
+    采用域名级精确匹配 + 路径模式匹配，避免简单子串误杀（如 astro. 误杀 astronomy.com）。
+    """
+    parsed = urlparse(url.lower())
+    domain = parsed.netloc
+    path = parsed.path
+
+    # 去掉 www 前缀用于域名匹配
+    domain_no_www = domain[4:] if domain.startswith('www.') else domain
+
+    # === 域名黑名单（精确匹配）===
+    excluded_domains_exact = {
+        # 搜索引擎
+        'duckduckgo.com',
+        # 社交媒体
+        'youtube.com', 'facebook.com', 'twitter.com', 'x.com',
+        'instagram.com', 'linkedin.com', 'pinterest.com',
+        'weibo.com', 'xiaohongshu.com', 'reddit.com', 'tumblr.com',
+        # 视频网站
+        'bilibili.com', 'youku.com', 'iqiyi.com',
+        'tv.sohu.com', 'le.com', 'pptv.com',
+        # 电商平台
+        'taobao.com', 'tmall.com', 'jd.com',
+        'aliexpress.com', '1688.com', 'pdd.com', 'suning.com',
+        # 内容农场
+        'toutiao.com',
+        'mp.weixin.qq.com',  # 公众号质量参差且反爬强
+        # 占星/运势
+        'astrologyanswers.com', 'astrology.com', 'horoscope.com',
+        'chinesefortunecalendar.com', 'yourchineseastrology.com',
+        # 健康/医疗
+        'webmd.com', 'mayoclinic.org', 'healthline.com',
+        # 婚恋/情感
+        'match.com', 'eharmony.com', 'tinder.com',
+    }
+    if domain_no_www in excluded_domains_exact:
+        return True
+
+    # === 域名后缀黑名单（如 *.baijiahao.baidu.com）===
+    excluded_domain_suffixes = [
+        '.baijiahao.baidu.com',
+        '.haokan.baidu.com',
+        '.sina.com.cn',
+        '.k.sina.com.cn',
+        '.astro.com',       # 占星站点（但保留 astronomy 等科学域名）
+        '.horoscope.com',
+        '.zodiac.com',
+        '.tarot.com',
+    ]
+    for suffix in excluded_domain_suffixes:
+        if domain_no_www.endswith(suffix):
+            return True
+
+    # === 搜索引擎路径排除 ===
+    if 'google.com' in domain and '/search' in path:
+        return True
+    if 'bing.com' in domain and '/search' in path:
+        return True
+    if 'baidu.com' in domain and ('/s?' in path or '/search' in path):
+        return True
+
+    # === Amazon/eBay 按域名前缀匹配 ===
+    if domain_no_www.startswith('amazon.') or domain_no_www.startswith('ebay.'):
+        return True
+
+    # === 知乎：排除问题页/搜索/短内容，保留专栏 ===
+    if 'zhihu.com' in domain:
+        if '/pin' in path or '/question' in path or '/search' in path:
+            return True
+
+    # === 腾讯/优酷视频域名 ===
+    if domain_no_www in ('v.qq.com', 'v.youku.com'):
+        return True
+
+    # === 低价值路径模式 ===
+    excluded_path_patterns = [
+        '/a/', '/dy/', '/c/',           # 搜狐号、网易号、凤凰号
+        '/p/', '/thread-',              # 百度贴吧
+        '/tag/', '/tags/',
+        '/category/', '/categories/',
+        '/search?', '/query?', '/s?', '/find?',
+        '/login', '/register', '/signup', '/auth/',
+        '/cart', '/checkout', '/order', '/buy',
+        '/rss', '/feed', '/atom',
+        '/print', '/share', '/email',
+        '/amp/', '/promo', '/affiliate', '/ref=', '/utm_',
+    ]
+    for pattern in excluded_path_patterns:
+        if pattern in path:
+            return True
+
+    # === 文件扩展名排除 ===
+    excluded_extensions = [
+        '.pdf', '.doc', '.docx', '.ppt', '.pptx',
+        '.xls', '.xlsx', '.zip', '.rar', '.tar.gz',
+    ]
+    for ext in excluded_extensions:
+        if path.endswith(ext):
+            return True
+
+    return False
+
+
+# 负向关键词：标题或摘要中出现这些词，视为低质量/不相关结果（技术搜索场景）
+_EXCLUDED_KEYWORDS = [
+    'horoscope', 'zodiac', 'astrology', 'tarot', '星座', '运势',
+    'daily horoscope', 'weekly horoscope', 'birth chart',
+    'love compatibility', '星座配对', '今日运势',
+]
+
+
+def _is_relevant_to_keyword(keyword: str, title: str, snippet: str) -> bool:
+    """
+    基于标题和摘要判断搜索结果是否与关键词相关。
+
+    策略：
+    1. 标题整词匹配权重最高 → 直接通过
+    2. 摘要整词匹配 → 直接通过
+    3. 标题中出现拆分词 → 直接通过（标题是相关性最强信号）
+    4. 摘要中需匹配多数拆分词 → 才通过（防止泛化匹配）
+    5. 标题为空或"No Title"视为不相关
+    6. 标题/摘要包含明显非技术内容（星座/运势等）视为不相关
+    """
+    if not title or title.strip().lower() in ('no title', '无标题', ''):
+        return False
+
+    title_lower = title.lower()
+    snippet_lower = snippet.lower()
+
+    # 负向过滤：星座/运势等非技术内容直接排除
+    combined_text = title_lower + ' ' + snippet_lower
+    for excluded in _EXCLUDED_KEYWORDS:
+        if excluded in combined_text:
+            return False
+
+    keyword_lower = keyword.lower().strip()
+
+    # 整词匹配优先（标题权重最高）
+    if keyword_lower in title_lower:
+        return True
+    if keyword_lower in snippet_lower:
+        return True
+
+    # 拆分关键词（空格分隔）后分级检查
+    keyword_parts = [p for p in keyword_lower.split() if len(p) >= 2]
+    if not keyword_parts:
+        # 关键词太短（如 "Go"），直接放行，依赖后续域名/内容过滤
+        return True
+
+    # 标题中出现任意拆分词 → 强信号，直接通过
+    title_matches = sum(1 for p in keyword_parts if p in title_lower)
+    if title_matches >= 1:
+        return True
+
+    # 摘要中需匹配多数拆分词（避免单个常见词如 "the" "and" 导致误过）
+    snippet_matches = sum(1 for p in keyword_parts if p in snippet_lower)
+    min_required = max(1, int(len(keyword_parts) * 0.5 + 0.5))  # 向上取整的50%
+    return snippet_matches >= min_required
 
 
 # 降级搜索策略（如果主搜索引擎失败）
