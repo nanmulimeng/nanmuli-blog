@@ -48,3 +48,5 @@ venv/
 *.db
 crawler-service/data/
 crawler-service/exports/
+*.log
+logs/
