@@ -24,7 +24,13 @@ async function fetchData(): Promise<void> {
   try {
     configs.value = await getAdminConfigList()
     configs.value.forEach((config) => {
-      formData.value[config.configKey] = config.configValue
+      const numKeys = ['ai.temperature', 'ai.connect_timeout_seconds', 'ai.read_timeout_seconds']
+      if (numKeys.includes(config.configKey)) {
+        const n = Number(config.configValue)
+        formData.value[config.configKey] = isNaN(n) ? 0 : n
+      } else {
+        formData.value[config.configKey] = config.configValue
+      }
     })
   } finally {
     loading.value = false
@@ -35,7 +41,7 @@ async function handleSave(key: string): Promise<void> {
   try {
     const value = formData.value[key]
     if (value === undefined) return
-    await updateConfig(key, value)
+    await updateConfig(key, String(value))
     ElMessage.success('保存成功')
   } catch {
     ElMessage.error('保存失败')
@@ -51,7 +57,7 @@ async function handleSaveAiGroup(): Promise<void> {
     for (const key of aiKeys) {
       const value = formData.value[key]
       if (value !== undefined) {
-        await updateConfig(key, value)
+        await updateConfig(key, String(value))
       }
     }
     ElMessage.success('AI 配置保存成功')
@@ -230,11 +236,21 @@ onMounted(fetchData)
           <div class="mb-6 flex gap-6">
             <div>
               <label class="mb-1 block text-sm font-medium text-content-primary">连接超时（秒）</label>
-              <el-input-number v-model="formData['ai.connect_timeout_seconds']" :min="1" :max="60" />
+              <el-input-number
+                :model-value="Number(formData['ai.connect_timeout_seconds'] || 10)"
+                :min="1"
+                :max="60"
+                @update:model-value="(v) => formData['ai.connect_timeout_seconds'] = Number(v)"
+              />
             </div>
             <div>
               <label class="mb-1 block text-sm font-medium text-content-primary">读取超时（秒）</label>
-              <el-input-number v-model="formData['ai.read_timeout_seconds']" :min="1" :max="300" />
+              <el-input-number
+                :model-value="Number(formData['ai.read_timeout_seconds'] || 90)"
+                :min="1"
+                :max="300"
+                @update:model-value="(v) => formData['ai.read_timeout_seconds'] = Number(v)"
+              />
             </div>
           </div>
 
