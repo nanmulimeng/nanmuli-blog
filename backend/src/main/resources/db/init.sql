@@ -178,54 +178,10 @@ CREATE INDEX IF NOT EXISTS idx_article_title_search ON article USING GIN (to_tsv
 CREATE INDEX IF NOT EXISTS idx_article_status_publish ON article(status, publish_time DESC) WHERE status = 1 AND is_deleted = FALSE;
 
 -- ============================================
--- 5. 标签表 (tag)
+-- 5/6. 标签模块已移除 (V1_7, 2026-05-05)
+--   原 tag/article_tag 两表无 Java 代码且无前端入口,
+--   标签语义已由 category.is_leaf 机制覆盖。
 -- ============================================
-
-CREATE TABLE IF NOT EXISTS tag (
-    id BIGSERIAL PRIMARY KEY,
-    name VARCHAR(50) NOT NULL UNIQUE,
-    slug VARCHAR(50) UNIQUE,
-    color VARCHAR(20),
-    icon VARCHAR(50),
-    description VARCHAR(200),
-    article_count INT NOT NULL DEFAULT 0,
-    status INT NOT NULL DEFAULT 1,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    is_deleted BOOLEAN NOT NULL DEFAULT FALSE
-);
-
-COMMENT ON TABLE tag IS '标签表';
-COMMENT ON COLUMN tag.name IS '标签名称';
-COMMENT ON COLUMN tag.slug IS 'URL别名';
-COMMENT ON COLUMN tag.color IS '颜色';
-COMMENT ON COLUMN tag.icon IS '图标';
-COMMENT ON COLUMN tag.description IS '描述';
-COMMENT ON COLUMN tag.article_count IS '文章数量';
-COMMENT ON COLUMN tag.status IS '状态：1-正常 0-禁用';
-COMMENT ON COLUMN tag.is_deleted IS '逻辑删除标记';
-
-CREATE INDEX IF NOT EXISTS idx_tag_name ON tag(name);
-CREATE INDEX IF NOT EXISTS idx_tag_status ON tag(status);
-CREATE INDEX IF NOT EXISTS idx_tag_deleted ON tag(is_deleted);
-
--- ============================================
--- 6. 文章-标签关联表 (article_tag)
--- ============================================
-
-CREATE TABLE IF NOT EXISTS article_tag (
-    article_id BIGINT NOT NULL,
-    tag_id BIGINT NOT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (article_id, tag_id)
-);
-
-COMMENT ON TABLE article_tag IS '文章-标签关联表';
-COMMENT ON COLUMN article_tag.article_id IS '文章ID';
-COMMENT ON COLUMN article_tag.tag_id IS '标签ID';
-
-CREATE INDEX IF NOT EXISTS idx_at_tag_id ON article_tag(tag_id);
-CREATE INDEX IF NOT EXISTS idx_at_article_id ON article_tag(article_id);
 
 -- ============================================
 -- 7. 文章草稿表 (article_draft)
@@ -661,10 +617,7 @@ ALTER TABLE article_draft
     ADD CONSTRAINT fk_draft_category FOREIGN KEY (category_id) REFERENCES category(id),
     ADD CONSTRAINT fk_draft_article FOREIGN KEY (article_id) REFERENCES article(id) ON DELETE CASCADE;
 
--- 文章标签关联表外键
-ALTER TABLE article_tag
-    ADD CONSTRAINT fk_at_article FOREIGN KEY (article_id) REFERENCES article(id) ON DELETE CASCADE,
-    ADD CONSTRAINT fk_at_tag FOREIGN KEY (tag_id) REFERENCES tag(id) ON DELETE CASCADE;
+-- 文章标签关联表外键 (V1_7 已移除 article_tag 表,本节作废)
 
 -- 文件表外键
 ALTER TABLE sys_file
@@ -708,9 +661,6 @@ CREATE TRIGGER update_category_updated_at BEFORE UPDATE ON category
 CREATE TRIGGER update_article_updated_at BEFORE UPDATE ON article
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-CREATE TRIGGER update_tag_updated_at BEFORE UPDATE ON tag
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
 CREATE TRIGGER update_article_draft_updated_at BEFORE UPDATE ON article_draft
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
@@ -741,9 +691,6 @@ CREATE TRIGGER update_article_vector_updated_at BEFORE UPDATE ON article_vector
 
 -- 文章slug部分唯一索引（只针对未删除记录）
 CREATE UNIQUE INDEX IF NOT EXISTS idx_article_slug_active ON article(slug) WHERE is_deleted = FALSE;
-
--- 标签slug部分唯一索引
-CREATE UNIQUE INDEX IF NOT EXISTS idx_tag_slug_active ON tag(slug) WHERE is_deleted = FALSE;
 
 -- 分类slug部分唯一索引
 CREATE UNIQUE INDEX IF NOT EXISTS idx_category_slug_active ON category(slug) WHERE is_deleted = FALSE;
@@ -793,18 +740,7 @@ VALUES
     (52, '个人作品', 'personal-work', '个人作品展示', 5, '#4ECDC4', 2, TRUE)
 ON CONFLICT DO NOTHING;
 
--- 插入默认标签
-INSERT INTO tag (id, name, slug, color, description)
-VALUES
-    (1, 'Java', 'java', '#007396', 'Java编程语言'),
-    (2, 'Spring Boot', 'spring-boot', '#6DB33F', 'Spring Boot框架'),
-    (3, 'Vue', 'vue', '#4FC08D', 'Vue.js前端框架'),
-    (4, 'PostgreSQL', 'postgresql', '#336791', 'PostgreSQL数据库'),
-    (5, 'Redis', 'redis', '#DC382D', 'Redis缓存'),
-    (6, 'Docker', 'docker', '#2496ED', 'Docker容器'),
-    (7, 'Linux', 'linux', '#FCC624', 'Linux系统'),
-    (8, 'AI', 'ai', '#FF6B6B', '人工智能')
-ON CONFLICT DO NOTHING;
+-- 插入默认标签 (V1_7 已移除 tag 表,本节作废)
 
 -- 插入系统配置
 INSERT INTO sys_config (config_key, config_value, default_value, description, group_name, is_public)
