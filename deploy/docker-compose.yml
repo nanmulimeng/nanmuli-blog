@@ -13,6 +13,8 @@ services:
       POSTGRES_DB: nanmuli_blog
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./db/init-scripts:/docker-entrypoint-initdb.d
