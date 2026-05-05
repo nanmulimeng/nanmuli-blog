@@ -567,6 +567,36 @@ CREATE INDEX IF NOT EXISTS idx_av_article_id ON article_vector(article_id);
 CREATE INDEX IF NOT EXISTS idx_av_content_vector ON article_vector USING ivfflat (content_vector vector_cosine_ops);
 
 -- ============================================
+-- 文章访问日志表（PV统计）
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS article_visit_log (
+    id BIGSERIAL PRIMARY KEY,
+    article_id BIGINT NOT NULL,
+    visitor_id VARCHAR(64) NOT NULL,
+    ip_address VARCHAR(45),
+    user_agent VARCHAR(500),
+    visit_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE article_visit_log IS '文章访问日志表（PV统计）';
+COMMENT ON COLUMN article_visit_log.article_id IS '文章ID';
+COMMENT ON COLUMN article_visit_log.visitor_id IS '访客ID';
+COMMENT ON COLUMN article_visit_log.ip_address IS 'IP地址';
+COMMENT ON COLUMN article_visit_log.user_agent IS '浏览器UA';
+COMMENT ON COLUMN article_visit_log.visit_time IS '访问时间';
+
+CREATE INDEX IF NOT EXISTS idx_article_visit_log_article_id
+    ON article_visit_log(article_id);
+
+CREATE INDEX IF NOT EXISTS idx_article_visit_log_visit_time
+    ON article_visit_log(visit_time);
+
+CREATE INDEX IF NOT EXISTS idx_article_visit_log_date
+    ON article_visit_log(DATE(visit_time));
+
+-- ============================================
 -- Web 采集器模块
 -- 支持：单页爬取、深度爬取、关键词搜索、每日技术日报
 -- ============================================
@@ -659,7 +689,7 @@ CREATE TABLE IF NOT EXISTS web_collect_page (
     url             VARCHAR(2048) NOT NULL,
     page_title      VARCHAR(500),
     raw_markdown    TEXT,
-    page_metadata   JSONB,
+    page_metadata   TEXT,
     crawl_status    SMALLINT DEFAULT 0,
     error_message   TEXT,
     crawl_duration  INTEGER,
@@ -669,7 +699,9 @@ CREATE TABLE IF NOT EXISTS web_collect_page (
     sort_order      INTEGER DEFAULT 0,
     depth           SMALLINT DEFAULT 0,
     published_at    TIMESTAMP,
-    created_at      TIMESTAMP NOT NULL DEFAULT NOW()
+    created_at      TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMP NOT NULL DEFAULT NOW(),
+    is_deleted      BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 COMMENT ON TABLE web_collect_page IS 'Web Collector 爬取页面表 - 存储每个 URL 的爬取结果';
@@ -690,6 +722,72 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
+DROP TRIGGER IF EXISTS update_sys_user_updated_at ON sys_user;
+CREATE TRIGGER update_sys_user_updated_at
+    BEFORE UPDATE ON sys_user
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_category_updated_at ON category;
+CREATE TRIGGER update_category_updated_at
+    BEFORE UPDATE ON category
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_article_updated_at ON article;
+CREATE TRIGGER update_article_updated_at
+    BEFORE UPDATE ON article
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_article_draft_updated_at ON article_draft;
+CREATE TRIGGER update_article_draft_updated_at
+    BEFORE UPDATE ON article_draft
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_daily_log_updated_at ON daily_log;
+CREATE TRIGGER update_daily_log_updated_at
+    BEFORE UPDATE ON daily_log
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_project_showcase_updated_at ON project_showcase;
+CREATE TRIGGER update_project_showcase_updated_at
+    BEFORE UPDATE ON project_showcase
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_skill_updated_at ON skill;
+CREATE TRIGGER update_skill_updated_at
+    BEFORE UPDATE ON skill
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_sys_config_updated_at ON sys_config;
+CREATE TRIGGER update_sys_config_updated_at
+    BEFORE UPDATE ON sys_config
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_friend_link_updated_at ON friend_link;
+CREATE TRIGGER update_friend_link_updated_at
+    BEFORE UPDATE ON friend_link
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_article_view_record_updated_at ON article_view_record;
+CREATE TRIGGER update_article_view_record_updated_at
+    BEFORE UPDATE ON article_view_record
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_article_vector_updated_at ON article_vector;
+CREATE TRIGGER update_article_vector_updated_at
+    BEFORE UPDATE ON article_vector
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
 DROP TRIGGER IF EXISTS update_web_collect_source_updated_at ON web_collect_source;
 CREATE TRIGGER update_web_collect_source_updated_at
     BEFORE UPDATE ON web_collect_source
@@ -702,9 +800,9 @@ CREATE TRIGGER update_web_collect_task_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
-DROP TRIGGER IF EXISTS update_article_view_record_updated_at ON article_view_record;
-CREATE TRIGGER update_article_view_record_updated_at
-    BEFORE UPDATE ON article_view_record
+DROP TRIGGER IF EXISTS update_web_collect_page_updated_at ON web_collect_page;
+CREATE TRIGGER update_web_collect_page_updated_at
+    BEFORE UPDATE ON web_collect_page
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
@@ -746,6 +844,10 @@ ALTER TABLE article_view_record
 ALTER TABLE daily_log
     ADD CONSTRAINT fk_daily_log_category FOREIGN KEY (category_id) REFERENCES category(id);
 
+-- 文章访问日志表外键
+ALTER TABLE article_visit_log
+    ADD CONSTRAINT fk_avl_article FOREIGN KEY (article_id) REFERENCES article(id) ON DELETE CASCADE;
+
 -- Web 采集订阅源表外键
 ALTER TABLE web_collect_source
     ADD CONSTRAINT fk_source_user FOREIGN KEY (user_id) REFERENCES sys_user(id);
@@ -765,7 +867,7 @@ ALTER TABLE web_collect_page
 
 -- 插入默认管理员
 INSERT INTO sys_user (id, username, password, nickname, email, role, status)
-VALUES (1, 'admin', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iAt6Z5EO', '管理员', 'admin@example.com', 'ADMIN', 1)
+VALUES (1, 'admin', '$2a$10$L6YrzL7XRPy7S0FL3zUdNuer8d2WGZ5VICnomMZpz71LI0DsRf.xq', '管理员', 'admin@nanmuli.com', 'ADMIN', 1)
 ON CONFLICT (username) DO NOTHING;
 
 -- 插入默认父分类（容器节点）

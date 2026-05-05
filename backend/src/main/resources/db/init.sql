@@ -149,7 +149,7 @@ CREATE TABLE IF NOT EXISTS article (
     is_original BOOLEAN NOT NULL DEFAULT TRUE,
     original_url VARCHAR(500),
     publish_time TIMESTAMP,
-    version INT DEFAULT 1,
+    version INT NOT NULL DEFAULT 1,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     is_deleted BOOLEAN NOT NULL DEFAULT FALSE
@@ -240,6 +240,7 @@ CREATE TABLE IF NOT EXISTS daily_log (
     tags JSONB,
     word_count INT,
     log_date DATE NOT NULL,
+    category_id BIGINT,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     is_deleted BOOLEAN NOT NULL DEFAULT FALSE
@@ -256,6 +257,7 @@ COMMENT ON COLUMN daily_log.log_date IS '日志日期';
 COMMENT ON COLUMN daily_log.is_deleted IS '逻辑删除标记';
 
 CREATE INDEX IF NOT EXISTS idx_daily_log_log_date ON daily_log(log_date DESC);
+CREATE INDEX IF NOT EXISTS idx_daily_log_category_id ON daily_log(category_id);
 CREATE INDEX IF NOT EXISTS idx_daily_log_deleted ON daily_log(is_deleted);
 
 -- ============================================
@@ -617,6 +619,122 @@ CREATE INDEX IF NOT EXISTS idx_article_visit_log_date
     ON article_visit_log(DATE(visit_time));
 
 -- ============================================
+-- 19. Web 采集器模块
+-- ============================================
+
+-- 订阅源表
+CREATE TABLE IF NOT EXISTS web_collect_source (
+    id              BIGINT PRIMARY KEY,
+    name            VARCHAR(200) NOT NULL,
+    type            VARCHAR(20) NOT NULL,
+    value           VARCHAR(2048) NOT NULL,
+    content_category VARCHAR(50),
+    crawl_mode      VARCHAR(20) DEFAULT 'single',
+    max_depth       SMALLINT DEFAULT 1,
+    max_pages       SMALLINT DEFAULT 10,
+    css_selector    VARCHAR(500),
+    ai_template     VARCHAR(50) DEFAULT 'tech_summary',
+    schedule_cron   VARCHAR(50),
+    freshness_hours INTEGER DEFAULT 24,
+    is_active       BOOLEAN DEFAULT TRUE,
+    last_run_at     TIMESTAMP,
+    last_run_status VARCHAR(20),
+    run_count       INTEGER DEFAULT 0,
+    user_id         BIGINT NOT NULL,
+    created_at      TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMP NOT NULL DEFAULT NOW(),
+    is_deleted      BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+COMMENT ON TABLE web_collect_source IS 'Web Collector 订阅源表 - 管理 URL/关键词/RSS 订阅';
+COMMENT ON COLUMN web_collect_source.type IS '源类型：url / keyword / rss';
+COMMENT ON COLUMN web_collect_source.content_category IS '内容分类：hot_trend / open_source / tech_article / dev_tool / creative';
+COMMENT ON COLUMN web_collect_source.crawl_mode IS '爬取模式：single / deep';
+COMMENT ON COLUMN web_collect_source.freshness_hours IS '时效窗口（小时）';
+COMMENT ON COLUMN web_collect_source.last_run_status IS '上次执行结果：success / failed';
+
+CREATE INDEX IF NOT EXISTS idx_source_active ON web_collect_source(is_active, schedule_cron) WHERE is_deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_source_category ON web_collect_source(content_category) WHERE is_deleted = FALSE;
+
+-- 采集任务表
+CREATE TABLE IF NOT EXISTS web_collect_task (
+    id              BIGINT PRIMARY KEY,
+    task_type       VARCHAR(20) NOT NULL DEFAULT 'single',
+    source_url      VARCHAR(2048),
+    keyword         VARCHAR(500),
+    search_engine   VARCHAR(50),
+    trigger_type    VARCHAR(20) DEFAULT 'manual',
+    source_id       BIGINT,
+    article_id      BIGINT,
+    daily_log_id    BIGINT,
+    user_id         BIGINT NOT NULL,
+    ai_title        VARCHAR(500),
+    ai_summary      TEXT,
+    ai_key_points   JSONB,
+    ai_tags         JSONB,
+    ai_category     VARCHAR(100),
+    ai_full_content TEXT,
+    status          SMALLINT NOT NULL DEFAULT 0,
+    error_message   TEXT,
+    crawl_mode      VARCHAR(20) DEFAULT 'single',
+    ai_template     VARCHAR(50) DEFAULT 'tech_summary',
+    max_depth       SMALLINT DEFAULT 1,
+    max_pages       SMALLINT DEFAULT 10,
+    total_pages     INTEGER DEFAULT 1,
+    completed_pages INTEGER DEFAULT 0,
+    crawl_duration  INTEGER,
+    ai_duration     INTEGER,
+    tokens_used     INTEGER,
+    total_word_count INTEGER,
+    version         INTEGER NOT NULL DEFAULT 1,
+    created_at      TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMP NOT NULL DEFAULT NOW(),
+    is_deleted      BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+COMMENT ON TABLE web_collect_task IS 'Web Collector 采集任务表 - 记录单次采集任务的完整生命周期';
+COMMENT ON COLUMN web_collect_task.task_type IS '任务类型：single-单页, deep-深度, keyword-关键词搜索, digest-每日日报';
+COMMENT ON COLUMN web_collect_task.status IS '任务状态：0-待处理, 1-爬取中, 2-整理中, 3-已完成, 4-失败';
+COMMENT ON COLUMN web_collect_task.trigger_type IS '触发类型：manual / scheduled';
+COMMENT ON COLUMN web_collect_task.version IS '乐观锁版本号';
+
+CREATE INDEX IF NOT EXISTS idx_task_status ON web_collect_task(status) WHERE is_deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_task_user ON web_collect_task(user_id, created_at DESC) WHERE is_deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_task_type ON web_collect_task(task_type, created_at DESC) WHERE is_deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_task_source ON web_collect_task(source_id) WHERE source_id IS NOT NULL AND is_deleted = FALSE;
+
+-- 爬取页面表
+CREATE TABLE IF NOT EXISTS web_collect_page (
+    id              BIGINT PRIMARY KEY,
+    task_id         BIGINT NOT NULL,
+    url             VARCHAR(2048) NOT NULL,
+    page_title      VARCHAR(500),
+    raw_markdown    TEXT,
+    page_metadata   TEXT,
+    crawl_status    SMALLINT DEFAULT 0,
+    error_message   TEXT,
+    crawl_duration  INTEGER,
+    word_count      INTEGER,
+    url_hash        VARCHAR(64) NOT NULL,
+    content_hash    VARCHAR(64),
+    sort_order      INTEGER DEFAULT 0,
+    depth           SMALLINT DEFAULT 0,
+    published_at    TIMESTAMP,
+    created_at      TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMP NOT NULL DEFAULT NOW(),
+    is_deleted      BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+COMMENT ON TABLE web_collect_page IS 'Web Collector 爬取页面表 - 存储每个 URL 的爬取结果';
+COMMENT ON COLUMN web_collect_page.crawl_status IS '页面爬取状态：0-待爬取, 1-爬取中, 2-已完成, 3-失败';
+COMMENT ON COLUMN web_collect_page.url_hash IS 'URL SHA-256 哈希（去重用）';
+COMMENT ON COLUMN web_collect_page.content_hash IS '正文前 500 字 SHA-256（去重用）';
+
+CREATE INDEX IF NOT EXISTS idx_page_task ON web_collect_page(task_id, sort_order);
+CREATE INDEX IF NOT EXISTS idx_page_url_hash ON web_collect_page(url_hash);
+CREATE INDEX IF NOT EXISTS idx_page_content_hash ON web_collect_page(content_hash) WHERE content_hash IS NOT NULL;
+
+-- ============================================
 -- 外键约束（在表创建完成后添加，避免循环依赖）
 -- ============================================
 
@@ -655,6 +773,23 @@ ALTER TABLE article_view_record
 -- 访问日志表外键
 ALTER TABLE article_visit_log
     ADD CONSTRAINT fk_avl_article FOREIGN KEY (article_id) REFERENCES article(id) ON DELETE CASCADE;
+
+-- 技术日志分类外键
+ALTER TABLE daily_log
+    ADD CONSTRAINT fk_daily_log_category FOREIGN KEY (category_id) REFERENCES category(id);
+
+-- Web 采集订阅源表外键
+ALTER TABLE web_collect_source
+    ADD CONSTRAINT fk_source_user FOREIGN KEY (user_id) REFERENCES sys_user(id);
+
+-- Web 采集任务表外键
+ALTER TABLE web_collect_task
+    ADD CONSTRAINT fk_task_user FOREIGN KEY (user_id) REFERENCES sys_user(id),
+    ADD CONSTRAINT fk_task_source FOREIGN KEY (source_id) REFERENCES web_collect_source(id);
+
+-- Web 采集页面表外键
+ALTER TABLE web_collect_page
+    ADD CONSTRAINT fk_page_task FOREIGN KEY (task_id) REFERENCES web_collect_task(id) ON DELETE CASCADE;
 
 -- ============================================
 -- 触发器：自动更新 updated_at 字段
@@ -700,6 +835,15 @@ CREATE TRIGGER update_article_view_record_updated_at BEFORE UPDATE ON article_vi
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_article_vector_updated_at BEFORE UPDATE ON article_vector
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_web_collect_source_updated_at BEFORE UPDATE ON web_collect_source
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_web_collect_task_updated_at BEFORE UPDATE ON web_collect_task
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_web_collect_page_updated_at BEFORE UPDATE ON web_collect_page
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================

@@ -117,7 +117,7 @@ CREATE TABLE IF NOT EXISTS web_collect_page (
     url             VARCHAR(2048) NOT NULL,
     page_title      VARCHAR(500),                   -- 网页原始标题
     raw_markdown    TEXT,                            -- Crawl4AI 爬取的原始 Markdown
-    page_metadata   JSONB,                          -- 元数据 { description, keywords, language, author }
+    page_metadata   TEXT,                           -- 元数据 JSON 字符串
 
     -- 爬取状态（每页独立）
     crawl_status    SMALLINT DEFAULT 0,             -- 0=待爬取 1=爬取中 2=已完成 3=失败
