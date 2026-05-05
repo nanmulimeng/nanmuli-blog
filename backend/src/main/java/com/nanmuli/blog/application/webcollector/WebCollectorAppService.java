@@ -94,10 +94,19 @@ public class WebCollectorAppService {
 
         // 事务提交后再触发异步爬取，避免异步线程读不到未提交的数据
         final Long taskId = task.getId();
+        log.info("[CreateTask] Registering afterCommit hook for taskId={}", taskId);
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
+                log.info("[CreateTask] Transaction committed, triggering async crawl for taskId={}", taskId);
                 asyncExecutor.executeCrawlAsync(taskId);
+            }
+
+            @Override
+            public void afterCompletion(int status) {
+                if (status != STATUS_COMMITTED) {
+                    log.warn("[CreateTask] Transaction completed with status={}, taskId={}", status, taskId);
+                }
             }
         });
 
@@ -162,7 +171,9 @@ public class WebCollectorAppService {
             throw new BusinessException("无权删除此任务");
         }
 
-        if (!task.isTerminal()) {
+        // PENDING 任务可删除（尚未开始爬取），CRAWLING/PROCESSING 禁止删除
+        if (task.getStatus() == CollectTaskStatus.CRAWLING.getValue()
+                || task.getStatus() == CollectTaskStatus.PROCESSING.getValue()) {
             throw new BusinessException("任务正在处理中，无法删除，请等待完成后再试");
         }
 
