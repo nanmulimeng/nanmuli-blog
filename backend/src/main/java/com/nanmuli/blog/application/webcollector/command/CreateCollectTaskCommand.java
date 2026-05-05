@@ -21,9 +21,9 @@ public class CreateCollectTaskCommand {
     @Size(max = 500, message = "关键词长度不能超过 500")
     private String keyword;
 
-    // 搜索引擎（keyword 模式可选，默认 bing）
-    @Pattern(regexp = "^(bing|duckduckgo)?$", message = "搜索引擎必须是 bing 或 duckduckgo")
-    private String searchEngine = "bing";
+    // 搜索引擎（keyword 模式可选，默认 sogou）
+    @Pattern(regexp = "^(sogou|bing|duckduckgo|google)?$", message = "搜索引擎必须是 sogou、bing、duckduckgo 或 google")
+    private String searchEngine = "sogou";
 
     @Pattern(regexp = "^(single|deep)?$", message = "爬取模式必须是 single 或 deep")
     private String crawlMode = "single";

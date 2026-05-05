@@ -59,7 +59,7 @@ sa-token:
 crawler:
   service:
     base-url: http://localhost:8500
-    timeout: 60000  # 60秒超时
+    timeout: 180000  # 180秒超时（多关键词搜索+爬取需要更长时间）
 
 # 异步任务执行器（Web Collector 用）
 async:

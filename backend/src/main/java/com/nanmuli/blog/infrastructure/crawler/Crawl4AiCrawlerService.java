@@ -133,6 +133,7 @@ public class Crawl4AiCrawlerService implements CrawlerService {
             List<CrawlResult> results = new ArrayList<>();
             CrawlResult result = new CrawlResult();
             result.setSuccess(false);
+            result.setUrl("keyword://" + keyword);
             result.setKeyword(keyword);
             result.setErrorMessage(e.getMessage());
             results.add(result);

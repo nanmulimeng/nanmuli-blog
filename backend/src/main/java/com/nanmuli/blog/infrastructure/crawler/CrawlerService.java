@@ -53,10 +53,10 @@ public interface CrawlerService {
     class CrawlConfig {
         private boolean textMode = true;
         private boolean lightMode = true;
-        private int wordCountThreshold = 10;
+        private int wordCountThreshold = 15;
         private List<String> excludedTags;
-        private String waitUntil = "networkidle";
-        private int pageTimeout = 30000;
+        private String waitUntil = "load";
+        private int pageTimeout = 60000;
 
         public CrawlConfig() {
             this.excludedTags = List.of("nav", "footer", "aside", "header", "script", "style");
