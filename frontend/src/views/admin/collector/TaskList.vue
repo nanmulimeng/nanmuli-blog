@@ -82,7 +82,8 @@ async function handleDelete(row: CollectTaskListDTO): Promise<void> {
 }
 
 function isTerminal(status: number): boolean {
-  return status === 3 || status === 4
+  // PENDING(0)/COMPLETED(3)/FAILED(4) 均可删除；CRAWLING(1)/PROCESSING(2) 禁止删除
+  return status === 0 || status === 3 || status === 4
 }
 
 function hasActiveTasks(): boolean {

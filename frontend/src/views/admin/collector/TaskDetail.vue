@@ -29,7 +29,8 @@ let lastStatus: number | null = null
 
 const isTerminal = computed(() => {
   if (!task.value) return false
-  return task.value.status === 3 || task.value.status === 4
+  // PENDING(0)/COMPLETED(3)/FAILED(4) 均可删除；CRAWLING(1)/PROCESSING(2) 禁止删除
+  return task.value.status === 0 || task.value.status === 3 || task.value.status === 4
 })
 
 const isActive = computed(() => {

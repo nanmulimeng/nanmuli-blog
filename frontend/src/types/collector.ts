@@ -81,7 +81,7 @@ export interface CreateCollectTaskCommand {
   taskType: 'single' | 'deep' | 'keyword'
   sourceUrl?: string
   keyword?: string
-  searchEngine?: 'bing' | 'duckduckgo'
+  searchEngine?: 'sogou' | 'bing' | 'duckduckgo' | 'google'
   crawlMode?: 'single' | 'deep'
   maxDepth?: number
   maxPages?: number

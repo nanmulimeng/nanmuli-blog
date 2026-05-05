@@ -16,7 +16,7 @@ const form = ref<CreateCollectTaskCommand>({
   taskType: 'single',
   maxDepth: 1,
   maxPages: 10,
-  searchEngine: 'bing',
+  searchEngine: 'sogou',
   aiTemplate: 'tech_summary',
 })
 
@@ -43,7 +43,7 @@ function resetForm(): void {
     taskType: 'single',
     maxDepth: 1,
     maxPages: 10,
-    searchEngine: 'bing',
+    searchEngine: 'sogou',
     aiTemplate: 'tech_summary',
   }
 }
@@ -125,8 +125,10 @@ function handleClose(): void {
       <div v-if="needKeyword" class="mb-4">
         <el-form-item label="搜索引擎">
           <el-select v-model="form.searchEngine" class="w-full">
+            <el-option label="搜狗 (推荐)" value="sogou" />
             <el-option label="Bing" value="bing" />
             <el-option label="DuckDuckGo" value="duckduckgo" />
+            <el-option label="Google" value="google" />
           </el-select>
         </el-form-item>
       </div>

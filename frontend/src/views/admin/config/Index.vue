@@ -9,8 +9,6 @@ const loading = ref(false)
 const aiTesting = ref(false)
 const configs = ref<Config[]>([])
 const formData = ref<Record<string, string | number>>({})
-const showApiKey = ref(false)
-
 // AI 提供商预设
 const aiProviders = [
   { label: 'DeepSeek', value: 'deepseek', defaultUrl: 'https://api.deepseek.com/v1', defaultModel: 'deepseek-chat' },
@@ -187,7 +185,6 @@ onMounted(fetchData)
             <div class="flex gap-3">
               <el-input
                 v-model="formData['ai.api_key']"
-                :type="showApiKey ? 'text' : 'password'"
                 placeholder="输入 API 密钥"
                 style="width: 400px"
                 show-password
@@ -218,14 +215,15 @@ onMounted(fetchData)
           <!-- 温度系数 -->
           <div class="mb-6">
             <label class="mb-2 block text-sm font-medium text-content-primary">
-              温度系数: {{ formData['ai.temperature'] || '0.3' }}
+              温度系数: {{ formData['ai.temperature'] !== undefined ? formData['ai.temperature'] : '0.3' }}
             </label>
             <el-slider
-              v-model="formData['ai.temperature']"
+              :model-value="Number(formData['ai.temperature'] ?? 0.3)"
               :min="0"
               :max="2"
               :step="0.1"
               style="width: 320px"
+              @update:model-value="(v) => formData['ai.temperature'] = Number(v)"
             />
             <p class="mt-1 text-xs text-content-tertiary">
               越低越严谨（0），越高越创意（2）。建议技术文章使用 0.2-0.5
