@@ -5,8 +5,22 @@
 -- 创建时间: 2026-04-06
 -- ============================================
 
--- 启用pgvector扩展（用于AI向量搜索）
+-- 启用 pgvector 扩展(用于 AI 向量搜索)
 CREATE EXTENSION IF NOT EXISTS vector;
+
+-- 启用 zhparser 扩展(用于中文全文搜索)
+CREATE EXTENSION IF NOT EXISTS zhparser;
+
+-- 创建中文文本搜索配置
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_ts_config WHERE cfgname = 'chinese_zh') THEN
+        CREATE TEXT SEARCH CONFIGURATION chinese_zh (PARSER = zhparser);
+        ALTER TEXT SEARCH CONFIGURATION chinese_zh
+            ADD MAPPING FOR n,v,a,i,e,l WITH simple;
+    END IF;
+END
+$$;
 
 -- ============================================
 -- 1. 用户模块 (sys_user)
@@ -170,9 +184,12 @@ CREATE INDEX IF NOT EXISTS idx_article_publish_time ON article(publish_time DESC
 CREATE INDEX IF NOT EXISTS idx_article_deleted ON article(is_deleted);
 CREATE INDEX IF NOT EXISTS idx_article_created_at ON article(created_at DESC);
 
--- 全文搜索索引（使用simple配置器）
-CREATE INDEX IF NOT EXISTS idx_article_content_search ON article USING GIN (to_tsvector('simple', content));
-CREATE INDEX IF NOT EXISTS idx_article_title_search ON article USING GIN (to_tsvector('simple', title));
+-- 全文搜索索引(zhparser 中文分词)
+CREATE INDEX IF NOT EXISTS idx_article_fts ON article USING GIN (
+    to_tsvector('chinese_zh',
+        coalesce(title, '') || ' ' || coalesce(summary, '') || ' ' || coalesce(content, '')
+    )
+) WHERE status = 1 AND is_deleted = FALSE;
 
 -- 复合索引：已发布文章按发布时间排序
 CREATE INDEX IF NOT EXISTS idx_article_status_publish ON article(status, publish_time DESC) WHERE status = 1 AND is_deleted = FALSE;

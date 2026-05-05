@@ -38,4 +38,61 @@ public interface ArticleMapper extends BaseMapper<Article> {
      */
     @Select("<script>SELECT category_id, COUNT(*) as count FROM article WHERE category_id IN <foreach collection='categoryIds' item='id' open='(' separator=',' close=')'>#{id}</foreach> AND status = 1 AND is_deleted = false GROUP BY category_id</script>")
     List<Map<String, Object>> selectCategoryArticleCounts(@Param("categoryIds") List<Long> categoryIds);
+
+    /**
+     * zhparser 中文全文搜索 - 已发布文章
+     * 通过 GIN 索引 idx_article_fts 加速,扫描合并 title+summary+content 的 tsvector
+     * categoryIds 非空时使用 OR 条件扩展匹配范围
+     */
+    @Select("""
+            <script>
+            SELECT * FROM article
+            WHERE status = 1 AND is_deleted = false
+              AND (
+                to_tsvector('chinese_zh',
+                    coalesce(title, '') || ' ' || coalesce(summary, '') || ' ' || coalesce(content, '')
+                ) @@ plainto_tsquery('chinese_zh', #{keyword})
+                <if test="categoryIds != null and categoryIds.size() > 0">
+                  OR category_id IN
+                  <foreach collection="categoryIds" item="id" open="(" separator="," close=")">
+                    #{id}
+                  </foreach>
+                </if>
+              )
+            <choose>
+              <when test='"oldest".equals(sort)'>ORDER BY is_top DESC, publish_time ASC</when>
+              <when test='"popular".equals(sort)'>ORDER BY is_top DESC, view_count DESC</when>
+              <otherwise>ORDER BY is_top DESC, publish_time DESC</otherwise>
+            </choose>
+            </script>
+            """)
+    IPage<Article> searchPublishedByFts(IPage<Article> page,
+                                        @Param("keyword") String keyword,
+                                        @Param("categoryIds") List<Long> categoryIds,
+                                        @Param("sort") String sort);
+
+    /**
+     * zhparser 中文全文搜索 - 全部文章(不限状态),用于管理后台
+     */
+    @Select("""
+            <script>
+            SELECT * FROM article
+            WHERE is_deleted = false
+              AND (
+                to_tsvector('chinese_zh',
+                    coalesce(title, '') || ' ' || coalesce(summary, '') || ' ' || coalesce(content, '')
+                ) @@ plainto_tsquery('chinese_zh', #{keyword})
+                <if test="categoryIds != null and categoryIds.size() > 0">
+                  OR category_id IN
+                  <foreach collection="categoryIds" item="id" open="(" separator="," close=")">
+                    #{id}
+                  </foreach>
+                </if>
+              )
+            ORDER BY created_at DESC
+            </script>
+            """)
+    IPage<Article> searchAllByFts(IPage<Article> page,
+                                  @Param("keyword") String keyword,
+                                  @Param("categoryIds") List<Long> categoryIds);
 }

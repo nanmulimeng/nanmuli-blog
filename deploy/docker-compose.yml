@@ -1,9 +1,12 @@
 version: '3.8'
 
 services:
-  # PostgreSQL 数据库 (含pgvector扩展)
+  # PostgreSQL 数据库 (含 pgvector + zhparser 扩展)
   postgres:
-    image: ankane/pgvector:latest
+    build:
+      context: ./db
+      dockerfile: Dockerfile
+    image: nanmuli-postgres:pgvector-zhparser
     container_name: nanmuli-postgres
     restart: always
     environment:
