@@ -27,6 +27,10 @@ public class OpenAiCompatibleOrganizer implements AiContentOrganizer {
     private final AiConfig aiConfig;
     private final ObjectMapper objectMapper;
 
+    // RestClient 缓存（配置变化时重建）
+    private volatile RestClient cachedRestClient;
+    private volatile String cachedConfigHash;
+
     // 提示词预算（静态配置，不常变更）
     private static final int SINGLE_PAGE_MAX_CHARS = 80000;
     private static final int MULTI_PAGE_PER_MAX_CHARS = 20000;
@@ -82,6 +86,116 @@ public class OpenAiCompatibleOrganizer implements AiContentOrganizer {
     }
 
     @Override
+    public CompletableFuture<String> optimizeKeyword(String keyword) {
+        if (!aiConfig.isConfigured()) {
+            return CompletableFuture.completedFuture(keyword);
+        }
+        try {
+            String systemPrompt = """
+                    你是一个搜索引擎关键词优化专家。
+
+                    任务：将用户输入的关键词优化为更精准的搜索引擎查询词。
+
+                    优化策略：
+                    1. 补充同义词和相关技术术语
+                    2. 去除歧义（多义词添加限定词）
+                    3. 将口语化表达转为专业术语
+                    4. 保持中文，长度控制在30字以内
+                    5. 不要添加解释，不要加引号，只输出优化后的关键词本身
+                    """;
+            String userPrompt = "用户关键词：" + keyword + "\n优化结果：";
+
+            AiResponse response = callAi(systemPrompt, userPrompt);
+            String optimized = response.content != null ? response.content.trim() : keyword;
+
+            // 清理可能的引号、换行、代码块标记
+            optimized = optimized.replaceAll("^```\\w*\\s*", "")
+                    .replaceAll("\\s*```$", "")
+                    .replaceAll("^[\"']|[\"']$", "")
+                    .trim();
+
+            // 校验：为空或过长则回退
+            if (optimized.isBlank() || optimized.length() > 100 || optimized.length() < 2) {
+                log.warn("[AiKeywordOptimizer] Invalid result '{}', fallback to original", optimized);
+                optimized = keyword;
+            }
+
+            if (!optimized.equals(keyword)) {
+                log.info("[AiKeywordOptimizer] '{}' -> '{}'", keyword, optimized);
+            }
+            return CompletableFuture.completedFuture(optimized);
+        } catch (Exception e) {
+            log.warn("[AiKeywordOptimizer] Failed to optimize keyword '{}', using original. {}",
+                    keyword, e.getMessage());
+            return CompletableFuture.completedFuture(keyword);
+        }
+    }
+
+    @Override
+    public CompletableFuture<List<String>> expandKeywords(String keyword) {
+        if (!aiConfig.isConfigured()) {
+            return CompletableFuture.completedFuture(List.of(keyword));
+        }
+        try {
+            String systemPrompt = """
+                    你是一个搜索引擎关键词扩展专家。用户在一个技术博客系统中使用网页采集器，目的是收集技术文章素材。
+
+                    任务：根据用户输入的关键词，生成2-3个不同的搜索引擎查询词变体。
+                    注意：变体数量必须控制在3个以内，避免过多相似搜索触发反爬机制。
+
+                    核心规则：
+                    1. 语境判断优先：关键词在技术语境下有特定含义时（如Gemini=Google AI模型、React=前端框架、Go=编程语言），必须生成保持技术语境的扩展词，避免被搜索引擎的通用/非技术结果主导。
+                    2. 歧义词处理：如果关键词是多义词（如Gemini/Scala/Chrome/Cocoa），至少生成一个带明确技术限定词的变体（如"Google Gemini AI"、"Scala 编程语言"）。
+                    3. 禁止过度泛化：不要生成过于宽泛的查询词（如仅添加"功能""介绍"），应添加能精确锁定技术内容的技术限定词（如版本号、厂商名、技术领域）。
+
+                    策略（最多选3个）：
+                    1. 直接优化版（更精准的专业术语 + 技术限定词）
+                    2. 同义词/别名替换版（技术圈内常用别名）
+                    3. 补充限定词版（添加厂商/版本/技术领域，确保搜索结果锁定技术内容）
+
+                    要求：
+                    - 严格输出JSON数组格式，不要包裹在markdown代码块中
+                    - 每个变体不超过30字
+                    - 变体之间要有明显差异，避免重复
+                    - 如果关键词已经很精准，可以只生成1-2个变体
+                    """;
+            String userPrompt = "用户关键词：" + keyword + "\n输出：";
+
+            AiResponse response = callAi(systemPrompt, userPrompt);
+            String content = response.content != null ? response.content.trim() : "[]";
+
+            // 清理可能的代码块标记
+            content = content.replaceAll("^```(?:json)?\\s*", "")
+                    .replaceAll("\\s*```$", "")
+                    .trim();
+
+            // 解析JSON数组
+            @SuppressWarnings("unchecked")
+            List<Object> rawList = objectMapper.readValue(content, List.class);
+            List<String> keywords = rawList.stream()
+                    .map(Object::toString)
+                    .map(String::trim)
+                    .filter(s -> !s.isBlank() && s.length() <= 100)
+                    .filter(s -> !s.equalsIgnoreCase(keyword)) // 过滤与原始词重复的扩展词
+                    .distinct()
+                    .limit(3)
+                    .toList();
+
+            if (keywords.isEmpty()) {
+                log.warn("[AiKeywordExpander] Empty result, fallback to original");
+                return CompletableFuture.completedFuture(List.of(keyword));
+            }
+
+            log.info("[AiKeywordExpander] '{}' -> {}", keyword, keywords);
+            return CompletableFuture.completedFuture(keywords);
+        } catch (Exception e) {
+            log.warn("[AiKeywordExpander] Failed to expand keyword '{}', using original. {}",
+                    keyword, e.getMessage());
+            return CompletableFuture.completedFuture(List.of(keyword));
+        }
+    }
+
+    @Override
     public CompletableFuture<DigestContent> generateDigest(List<DigestPageContent> pages, String date) {
         log.warn("[AiOrganizer] generateDigest not yet implemented");
         return CompletableFuture.failedFuture(
@@ -90,7 +204,8 @@ public class OpenAiCompatibleOrganizer implements AiContentOrganizer {
 
     private void ensureConfigured() {
         if (!aiConfig.isConfigured()) {
-            throw new UnsupportedOperationException("AI not configured: enabled=" + aiConfig.isEnabled()
+            throw new AiOrganizerException.UnrecoverableException(
+                    "AI not configured: enabled=" + aiConfig.isEnabled()
                     + ", hasKey=" + !aiConfig.getApiKey().isBlank()
                     + ", hasBaseUrl=" + !aiConfig.getBaseUrl().isBlank()
                     + ", hasModel=" + !aiConfig.getModel().isBlank());
@@ -105,10 +220,12 @@ public class OpenAiCompatibleOrganizer implements AiContentOrganizer {
             ## 输出规则
             1. 严格输出 JSON 格式，不要包裹在 markdown 代码块中
             2. fullContent 使用 Markdown 格式，代码块用 ```language 标记，长度 1000-5000 字
+               - 若无法判断编程语言，使用 ``` 或不标记语言，禁止猜测错误语言
             3. 保留原文有价值的代码示例，不要丢弃
             4. 英文内容翻译为中文，保留专有名词原文（如 React、Kubernetes）
             5. 标签是具体技术关键词（如 "Spring Boot 3" 而非 "Java"），3-7 个
-            6. category 必须是以下之一：后端开发/前端开发/数据库/DevOps/AI与机器学习/安全/其他
+            6. category 必须是以下之一：后端开发/前端开发/移动开发/数据库/DevOps/云计算/AI与机器学习/安全/区块链/其他
+               - 根据内容实际所属领域自动判断，不要强制归类为"其他"
             7. 如果输入内容不是技术文章（如登录页、错误页、空白页），输出：{"title":"无效内容","summary":"输入非有效技术文档","keyPoints":[],"tags":[],"category":"其他","fullContent":""}
             8. 忽略原始内容中的导航栏、Cookie 提示、评论区、分享按钮、广告等无关文本
             """;
@@ -121,7 +238,7 @@ public class OpenAiCompatibleOrganizer implements AiContentOrganizer {
                 "summary": "200-300字核心摘要",
                 "keyPoints": ["要点1", "要点2", ...],
                 "tags": ["标签1", ...],
-                "category": "后端开发/前端开发/数据库/DevOps/AI与机器学习/安全/其他",
+                "category": "后端开发/前端开发/移动开发/数据库/DevOps/云计算/AI与机器学习/安全/区块链/其他",
                 "fullContent": "完整 Markdown 格式整理文章"
             }
             """;
@@ -148,12 +265,16 @@ public class OpenAiCompatibleOrganizer implements AiContentOrganizer {
 
         String roleInstruction = switch (template) {
             case TECH_SUMMARY -> "请对以下网页内容进行深度阅读和结构化整理。"
-                    + "重点：提炼核心技术要点、梳理逻辑脉络、补充必要的技术背景、生成结构清晰的技术摘要。\n";
+                    + "重点：提炼核心技术要点、梳理逻辑脉络、补充必要的技术背景、生成结构清晰的技术摘要。"
+                    + "根据内容所属技术领域（后端/前端/AI/移动/云原生等），自动选择最合适的分类和标签。\n";
             case TUTORIAL -> "请将以下内容整理为 step-by-step 教程。"
-                    + "重点：循序渐进的学习路径、每步配代码和预期结果、常见坑和注意事项。\n";
+                    + "重点：循序渐进的学习路径、每步配代码和预期结果、常见坑和注意事项。"
+                    + "根据内容所属技术领域，自动选择最合适的分类和标签。\n";
             case COMPARISON -> "请对以下内容进行分析，提取技术方案对比信息。"
-                    + "输出包含：技术方案概述、对比表格（功能/性能/适用场景）、推荐场景。\n";
-            default -> "请对以下网页内容进行深度阅读和结构化整理。\n";
+                    + "输出包含：技术方案概述、对比表格（功能/性能/适用场景）、推荐场景。"
+                    + "根据内容所属技术领域，自动选择最合适的分类和标签。\n";
+            default -> "请对以下网页内容进行深度阅读和结构化整理。"
+                    + "根据内容所属技术领域，自动选择最合适的分类和标签。\n";
         };
 
         return roleInstruction + "\n## 原始内容\n" + truncated + "\n" + OUTPUT_SCHEMA + FEW_SHOT_EXAMPLE;
@@ -163,6 +284,8 @@ public class OpenAiCompatibleOrganizer implements AiContentOrganizer {
         StringBuilder sb = new StringBuilder();
 
         String roleInstruction = switch (template) {
+            case TECH_SUMMARY -> "以下是从多个来源收集的技术内容，请进行深度阅读和综合分析整理。"
+                    + "重点：提炼各来源核心技术要点、梳理逻辑脉络、去重合并重叠内容、补充必要的技术背景、生成结构清晰的综合技术摘要。\n";
             case TUTORIAL -> "以下是从多个来源收集的教程相关内容，请整合为一篇循序渐进的 step-by-step 教程。"
                     + "重点：统一学习路径、去重合并相同步骤、补充缺失环节、标注各来源差异。\n";
             case COMPARISON -> "以下是从多个来源收集的内容，请进行横向技术方案对比分析。"
@@ -181,9 +304,16 @@ public class OpenAiCompatibleOrganizer implements AiContentOrganizer {
 
         sb.append("## 来源内容\n\n");
 
+        // 按字数降序排序：优先将预算分配给内容更丰富的页面
+        List<PageContent> sortedPages = pages.stream()
+                .sorted((a, b) -> Integer.compare(
+                        (b.markdown != null ? b.markdown.length() : 0),
+                        (a.markdown != null ? a.markdown.length() : 0)))
+                .toList();
+
         int remainingBudget = MULTI_PAGE_TOTAL_BUDGET;
-        for (int i = 0; i < pages.size(); i++) {
-            PageContent page = pages.get(i);
+        for (int i = 0; i < sortedPages.size(); i++) {
+            PageContent page = sortedPages.get(i);
             sb.append("### 来源 ").append(i + 1).append(": ")
                     .append(page.title != null ? page.title : "未知标题").append("\n");
             sb.append("URL: ").append(page.url != null ? page.url : "未知").append("\n\n");
@@ -213,7 +343,7 @@ public class OpenAiCompatibleOrganizer implements AiContentOrganizer {
     }
 
     private AiResponse callAi(String systemPrompt, String userPrompt) {
-        RestClient restClient = buildRestClient();
+        RestClient restClient = getRestClient();
 
         Map<String, Object> requestBody = new LinkedHashMap<>();
         requestBody.put("model", aiConfig.getModel());
@@ -290,6 +420,29 @@ public class OpenAiCompatibleOrganizer implements AiContentOrganizer {
         } catch (Exception e) {
             throw new RuntimeException("Failed to parse AI response: " + e.getMessage(), e);
         }
+    }
+
+    private RestClient getRestClient() {
+        String currentHash = buildConfigHash();
+        if (cachedRestClient == null || !currentHash.equals(cachedConfigHash)) {
+            synchronized (this) {
+                if (cachedRestClient == null || !currentHash.equals(cachedConfigHash)) {
+                    cachedRestClient = buildRestClient();
+                    cachedConfigHash = currentHash;
+                    log.info("[AiOrganizer] RestClient rebuilt for provider={}, model={}, baseUrl={}",
+                            aiConfig.getProvider(), aiConfig.getModel(), aiConfig.getBaseUrl());
+                }
+            }
+        }
+        return cachedRestClient;
+    }
+
+    private String buildConfigHash() {
+        return aiConfig.getBaseUrl() + "|"
+                + aiConfig.getApiKey().hashCode() + "|"
+                + aiConfig.getModel() + "|"
+                + aiConfig.getConnectTimeoutSeconds() + "|"
+                + aiConfig.getReadTimeoutSeconds();
     }
 
     private RestClient buildRestClient() {

@@ -44,6 +44,30 @@ public interface AiContentOrganizer {
     }
 
     /**
+     * 关键词优化（搜索前）
+     * <p>将用户输入的关键词优化为更精准的搜索引擎查询词。</p>
+     * <p>默认实现直接返回原关键词，不做任何修改。</p>
+     *
+     * @param keyword 用户输入的关键词
+     * @return 优化后的关键词（失败时回退到原关键词）
+     */
+    default CompletableFuture<String> optimizeKeyword(String keyword) {
+        return CompletableFuture.completedFuture(keyword);
+    }
+
+    /**
+     * 关键词扩展（搜索前）
+     * <p>将用户输入的关键词扩展为多个相关搜索词变体，用于多路并行爬取。</p>
+     * <p>默认实现返回包含原关键词的单元素列表。</p>
+     *
+     * @param keyword 用户输入的关键词
+     * @return 扩展后的关键词列表（失败时回退到单元素列表）
+     */
+    default CompletableFuture<List<String>> expandKeywords(String keyword) {
+        return CompletableFuture.completedFuture(List.of(keyword));
+    }
+
+    /**
      * 每日日报生成
      *
      * @param pages 当日收集的所有页面内容

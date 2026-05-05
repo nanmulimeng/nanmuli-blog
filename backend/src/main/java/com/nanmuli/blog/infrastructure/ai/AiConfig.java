@@ -69,6 +69,8 @@ public class AiConfig {
         try {
             return configAppService.getByKey(PREFIX + key).getConfigValue();
         } catch (Exception e) {
+            log.warn("[AiConfig] Failed to read config key={}{}, fallback to default. Reason: {}",
+                    PREFIX, key, e.getMessage());
             return defaultValue;
         }
     }

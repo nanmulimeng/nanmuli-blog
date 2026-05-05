@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -86,12 +87,96 @@ public class WebCollectorAsyncExecutor {
                     task.setTotalPages(crawlResults.size());
                 }
                 case KEYWORD -> {
-                    crawlResults = crawlerService.crawlByKeyword(
-                            task.getKeyword(),
-                            task.getSearchEngine(),
-                            task.getMaxPages(),
-                            config
-                    );
+                    // 0. AI优化原始关键词（失败不影响主流程）
+                    String optimizedKeyword = task.getKeyword();
+                    try {
+                        String optimized = aiContentOrganizer.optimizeKeyword(task.getKeyword())
+                                .get(10, TimeUnit.SECONDS);
+                        if (optimized != null && !optimized.isBlank()
+                                && !optimized.equalsIgnoreCase(task.getKeyword())) {
+                            optimizedKeyword = optimized;
+                            log.info("[CrawlAsync] Keyword optimized: '{}' -> '{}'",
+                                    task.getKeyword(), optimizedKeyword);
+                        }
+                    } catch (Exception e) {
+                        log.warn("[CrawlAsync] Keyword optimization failed, using original: '{}'",
+                                task.getKeyword());
+                    }
+
+                    // 1. AI扩展关键词为多个变体（最多3个，避免过多请求触发搜索引擎反爬）
+                    List<String> keywords = new ArrayList<>();
+                    keywords.add(optimizedKeyword); // 优化后的关键词始终保留
+                    try {
+                        List<String> expanded = aiContentOrganizer.expandKeywords(optimizedKeyword)
+                                .get(20, TimeUnit.SECONDS);
+                        if (expanded != null && !expanded.isEmpty()) {
+                            // 去重并限制最多3个扩展词（含优化词最多4个）
+                            for (String kw : expanded) {
+                                if (!kw.equalsIgnoreCase(optimizedKeyword) && !keywords.contains(kw)) {
+                                    keywords.add(kw);
+                                    if (keywords.size() >= 4) break;
+                                }
+                            }
+                            log.info("[CrawlAsync] Keywords expanded to {} variants: {}",
+                                    keywords.size(), keywords);
+                        }
+                    } catch (Exception e) {
+                        log.warn("[CrawlAsync] Keyword expansion failed, using optimized: '{}'",
+                                optimizedKeyword);
+                    }
+
+                    // 2. 对每个关键词搜索爬取，合并去重
+                    Set<String> seenUrls = new HashSet<>();
+                    crawlResults = new ArrayList<>();
+                    // 每个关键词获取更多候选结果（Bing单页~10条，过滤后可能只剩2-3条有效）
+                    // 用 seenUrls 去重 + maxPages 总量控制，避免浪费
+                    int maxPagesPerKeyword = Math.max(8, task.getMaxPages());
+                    int consecutiveNoNew = 0;
+
+                    for (int i = 0; i < keywords.size(); i++) {
+                        String kw = keywords.get(i);
+                        int beforeSize = crawlResults.size();
+                        try {
+                            List<CrawlResult> results = crawlerService.crawlByKeyword(
+                                    kw, task.getSearchEngine(), maxPagesPerKeyword, config
+                            );
+                            for (CrawlResult r : results) {
+                                if (r.getUrl() != null && !r.getUrl().isBlank()
+                                        && !seenUrls.contains(r.getUrl())) {
+                                    seenUrls.add(r.getUrl());
+                                    crawlResults.add(r);
+                                }
+                            }
+                            int newUrls = crawlResults.size() - beforeSize;
+                            log.info("[CrawlAsync] Keyword '{}' contributed {} new URLs (total={}/{})",
+                                    kw, newUrls, crawlResults.size(), task.getMaxPages());
+
+                            // 智能停止：连续2个扩展关键词未带来新URL则提前结束
+                            if (i > 0 && newUrls == 0) {
+                                consecutiveNoNew++;
+                                if (consecutiveNoNew >= 2) {
+                                    log.info("[CrawlAsync] Stopping early: last {} expanded keywords produced no new URLs",
+                                            consecutiveNoNew);
+                                    break;
+                                }
+                            } else {
+                                consecutiveNoNew = 0;
+                            }
+
+                            if (crawlResults.size() >= task.getMaxPages()) {
+                                break;
+                            }
+
+                            // 频率控制：关键词之间休眠2秒，避免触发搜索引擎反爬
+                            if (i < keywords.size() - 1) {
+                                Thread.sleep(2000);
+                            }
+                        } catch (Exception e) {
+                            log.warn("[CrawlAsync] Keyword search failed for '{}': {}",
+                                    kw, e.getMessage());
+                        }
+                    }
+
                     task.setTotalPages(crawlResults.size());
                 }
                 default -> throw new BusinessException("不支持的任务类型");
@@ -148,11 +233,6 @@ public class WebCollectorAsyncExecutor {
      * @return true=AI 整理成功，false=失败或不可用
      */
     private boolean organizeWithAi(WebCollectTask task, List<CrawlResult> crawlResults) {
-        if (aiContentOrganizer == null) {
-            log.info("[AiOrganizer] No AiContentOrganizer bean available, skipping AI organization");
-            return false;
-        }
-
         Exception lastException = null;
 
         for (int attempt = 0; attempt <= maxRetries; attempt++) {
@@ -253,6 +333,12 @@ public class WebCollectorAsyncExecutor {
         Set<String> savedUrlHashes = new HashSet<>();
 
         for (CrawlResult result : results) {
+            // 跳过无 URL 的结果（爬虫异常时可能为 null）
+            if (result.getUrl() == null || result.getUrl().isBlank()) {
+                log.warn("[SaveCrawl] Skipping result with null/blank URL, taskId={}", taskId);
+                continue;
+            }
+
             String urlHash = WebCollectorAppService.hashUrl(result.getUrl());
 
             // 同任务内 URL 去重：跳过重复页面
