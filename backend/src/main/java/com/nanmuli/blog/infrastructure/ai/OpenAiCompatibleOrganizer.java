@@ -5,10 +5,8 @@ import com.nanmuli.blog.domain.webcollector.AiContentOrganizer;
 import com.nanmuli.blog.domain.webcollector.AiOrganizerException;
 import com.nanmuli.blog.domain.webcollector.AiTemplate;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
 import java.nio.charset.StandardCharsets;
@@ -19,65 +17,42 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 基于 DashScope OpenAI 兼容端点的内容整理实现
- * 使用 RestClient 直接调用 compatible-mode 端点，绕过 Spring AI Alibaba 的原生格式问题
+ * 通用 OpenAI 兼容端点内容整理器
+ * 支持任意 OpenAI 兼容 API（DashScope、DeepSeek、OpenAI 等），配置从 sys_config 动态读取
  */
 @Slf4j
 @Service
-@ConditionalOnExpression("!'${spring.ai.dashscope.api-key:}'.isEmpty()")
-public class DashScopeContentOrganizer implements AiContentOrganizer {
+public class OpenAiCompatibleOrganizer implements AiContentOrganizer {
 
-    @Value("${blog.ai.organizer.single-page-max-chars:80000}")
-    private int singlePageMaxChars;
-
-    @Value("${blog.ai.organizer.multi-page-per-max-chars:20000}")
-    private int multiPagePerMaxChars;
-
-    @Value("${blog.ai.organizer.multi-page-total-budget:150000}")
-    private int multiPageTotalBudget;
-
-    private final RestClient restClient;
+    private final AiConfig aiConfig;
     private final ObjectMapper objectMapper;
 
-    @Value("${spring.ai.dashscope.chat.options.model:qwen3.6-plus}")
-    private String model;
+    // 提示词预算（静态配置，不常变更）
+    private static final int SINGLE_PAGE_MAX_CHARS = 80000;
+    private static final int MULTI_PAGE_PER_MAX_CHARS = 20000;
+    private static final int MULTI_PAGE_TOTAL_BUDGET = 150000;
 
-    @Value("${spring.ai.dashscope.chat.options.temperature:0.3}")
-    private double temperature;
-
-    public DashScopeContentOrganizer(
-            @Value("${spring.ai.dashscope.api-key:}") String apiKey,
-            @Value("${spring.ai.dashscope.base-url:https://dashscope.aliyuncs.com/compatible-mode/v1}") String baseUrl,
-            @Value("${blog.ai.organizer.connect-timeout-seconds:10}") int connectTimeoutSeconds,
-            @Value("${blog.ai.organizer.read-timeout-seconds:90}") int readTimeoutSeconds,
-            ObjectMapper objectMapper) {
-        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(Duration.ofSeconds(connectTimeoutSeconds));
-        factory.setReadTimeout(Duration.ofSeconds(readTimeoutSeconds));
-        this.restClient = RestClient.builder()
-                .baseUrl(baseUrl)
-                .defaultHeader("Authorization", "Bearer " + apiKey)
-                .defaultHeader("Content-Type", "application/json")
-                .requestFactory(factory)
-                .build();
+    public OpenAiCompatibleOrganizer(AiConfig aiConfig, ObjectMapper objectMapper) {
+        this.aiConfig = aiConfig;
         this.objectMapper = objectMapper;
-        log.info("[AiOrganizer] DashScopeContentOrganizer initialized, baseUrl={}", baseUrl);
     }
 
     @Override
     public CompletableFuture<OrganizedContent> organize(String rawMarkdown, AiTemplate template) {
         long start = System.currentTimeMillis();
         try {
+            ensureConfigured();
             String userPrompt = buildSinglePagePrompt(rawMarkdown, template);
             AiResponse aiResponse = callAi(SYSTEM_PROMPT, userPrompt);
             OrganizedContent result = parseOrganizedContent(aiResponse.content);
             result.durationMs = (int) (System.currentTimeMillis() - start);
             result.tokensUsed = aiResponse.totalTokens;
-            log.info("[AiOrganizer] Single page organized: title={}, duration={}ms, tokens={}",
-                    result.title, result.durationMs, result.tokensUsed);
+            log.info("[AiOrganizer] Single page organized: title={}, provider={}, model={}, duration={}ms, tokens={}",
+                    result.title, aiConfig.getProvider(), aiConfig.getModel(), result.durationMs, result.tokensUsed);
             return CompletableFuture.completedFuture(result);
         } catch (Exception e) {
-            log.error("[AiOrganizer] organize failed, template={}", template, e);
+            log.error("[AiOrganizer] organize failed, template={}, provider={}, model={}",
+                    template, aiConfig.getProvider(), aiConfig.getModel(), e);
             return CompletableFuture.failedFuture(e);
         }
     }
@@ -87,21 +62,18 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
         return organizeMultiple(pages, template, null);
     }
 
-    /**
-     * 多页整理（带关键词上下文）
-     * 覆写接口 default 方法，注入 keyword 到 prompt
-     */
     @Override
     public CompletableFuture<OrganizedContent> organizeMultiple(List<PageContent> pages, AiTemplate template, String keyword) {
         long start = System.currentTimeMillis();
         try {
+            ensureConfigured();
             String userPrompt = buildMultiPagePrompt(pages, template, keyword);
             AiResponse aiResponse = callAi(SYSTEM_PROMPT, userPrompt);
             OrganizedContent result = parseOrganizedContent(aiResponse.content);
             result.durationMs = (int) (System.currentTimeMillis() - start);
             result.tokensUsed = aiResponse.totalTokens;
-            log.info("[AiOrganizer] Multi-page organized: title={}, pages={}, keyword={}, duration={}ms, tokens={}",
-                    result.title, pages.size(), keyword, result.durationMs, result.tokensUsed);
+            log.info("[AiOrganizer] Multi-page organized: title={}, pages={}, provider={}, model={}, duration={}ms, tokens={}",
+                    result.title, pages.size(), aiConfig.getProvider(), aiConfig.getModel(), result.durationMs, result.tokensUsed);
             return CompletableFuture.completedFuture(result);
         } catch (Exception e) {
             log.error("[AiOrganizer] organizeMultiple failed", e);
@@ -111,9 +83,18 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
 
     @Override
     public CompletableFuture<DigestContent> generateDigest(List<DigestPageContent> pages, String date) {
-        log.warn("[AiOrganizer] generateDigest not yet implemented (Phase 5)");
+        log.warn("[AiOrganizer] generateDigest not yet implemented");
         return CompletableFuture.failedFuture(
                 new UnsupportedOperationException("generateDigest not implemented yet"));
+    }
+
+    private void ensureConfigured() {
+        if (!aiConfig.isConfigured()) {
+            throw new UnsupportedOperationException("AI not configured: enabled=" + aiConfig.isEnabled()
+                    + ", hasKey=" + !aiConfig.getApiKey().isBlank()
+                    + ", hasBaseUrl=" + !aiConfig.getBaseUrl().isBlank()
+                    + ", hasModel=" + !aiConfig.getModel().isBlank());
+        }
     }
 
     // ============== Prompt 构建 ==============
@@ -163,7 +144,7 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
             """;
 
     private String buildSinglePagePrompt(String rawMarkdown, AiTemplate template) {
-        String truncated = truncateAtParagraphBoundary(rawMarkdown, singlePageMaxChars);
+        String truncated = truncateAtParagraphBoundary(rawMarkdown, SINGLE_PAGE_MAX_CHARS);
 
         String roleInstruction = switch (template) {
             case TECH_SUMMARY -> "请对以下网页内容进行深度阅读和结构化整理。"
@@ -200,8 +181,7 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
 
         sb.append("## 来源内容\n\n");
 
-        // [B3] 多页总输入预算上限：先截断每页，再按总预算裁剪后面的页面
-        int remainingBudget = multiPageTotalBudget;
+        int remainingBudget = MULTI_PAGE_TOTAL_BUDGET;
         for (int i = 0; i < pages.size(); i++) {
             PageContent page = pages.get(i);
             sb.append("### 来源 ").append(i + 1).append(": ")
@@ -209,7 +189,7 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
             sb.append("URL: ").append(page.url != null ? page.url : "未知").append("\n\n");
 
             String md = page.markdown != null ? page.markdown : "";
-            int perPageBudget = Math.min(multiPagePerMaxChars, remainingBudget);
+            int perPageBudget = Math.min(MULTI_PAGE_PER_MAX_CHARS, remainingBudget);
             if (perPageBudget <= 0) {
                 sb.append("[已达到总输入预算上限，后续来源已省略]\n\n");
                 continue;
@@ -233,9 +213,11 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
     }
 
     private AiResponse callAi(String systemPrompt, String userPrompt) {
+        RestClient restClient = buildRestClient();
+
         Map<String, Object> requestBody = new LinkedHashMap<>();
-        requestBody.put("model", model);
-        requestBody.put("temperature", temperature);
+        requestBody.put("model", aiConfig.getModel());
+        requestBody.put("temperature", aiConfig.getTemperature());
         requestBody.put("messages", List.of(
                 Map.of("role", "system", "content", systemPrompt),
                 Map.of("role", "user", "content", userPrompt)
@@ -272,7 +254,6 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
 
             AiResponse aiResponse = new AiResponse();
 
-            // 提取内容：choices[0].message.content
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> choices = (List<Map<String, Object>>) respMap.get("choices");
             if (choices != null && !choices.isEmpty()) {
@@ -286,7 +267,6 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
                 throw new RuntimeException("Unexpected API response format: no content");
             }
 
-            // [B2] 先提取 finish_reason 和 usage，再做截断检查
             if (choices != null && !choices.isEmpty()) {
                 Object fr = choices.get(0).get("finish_reason");
                 aiResponse.finishReason = fr != null ? fr.toString() : "unknown";
@@ -310,6 +290,18 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
         } catch (Exception e) {
             throw new RuntimeException("Failed to parse AI response: " + e.getMessage(), e);
         }
+    }
+
+    private RestClient buildRestClient() {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(Duration.ofSeconds(aiConfig.getConnectTimeoutSeconds()));
+        factory.setReadTimeout(Duration.ofSeconds(aiConfig.getReadTimeoutSeconds()));
+        return RestClient.builder()
+                .baseUrl(aiConfig.getBaseUrl())
+                .defaultHeader("Authorization", "Bearer " + aiConfig.getApiKey())
+                .defaultHeader("Content-Type", "application/json")
+                .requestFactory(factory)
+                .build();
     }
 
     // ============== 响应解析 ==============
@@ -337,14 +329,7 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
         }
     }
 
-    /**
-     * [B1] 增强版 JSON 提取：正确处理字符串内的大括号
-     * 1. 先尝试 markdown 代码块提取（验证为合法 JSON 后返回）
-     * 2. 代码块内容不是合法 JSON 时（fullContent 内含代码块导致误匹配），回退到状态机
-     * 3. 状态机跟踪引号和转义状态，字符串内的大括号不参与深度计数
-     */
     private String extractJson(String response) {
-        // 尝试 markdown 代码块：regex 匹配后验证是否为合法 JSON
         Matcher matcher = JSON_BLOCK.matcher(response);
         if (matcher.find()) {
             String candidate = matcher.group(1).trim();
@@ -352,7 +337,6 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
                 objectMapper.readValue(candidate, Map.class);
                 return candidate;
             } catch (Exception ignored) {
-                // regex 误匹配了 fullContent 内部的代码块，回退到状态机
             }
         }
         int start = response.indexOf('{');
@@ -393,9 +377,6 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
         return Collections.emptyList();
     }
 
-    /**
-     * 按段落边界截断，避免切断代码块或表格
-     */
     private static String truncateAtParagraphBoundary(String text, int maxLen) {
         if (text.length() <= maxLen) return text;
         int cutPos = text.lastIndexOf("\n\n", maxLen);
