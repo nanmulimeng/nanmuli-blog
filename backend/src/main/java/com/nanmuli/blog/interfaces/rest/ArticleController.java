@@ -74,8 +74,10 @@ public class ArticleController {
         return Result.success(articleAppService.getArchive());
     }
 
+    @Deprecated(since = "1.1", forRemoval = true)
     @PostMapping("/article/{slug}/view")
     public Result<Void> incrementViewCount(@PathVariable String slug) {
+        //noinspection deprecation
         articleAppService.incrementViewCount(slug);
         return Result.success();
     }

@@ -2,6 +2,7 @@ package com.nanmuli.blog.application.webcollector;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nanmuli.blog.application.article.ArticleAppService;
 import com.nanmuli.blog.application.article.command.CreateArticleCommand;
@@ -320,14 +321,14 @@ public class WebCollectorAppService {
 
         try {
             if (task.getAiKeyPoints() != null && !task.getAiKeyPoints().isBlank()) {
-                keyPoints = objectMapper.readValue(task.getAiKeyPoints(), List.class);
+                keyPoints = objectMapper.readValue(task.getAiKeyPoints(), new TypeReference<List<String>>() {});
             }
         } catch (Exception e) {
             log.warn("[prependAiMetadata] Failed to parse aiKeyPoints for task {}: {}", task.getId(), e.getMessage());
         }
         try {
             if (task.getAiTags() != null && !task.getAiTags().isBlank()) {
-                tags = objectMapper.readValue(task.getAiTags(), List.class);
+                tags = objectMapper.readValue(task.getAiTags(), new TypeReference<List<String>>() {});
             }
         } catch (Exception e) {
             log.warn("[prependAiMetadata] Failed to parse aiTags for task {}: {}", task.getId(), e.getMessage());
@@ -454,7 +455,7 @@ public class WebCollectorAppService {
         // 解析元数据
         if (page.getPageMetadata() != null) {
             try {
-                dto.setPageMetadata(objectMapper.readValue(page.getPageMetadata(), Map.class));
+                dto.setPageMetadata(objectMapper.readValue(page.getPageMetadata(), new TypeReference<Map<String, Object>>() {}));
             } catch (Exception e) {
                 dto.setPageMetadata(Collections.emptyMap());
             }
