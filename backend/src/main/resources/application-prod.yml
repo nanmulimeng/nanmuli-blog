@@ -22,6 +22,31 @@ spring:
           max-active: 8
           max-idle: 8
           min-idle: 0
+  sql:
+    init:
+      mode: never
+
+# Sa-Token Redis 配置（生产环境，与业务 Redis 独立数据库）
+sa-token:
+  alone-redis:
+    host: ${REDIS_HOST:localhost}
+    port: ${REDIS_PORT:6379}
+    database: 1
+    timeout: 10s
+    lettuce:
+      pool:
+        max-active: 8
+        max-idle: 8
+        min-idle: 0
+
+# 异步任务执行器（Web Collector 用）
+async:
+  executor:
+    crawler:
+      core-pool-size: 2
+      max-pool-size: 5
+      queue-capacity: 50
+      thread-name-prefix: crawler-
 
 # 生产环境禁用API文档
 knife4j:
