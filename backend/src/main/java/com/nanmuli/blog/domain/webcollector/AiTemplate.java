@@ -1,10 +1,12 @@
 package com.nanmuli.blog.domain.webcollector;
 
 import lombok.Getter;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * AI 整理模板枚举
  */
+@Slf4j
 @Getter
 public enum AiTemplate {
     TECH_SUMMARY("tech_summary", "技术文档摘要"),
@@ -23,11 +25,15 @@ public enum AiTemplate {
     }
 
     public static AiTemplate of(String code) {
+        if (code == null || code.isBlank()) {
+            return TECH_SUMMARY;
+        }
         for (AiTemplate template : values()) {
             if (template.code.equalsIgnoreCase(code)) {
                 return template;
             }
         }
-        return TECH_SUMMARY; // 默认
+        log.warn("[AiTemplate] Unknown template code '{}', falling back to TECH_SUMMARY", code);
+        return TECH_SUMMARY;
     }
 }

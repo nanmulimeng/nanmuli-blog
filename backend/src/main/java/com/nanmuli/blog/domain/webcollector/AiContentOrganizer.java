@@ -30,6 +30,20 @@ public interface AiContentOrganizer {
     CompletableFuture<OrganizedContent> organizeMultiple(List<PageContent> pages, AiTemplate template);
 
     /**
+     * 多页/多源内容汇总整理（带搜索关键词上下文）
+     * <p>实现类可覆写此方法以利用关键词优化整理策略；默认忽略关键词委托给 {@link #organizeMultiple}</p>
+     *
+     * @param pages    多个页面的内容
+     * @param template AI 整理模板
+     * @param keyword  搜索关键词（可为 null）
+     * @return 整理结果
+     */
+    default CompletableFuture<OrganizedContent> organizeMultiple(
+            List<PageContent> pages, AiTemplate template, String keyword) {
+        return organizeMultiple(pages, template);
+    }
+
+    /**
      * 每日日报生成
      *
      * @param pages 当日收集的所有页面内容

@@ -167,15 +167,16 @@ public class WebCollectorAsyncExecutor {
 
             } catch (Exception e) {
                 lastException = e;
-                String simpleName = e.getClass().getSimpleName();
                 // 不可恢复错误：token 截断、API 客户端错误（401/403），直接失败
-                if (simpleName.equals("AiTruncatedException") || simpleName.equals("AiUnrecoverableException")) {
-                    log.warn("[AiOrganizer] Unrecoverable error ({}), skipping retry. taskId={}", simpleName, task.getId());
+                if (e instanceof AiOrganizerException.TruncatedException
+                        || e instanceof AiOrganizerException.UnrecoverableException) {
+                    log.warn("[AiOrganizer] Unrecoverable error ({}), skipping retry. taskId={}",
+                            e.getClass().getSimpleName(), task.getId());
                     break;
                 }
                 if (attempt < maxRetries) {
                     // 429 限速用更长退避（10s），其他错误用指数退避
-                    long backoffMs = simpleName.equals("AiRateLimitException")
+                    long backoffMs = e instanceof AiOrganizerException.RateLimitException
                             ? 10000 : (long) Math.pow(2, attempt) * 1000;
                     log.warn("[AiOrganizer] Attempt {}/{} failed, retrying in {}ms. taskId={}",
                             attempt + 1, maxRetries + 1, backoffMs, task.getId(), e);
@@ -227,12 +228,7 @@ public class WebCollectorAsyncExecutor {
             throw new RuntimeException("No successful pages to organize");
         }
 
-        if (taskType == CollectTaskType.KEYWORD
-                && aiContentOrganizer instanceof com.nanmuli.blog.infrastructure.ai.DashScopeContentOrganizer dashScope) {
-            return dashScope.organizeMultiple(pages, template, task.getKeyword())
-                    .get(180, TimeUnit.SECONDS);
-        }
-        return aiContentOrganizer.organizeMultiple(pages, template)
+        return aiContentOrganizer.organizeMultiple(pages, template, task.getKeyword())
                 .get(180, TimeUnit.SECONDS);
     }
 

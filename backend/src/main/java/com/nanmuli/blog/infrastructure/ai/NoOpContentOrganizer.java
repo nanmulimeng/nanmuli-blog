@@ -6,7 +6,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.stereotype.Service;
 
-import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
@@ -19,25 +18,24 @@ import java.util.concurrent.CompletableFuture;
 @ConditionalOnMissingBean(AiContentOrganizer.class)
 public class NoOpContentOrganizer implements AiContentOrganizer {
 
+    private static final String MSG = "AI content organizer not available";
+
     @Override
     public CompletableFuture<OrganizedContent> organize(String rawMarkdown, AiTemplate template) {
         log.debug("[NoOpContentOrganizer] 跳过 AI 整理，内容长度: {}",
                 rawMarkdown != null ? rawMarkdown.length() : 0);
-        return CompletableFuture.failedFuture(
-                new UnsupportedOperationException("AI content organizer not available"));
+        return CompletableFuture.failedFuture(new UnsupportedOperationException(MSG));
     }
 
     @Override
     public CompletableFuture<OrganizedContent> organizeMultiple(List<PageContent> pages, AiTemplate template) {
         log.debug("[NoOpContentOrganizer] 跳过多页 AI 整理，页面数: {}", pages != null ? pages.size() : 0);
-        return CompletableFuture.failedFuture(
-                new UnsupportedOperationException("AI content organizer not available"));
+        return CompletableFuture.failedFuture(new UnsupportedOperationException(MSG));
     }
 
     @Override
     public CompletableFuture<DigestContent> generateDigest(List<DigestPageContent> pages, String date) {
         log.debug("[NoOpContentOrganizer] 跳过日报生成，日期: {}", date);
-        return CompletableFuture.failedFuture(
-                new UnsupportedOperationException("AI content organizer not available"));
+        return CompletableFuture.failedFuture(new UnsupportedOperationException(MSG));
     }
 }

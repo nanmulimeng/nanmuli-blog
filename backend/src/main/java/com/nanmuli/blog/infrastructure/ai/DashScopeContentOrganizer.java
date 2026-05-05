@@ -2,6 +2,7 @@ package com.nanmuli.blog.infrastructure.ai;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nanmuli.blog.domain.webcollector.AiContentOrganizer;
+import com.nanmuli.blog.domain.webcollector.AiOrganizerException;
 import com.nanmuli.blog.domain.webcollector.AiTemplate;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
@@ -25,6 +26,13 @@ import java.util.regex.Pattern;
 @Service
 @ConditionalOnExpression("!'${spring.ai.dashscope.api-key:}'.isEmpty()")
 public class DashScopeContentOrganizer implements AiContentOrganizer {
+
+    /** 单页最大输入字符数 */
+    private static final int SINGLE_PAGE_MAX_CHARS = 80_000;
+    /** 多页每页最大字符数 */
+    private static final int MULTI_PAGE_PER_MAX_CHARS = 20_000;
+    /** 多页总输入字符预算上限 */
+    private static final int MULTI_PAGE_TOTAL_BUDGET = 150_000;
 
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
@@ -72,26 +80,14 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
 
     @Override
     public CompletableFuture<OrganizedContent> organizeMultiple(List<PageContent> pages, AiTemplate template) {
-        long start = System.currentTimeMillis();
-        try {
-            String userPrompt = buildMultiPagePrompt(pages, template, null);
-            AiResponse aiResponse = callAi(SYSTEM_PROMPT, userPrompt);
-            OrganizedContent result = parseOrganizedContent(aiResponse.content);
-            result.durationMs = (int) (System.currentTimeMillis() - start);
-            result.tokensUsed = aiResponse.totalTokens;
-            log.info("[AiOrganizer] Multi-page organized: title={}, pages={}, duration={}ms, tokens={}",
-                    result.title, pages.size(), result.durationMs, result.tokensUsed);
-            return CompletableFuture.completedFuture(result);
-        } catch (Exception e) {
-            log.error("[AiOrganizer] organizeMultiple failed", e);
-            return CompletableFuture.failedFuture(e);
-        }
+        return organizeMultiple(pages, template, null);
     }
 
     /**
      * 多页整理（带关键词上下文）
-     * 供 AsyncExecutor 调用时注入 keyword
+     * 覆写接口 default 方法，注入 keyword 到 prompt
      */
+    @Override
     public CompletableFuture<OrganizedContent> organizeMultiple(List<PageContent> pages, AiTemplate template, String keyword) {
         long start = System.currentTimeMillis();
         try {
@@ -112,11 +108,8 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
     @Override
     public CompletableFuture<DigestContent> generateDigest(List<DigestPageContent> pages, String date) {
         log.warn("[AiOrganizer] generateDigest not yet implemented (Phase 5)");
-        DigestContent content = new DigestContent();
-        content.title = "技术日报 " + date;
-        content.sections = Collections.emptyList();
-        content.tags = Collections.emptyList();
-        return CompletableFuture.completedFuture(content);
+        return CompletableFuture.failedFuture(
+                new UnsupportedOperationException("generateDigest not implemented yet"));
     }
 
     // ============== Prompt 构建 ==============
@@ -153,7 +146,7 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
             ## 输出示例（注意：fullContent 必须是完整文章，不要用省略号截断）
             {
                 "title": "Spring Boot 3 优雅停机配置详解",
-                "summary": "本文讲解 Spring Boot 3 的优雅停机机制，包括 server.shutdown=graceful 配置、SmartLifecycle 接口处理资源释放、以及 Docker/K8s 环境下的 terminationGracePeriodSeconds 配合方案。",
+                "summary": "本文讲解 Spring Boot 3 的优雅停机机制，包括 server.shutdown=graceful 配置、SmartLifecycle 接口处理资源释放、以及 Docker/K8s 环境下的 terminationGracePeriodSeconds 配合方案。通过合理配置，可以确保应用在关闭时安全释放资源并完成正在处理的请求。",
                 "keyPoints": [
                     "server.shutdown=graceful 开启内置优雅停机",
                     "自定义 SmartLifecycle 接口处理资源释放",
@@ -161,12 +154,12 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
                 ],
                 "tags": ["Spring Boot 3", "优雅停机", "Kubernetes", "微服务"],
                 "category": "后端开发",
-                "fullContent": "## Spring Boot 3 优雅停机\\n\\n### 开启优雅停机\\n\\n在 application.yml 中配置：\\n\\n```yaml\\nserver:\\n  shutdown: graceful\\n```\\n\\n启用后，应用关闭时会等待活跃请求完成。\\n\\n### K8s 环境配置\\n\\n需在 Pod spec 中设置：\\n\\n```yaml\\nterminationGracePeriodSeconds: 60\\n```\\n\\n确保 K8s 给予足够的停机等待时间。"
+                "fullContent": "## Spring Boot 3 优雅停机\\n\\n### 开启优雅停机\\n\\n在 application.yml 中配置：\\n\\n```yaml\\nserver:\\n  shutdown: graceful\\nspring:\\n  lifecycle:\\n    timeout-per-shutdown-phase: 30s\\n```\\n\\n启用后，应用关闭时 Web 服务器会拒绝新请求并等待活跃请求完成，超时后强制关闭。\\n\\n### SmartLifecycle 资源释放\\n\\n对于需要自定义清理逻辑的组件（如线程池、缓存连接），实现 SmartLifecycle 接口：\\n\\n```java\\n@Component\\npublic class ResourceCleanup implements SmartLifecycle {\\n    private volatile boolean running = false;\\n\\n    @Override\\n    public void start() { running = true; }\\n\\n    @Override\\n    public void stop() {\\n        // 关闭线程池、释放连接\\n        running = false;\\n    }\\n\\n    @Override\\n    public boolean isRunning() { return running; }\\n}\\n```\\n\\n### K8s 环境配置\\n\\n需在 Pod spec 中设置：\\n\\n```yaml\\nspec:\\n  terminationGracePeriodSeconds: 60\\n  containers:\\n    - name: app\\n      lifecycle:\\n        preStop:\\n          exec:\\n            command: [\\"sh\\", \\"-c\\", \\"sleep 10\\"]\\n```\\n\\npreStop hook 给 kubelet 发送 SIGTERM 之前留出时间让 Pod 从 Service 中摘除，避免流量打到已停止的实例。"
             }
             """;
 
     private String buildSinglePagePrompt(String rawMarkdown, AiTemplate template) {
-        String truncated = truncateAtParagraphBoundary(rawMarkdown, 80000);
+        String truncated = truncateAtParagraphBoundary(rawMarkdown, SINGLE_PAGE_MAX_CHARS);
 
         String roleInstruction = switch (template) {
             case TECH_SUMMARY -> "请对以下网页内容进行深度阅读和结构化整理。"
@@ -203,14 +196,23 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
 
         sb.append("## 来源内容\n\n");
 
+        // [B3] 多页总输入预算上限：先截断每页，再按总预算裁剪后面的页面
+        int remainingBudget = MULTI_PAGE_TOTAL_BUDGET;
         for (int i = 0; i < pages.size(); i++) {
             PageContent page = pages.get(i);
             sb.append("### 来源 ").append(i + 1).append(": ")
                     .append(page.title != null ? page.title : "未知标题").append("\n");
             sb.append("URL: ").append(page.url != null ? page.url : "未知").append("\n\n");
+
             String md = page.markdown != null ? page.markdown : "";
-            md = truncateAtParagraphBoundary(md, 20000);
+            int perPageBudget = Math.min(MULTI_PAGE_PER_MAX_CHARS, remainingBudget);
+            if (perPageBudget <= 0) {
+                sb.append("[已达到总输入预算上限，后续来源已省略]\n\n");
+                continue;
+            }
+            md = truncateAtParagraphBoundary(md, perPageBudget);
             sb.append(md).append("\n\n---\n\n");
+            remainingBudget -= md.length();
         }
 
         sb.append(OUTPUT_SCHEMA);
@@ -220,9 +222,6 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
 
     // ============== AI 调用（OpenAI 兼容格式） ==============
 
-    /**
-     * AI 响应数据：包含内容文本和 token 使用量
-     */
     private static class AiResponse {
         String content;
         int totalTokens;
@@ -246,13 +245,14 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
                         (req, resp) -> {
                             String body = new String(resp.getBody().readAllBytes(), StandardCharsets.UTF_8);
                             log.error("[AiOrganizer] Unrecoverable API error: status={}, body={}", resp.getStatusCode(), body);
-                            throw new AiUnrecoverableException("API client error " + resp.getStatusCode() + ": " + body);
+                            throw new AiOrganizerException.UnrecoverableException(
+                                    "API client error " + resp.getStatusCode() + ": " + body);
                         })
                 .onStatus(status -> status.value() == 429,
                         (req, resp) -> {
                             String body = new String(resp.getBody().readAllBytes(), StandardCharsets.UTF_8);
                             log.warn("[AiOrganizer] Rate limited by API: {}", body);
-                            throw new AiRateLimitException("Rate limited");
+                            throw new AiOrganizerException.RateLimitException("Rate limited");
                         })
                 .onStatus(status -> status.is5xxServerError(),
                         (req, resp) -> {
@@ -282,21 +282,22 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
                 throw new RuntimeException("Unexpected API response format: no content");
             }
 
-            // 检查 finish_reason：如果为 "length" 说明输出被截断，不应重试
+            // [B2] 先提取 finish_reason 和 usage，再做截断检查
             if (choices != null && !choices.isEmpty()) {
                 Object fr = choices.get(0).get("finish_reason");
                 aiResponse.finishReason = fr != null ? fr.toString() : "unknown";
             }
-            if ("length".equals(aiResponse.finishReason)) {
-                log.warn("[AiOrganizer] finish_reason=length, output truncated, tokens={}", aiResponse.totalTokens);
-                throw new AiTruncatedException("AI output truncated (finish_reason=length), tokens=" + aiResponse.totalTokens);
-            }
 
-            // 提取 token 使用量：usage.total_tokens
             @SuppressWarnings("unchecked")
             Map<String, Object> usage = (Map<String, Object>) respMap.get("usage");
             if (usage != null && usage.get("total_tokens") != null) {
                 aiResponse.totalTokens = ((Number) usage.get("total_tokens")).intValue();
+            }
+
+            if ("length".equals(aiResponse.finishReason)) {
+                log.warn("[AiOrganizer] finish_reason=length, output truncated, tokens={}", aiResponse.totalTokens);
+                throw new AiOrganizerException.TruncatedException(
+                        "AI output truncated (finish_reason=length), tokens=" + aiResponse.totalTokens);
             }
 
             return aiResponse;
@@ -332,19 +333,46 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
         }
     }
 
+    /**
+     * [B1] 增强版 JSON 提取：正确处理字符串内的大括号
+     * 1. 先尝试 markdown 代码块提取（验证为合法 JSON 后返回）
+     * 2. 代码块内容不是合法 JSON 时（fullContent 内含代码块导致误匹配），回退到状态机
+     * 3. 状态机跟踪引号和转义状态，字符串内的大括号不参与深度计数
+     */
     private String extractJson(String response) {
+        // 尝试 markdown 代码块：regex 匹配后验证是否为合法 JSON
         Matcher matcher = JSON_BLOCK.matcher(response);
         if (matcher.find()) {
-            return matcher.group(1).trim();
+            String candidate = matcher.group(1).trim();
+            try {
+                objectMapper.readValue(candidate, Map.class);
+                return candidate;
+            } catch (Exception ignored) {
+                // regex 误匹配了 fullContent 内部的代码块，回退到状态机
+            }
         }
-        // 大括号计数法：从第一个 { 找到最外层平衡的 JSON
         int start = response.indexOf('{');
         if (start < 0) {
             throw new RuntimeException("No JSON found in AI response");
         }
         int depth = 0;
+        boolean inString = false;
+        boolean escape = false;
         for (int i = start; i < response.length(); i++) {
             char c = response.charAt(i);
+            if (escape) {
+                escape = false;
+                continue;
+            }
+            if (c == '\\' && inString) {
+                escape = true;
+                continue;
+            }
+            if (c == '"') {
+                inString = !inString;
+                continue;
+            }
+            if (inString) continue;
             if (c == '{') depth++;
             else if (c == '}') {
                 depth--;
@@ -366,37 +394,13 @@ public class DashScopeContentOrganizer implements AiContentOrganizer {
      */
     private static String truncateAtParagraphBoundary(String text, int maxLen) {
         if (text.length() <= maxLen) return text;
-        // 在 maxLen 附近找最近的双换行（段落边界）
         int cutPos = text.lastIndexOf("\n\n", maxLen);
         if (cutPos < maxLen * 0.8) {
-            // 如果最近的段落边界太靠前，退而求其次找单换行
             cutPos = text.lastIndexOf('\n', maxLen);
         }
         if (cutPos < maxLen * 0.5) {
-            // 连单换行都太靠前，暴力截断
             cutPos = maxLen;
         }
         return text.substring(0, cutPos) + "\n\n[...内容过长已截断]";
-    }
-
-    /**
-     * AI 输出被 token 限制截断，重试无意义
-     */
-    static class AiTruncatedException extends RuntimeException {
-        AiTruncatedException(String message) { super(message); }
-    }
-
-    /**
-     * API 客户端错误（401/403/400），重试无法恢复
-     */
-    static class AiUnrecoverableException extends RuntimeException {
-        AiUnrecoverableException(String message) { super(message); }
-    }
-
-    /**
-     * API 限速（429），需更长退避
-     */
-    static class AiRateLimitException extends RuntimeException {
-        AiRateLimitException(String message) { super(message); }
     }
 }
