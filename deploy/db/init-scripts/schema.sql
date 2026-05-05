@@ -92,12 +92,14 @@ CREATE TABLE IF NOT EXISTS article (
     is_original BOOLEAN NOT NULL DEFAULT TRUE,
     original_url VARCHAR(500),
     publish_time TIMESTAMP,
+    version INT NOT NULL DEFAULT 1,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     is_deleted BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 COMMENT ON TABLE article IS '文章表';
+COMMENT ON COLUMN article.version IS '乐观锁版本号';
 COMMENT ON COLUMN article.title IS '标题';
 COMMENT ON COLUMN article.slug IS 'URL别名（用于SEO）';
 COMMENT ON COLUMN article.content IS '内容（Markdown）';
@@ -166,6 +168,8 @@ CREATE TABLE IF NOT EXISTS daily_log (
     tags JSONB,
     word_count INT,
     log_date DATE NOT NULL,
+    category_id BIGINT,
+    is_public BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     is_deleted BOOLEAN NOT NULL DEFAULT FALSE
@@ -179,10 +183,45 @@ COMMENT ON COLUMN daily_log.weather IS '天气';
 COMMENT ON COLUMN daily_log.tags IS '标签JSON数组';
 COMMENT ON COLUMN daily_log.word_count IS '字数';
 COMMENT ON COLUMN daily_log.log_date IS '日志日期';
+COMMENT ON COLUMN daily_log.category_id IS '分类ID（可选）';
+COMMENT ON COLUMN daily_log.is_public IS '是否公开：true-公开 false-私密';
 COMMENT ON COLUMN daily_log.is_deleted IS '逻辑删除标记';
 
 CREATE INDEX IF NOT EXISTS idx_daily_log_log_date ON daily_log(log_date DESC);
+CREATE INDEX IF NOT EXISTS idx_daily_log_category_id ON daily_log(category_id);
 CREATE INDEX IF NOT EXISTS idx_daily_log_deleted ON daily_log(is_deleted);
+
+-- 文章阅读记录表 - 用于统计独立访客(UV)
+CREATE TABLE IF NOT EXISTS article_view_record (
+    id BIGSERIAL PRIMARY KEY,
+    article_id BIGINT NOT NULL,
+    visitor_id VARCHAR(64) NOT NULL,
+    ip_address VARCHAR(45),
+    user_agent VARCHAR(500),
+    first_view_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_view_time TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    view_count INTEGER NOT NULL DEFAULT 1,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+COMMENT ON TABLE article_view_record IS '文章阅读记录表（UV统计）';
+COMMENT ON COLUMN article_view_record.article_id IS '文章ID';
+COMMENT ON COLUMN article_view_record.visitor_id IS '访客指纹（前端生成的唯一ID）';
+COMMENT ON COLUMN article_view_record.ip_address IS '访问IP';
+COMMENT ON COLUMN article_view_record.user_agent IS '浏览器UA';
+COMMENT ON COLUMN article_view_record.first_view_time IS '首次访问时间';
+COMMENT ON COLUMN article_view_record.last_view_time IS '最后访问时间';
+COMMENT ON COLUMN article_view_record.view_count IS '该访客的访问次数';
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_article_visitor
+    ON article_view_record(article_id, visitor_id)
+    WHERE is_deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_article_view_record_article_id
+    ON article_view_record(article_id) WHERE is_deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_article_view_record_visitor_id
+    ON article_view_record(visitor_id) WHERE is_deleted = FALSE;
 
 -- ============================================
 -- 分类标签模块
@@ -552,6 +591,148 @@ CREATE INDEX IF NOT EXISTS idx_av_article_id ON article_vector(article_id);
 CREATE INDEX IF NOT EXISTS idx_av_content_vector ON article_vector USING ivfflat (content_vector vector_cosine_ops);
 
 -- ============================================
+-- Web 采集器模块
+-- 支持：单页爬取、深度爬取、关键词搜索、每日技术日报
+-- ============================================
+
+-- 订阅源表
+CREATE TABLE IF NOT EXISTS web_collect_source (
+    id              BIGINT PRIMARY KEY,
+    name            VARCHAR(200) NOT NULL,
+    type            VARCHAR(20) NOT NULL,
+    value           VARCHAR(2048) NOT NULL,
+    content_category VARCHAR(50),
+    crawl_mode      VARCHAR(20) DEFAULT 'single',
+    max_depth       SMALLINT DEFAULT 1,
+    max_pages       SMALLINT DEFAULT 10,
+    css_selector    VARCHAR(500),
+    ai_template     VARCHAR(50) DEFAULT 'tech_summary',
+    schedule_cron   VARCHAR(50),
+    freshness_hours INTEGER DEFAULT 24,
+    is_active       BOOLEAN DEFAULT TRUE,
+    last_run_at     TIMESTAMP,
+    last_run_status VARCHAR(20),
+    run_count       INTEGER DEFAULT 0,
+    user_id         BIGINT NOT NULL,
+    created_at      TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMP NOT NULL DEFAULT NOW(),
+    is_deleted      BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+COMMENT ON TABLE web_collect_source IS 'Web Collector 订阅源表 - 管理 URL/关键词/RSS 订阅';
+COMMENT ON COLUMN web_collect_source.type IS '源类型：url / keyword / rss';
+COMMENT ON COLUMN web_collect_source.content_category IS '内容分类：hot_trend / open_source / tech_article / dev_tool / creative';
+COMMENT ON COLUMN web_collect_source.crawl_mode IS '爬取模式：single / deep';
+COMMENT ON COLUMN web_collect_source.freshness_hours IS '时效窗口（小时）';
+COMMENT ON COLUMN web_collect_source.last_run_status IS '上次执行结果：success / failed';
+
+CREATE INDEX IF NOT EXISTS idx_source_active ON web_collect_source(is_active, schedule_cron) WHERE is_deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_source_category ON web_collect_source(content_category) WHERE is_deleted = FALSE;
+
+-- 采集任务表
+CREATE TABLE IF NOT EXISTS web_collect_task (
+    id              BIGINT PRIMARY KEY,
+    task_type       VARCHAR(20) NOT NULL DEFAULT 'single',
+    source_url      VARCHAR(2048),
+    keyword         VARCHAR(500),
+    search_engine   VARCHAR(50),
+    trigger_type    VARCHAR(20) DEFAULT 'manual',
+    source_id       BIGINT,
+    article_id      BIGINT,
+    daily_log_id    BIGINT,
+    user_id         BIGINT NOT NULL,
+    ai_title        VARCHAR(500),
+    ai_summary      TEXT,
+    ai_key_points   JSONB,
+    ai_tags         JSONB,
+    ai_category     VARCHAR(100),
+    ai_full_content TEXT,
+    status          SMALLINT NOT NULL DEFAULT 0,
+    error_message   TEXT,
+    crawl_mode      VARCHAR(20) DEFAULT 'single',
+    ai_template     VARCHAR(50) DEFAULT 'tech_summary',
+    max_depth       SMALLINT DEFAULT 1,
+    max_pages       SMALLINT DEFAULT 10,
+    total_pages     INTEGER DEFAULT 1,
+    completed_pages INTEGER DEFAULT 0,
+    crawl_duration  INTEGER,
+    ai_duration     INTEGER,
+    tokens_used     INTEGER,
+    total_word_count INTEGER,
+    version         INTEGER NOT NULL DEFAULT 1,
+    created_at      TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMP NOT NULL DEFAULT NOW(),
+    is_deleted      BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+COMMENT ON TABLE web_collect_task IS 'Web Collector 采集任务表 - 记录单次采集任务的完整生命周期';
+COMMENT ON COLUMN web_collect_task.task_type IS '任务类型：single-单页, deep-深度, keyword-关键词搜索, digest-每日日报';
+COMMENT ON COLUMN web_collect_task.status IS '任务状态：0-待处理, 1-爬取中, 2-整理中, 3-已完成, 4-失败';
+COMMENT ON COLUMN web_collect_task.trigger_type IS '触发类型：manual / scheduled';
+COMMENT ON COLUMN web_collect_task.version IS '乐观锁版本号';
+
+CREATE INDEX IF NOT EXISTS idx_task_status ON web_collect_task(status) WHERE is_deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_task_user ON web_collect_task(user_id, created_at DESC) WHERE is_deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_task_type ON web_collect_task(task_type, created_at DESC) WHERE is_deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_task_source ON web_collect_task(source_id) WHERE source_id IS NOT NULL AND is_deleted = FALSE;
+
+-- 爬取页面表
+CREATE TABLE IF NOT EXISTS web_collect_page (
+    id              BIGINT PRIMARY KEY,
+    task_id         BIGINT NOT NULL,
+    url             VARCHAR(2048) NOT NULL,
+    page_title      VARCHAR(500),
+    raw_markdown    TEXT,
+    page_metadata   JSONB,
+    crawl_status    SMALLINT DEFAULT 0,
+    error_message   TEXT,
+    crawl_duration  INTEGER,
+    word_count      INTEGER,
+    url_hash        VARCHAR(64) NOT NULL,
+    content_hash    VARCHAR(64),
+    sort_order      INTEGER DEFAULT 0,
+    depth           SMALLINT DEFAULT 0,
+    published_at    TIMESTAMP,
+    created_at      TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE web_collect_page IS 'Web Collector 爬取页面表 - 存储每个 URL 的爬取结果';
+COMMENT ON COLUMN web_collect_page.crawl_status IS '页面爬取状态：0-待爬取, 1-爬取中, 2-已完成, 3-失败';
+COMMENT ON COLUMN web_collect_page.url_hash IS 'URL SHA-256 哈希（去重用）';
+COMMENT ON COLUMN web_collect_page.content_hash IS '正文前 500 字 SHA-256（去重用）';
+
+CREATE INDEX IF NOT EXISTS idx_page_task ON web_collect_page(task_id, sort_order);
+CREATE INDEX IF NOT EXISTS idx_page_url_hash ON web_collect_page(url_hash);
+CREATE INDEX IF NOT EXISTS idx_page_content_hash ON web_collect_page(content_hash) WHERE content_hash IS NOT NULL;
+
+-- updated_at 自动更新触发器函数
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+DROP TRIGGER IF EXISTS update_web_collect_source_updated_at ON web_collect_source;
+CREATE TRIGGER update_web_collect_source_updated_at
+    BEFORE UPDATE ON web_collect_source
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_web_collect_task_updated_at ON web_collect_task;
+CREATE TRIGGER update_web_collect_task_updated_at
+    BEFORE UPDATE ON web_collect_task
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_article_view_record_updated_at ON article_view_record;
+CREATE TRIGGER update_article_view_record_updated_at
+    BEFORE UPDATE ON article_view_record
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- ============================================
 -- 外键约束（在表创建完成后添加，避免循环依赖）
 -- ============================================
 
@@ -585,6 +766,27 @@ ALTER TABLE ai_generation
 -- 文章内容向量表外键
 ALTER TABLE article_vector
     ADD CONSTRAINT fk_av_article FOREIGN KEY (article_id) REFERENCES article(id) ON DELETE CASCADE;
+
+-- 文章阅读记录表外键
+ALTER TABLE article_view_record
+    ADD CONSTRAINT fk_avr_article FOREIGN KEY (article_id) REFERENCES article(id) ON DELETE CASCADE;
+
+-- 技术日志分类外键
+ALTER TABLE daily_log
+    ADD CONSTRAINT fk_daily_log_category FOREIGN KEY (category_id) REFERENCES category(id);
+
+-- Web 采集订阅源表外键
+ALTER TABLE web_collect_source
+    ADD CONSTRAINT fk_source_user FOREIGN KEY (user_id) REFERENCES sys_user(id);
+
+-- Web 采集任务表外键
+ALTER TABLE web_collect_task
+    ADD CONSTRAINT fk_task_user FOREIGN KEY (user_id) REFERENCES sys_user(id),
+    ADD CONSTRAINT fk_task_source FOREIGN KEY (source_id) REFERENCES web_collect_source(id);
+
+-- Web 采集页面表外键
+ALTER TABLE web_collect_page
+    ADD CONSTRAINT fk_page_task FOREIGN KEY (task_id) REFERENCES web_collect_task(id) ON DELETE CASCADE;
 
 -- ============================================
 -- 初始化数据
