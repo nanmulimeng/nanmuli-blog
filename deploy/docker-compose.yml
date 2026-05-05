@@ -18,6 +18,8 @@ services:
       - ./db/init-scripts:/docker-entrypoint-initdb.d
     ports:
       - "5433:5432"
+    networks:
+      - nanmuli-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -34,6 +36,8 @@ services:
       - redis_data:/data
     ports:
       - "6380:6379"
+    networks:
+      - nanmuli-network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s

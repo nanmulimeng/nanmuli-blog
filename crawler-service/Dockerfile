@@ -2,7 +2,7 @@
 # 基于微软 Playwright 官方镜像，已预装 Chromium
 # 支持双模式部署：纯 API 模式 / 独立模式
 
-FROM mcr.microsoft.com/playwright/python:v1.58.0-jammy
+FROM mcr.microsoft.com/playwright/python:v1.59.0-jammy
 
 WORKDIR /app
 
