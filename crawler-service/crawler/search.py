@@ -401,8 +401,11 @@ def _is_excluded_domain(url: str) -> bool:
         '.zodiac.com',
         '.tarot.com',
     ]
+    # 在前面加 . 确保后缀匹配覆盖根域名和子域名
+    # 例：www.sina.com.cn → sina.com.cn → .sina.com.cn → endsWith(.sina.com.cn) = true
+    dotted_domain = '.' + domain_no_www
     for suffix in excluded_domain_suffixes:
-        if domain_no_www.endswith(suffix):
+        if dotted_domain.endswith(suffix):
             return True
 
     # === 搜索引擎路径排除 ===
