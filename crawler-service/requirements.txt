@@ -2,7 +2,9 @@
 # Python 3.10+ required
 
 # Web crawling framework (LLM-first async crawler)
-crawl4ai>=0.8.0
+# ~= 锁定 minor 版本：自动升级补丁（0.8.6 → 0.8.7），阻止跨越（0.8 → 0.9）
+# 避免 Crawl4AI 快速迭代引入 breaking changes
+crawl4ai~=0.8.6
 
 # Web framework for REST API
 fastapi>=0.109.0
