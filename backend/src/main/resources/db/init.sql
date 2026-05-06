@@ -680,6 +680,7 @@ CREATE TABLE IF NOT EXISTS web_collect_task (
     ai_template     VARCHAR(50) DEFAULT 'tech_summary',
     max_depth       SMALLINT DEFAULT 1,
     max_pages       SMALLINT DEFAULT 10,
+    time_range      VARCHAR(20) DEFAULT 'week',
     total_pages     INTEGER DEFAULT 1,
     completed_pages INTEGER DEFAULT 0,
     crawl_duration  INTEGER,

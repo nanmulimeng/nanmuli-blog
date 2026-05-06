@@ -50,6 +50,7 @@ public class WebCollectTask extends BaseAggregateRoot<Long> {
     private String aiTemplate;
     private Integer maxDepth;
     private Integer maxPages;
+    private String timeRange; // day / week / month / year / all
 
     // 进度追踪
     private Integer totalPages;

@@ -57,6 +57,7 @@ public interface CrawlerService {
         private List<String> excludedTags;
         private String waitUntil = "load";
         private int pageTimeout = 60000;
+        private String timeRange = "week"; // day / week / month / year / all
 
         public CrawlConfig() {
             this.excludedTags = List.of("nav", "footer", "aside", "header", "script", "style");
@@ -75,5 +76,7 @@ public interface CrawlerService {
         public void setWaitUntil(String waitUntil) { this.waitUntil = waitUntil; }
         public int getPageTimeout() { return pageTimeout; }
         public void setPageTimeout(int pageTimeout) { this.pageTimeout = pageTimeout; }
+        public String getTimeRange() { return timeRange; }
+        public void setTimeRange(String timeRange) { this.timeRange = timeRange; }
     }
 }

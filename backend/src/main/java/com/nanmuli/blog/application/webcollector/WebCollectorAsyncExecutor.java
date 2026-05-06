@@ -87,6 +87,8 @@ public class WebCollectorAsyncExecutor {
                     task.setTotalPages(crawlResults.size());
                 }
                 case KEYWORD -> {
+                    config.setTimeRange(task.getTimeRange() != null ? task.getTimeRange() : "week");
+
                     // 0. AI优化原始关键词（失败不影响主流程）
                     String optimizedKeyword = task.getKeyword();
                     try {

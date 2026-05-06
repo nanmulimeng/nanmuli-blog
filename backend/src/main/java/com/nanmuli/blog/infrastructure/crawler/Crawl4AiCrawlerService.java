@@ -111,6 +111,7 @@ public class Crawl4AiCrawlerService implements CrawlerService {
             request.put("keyword", keyword);
             request.put("engine", engine);
             request.put("max_results", maxResults);
+            request.put("time_range", config != null ? config.getTimeRange() : "week");
             request.put("config", buildConfigMap(config));
 
             HttpHeaders headers = new HttpHeaders();
@@ -166,6 +167,7 @@ public class Crawl4AiCrawlerService implements CrawlerService {
         map.put("excluded_tags", config.getExcludedTags());
         map.put("wait_until", config.getWaitUntil());
         map.put("page_timeout", config.getPageTimeout());
+        map.put("time_range", config.getTimeRange());
         return map;
     }
 

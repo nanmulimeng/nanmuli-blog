@@ -38,6 +38,7 @@ public class CollectTaskDTO {
     private String aiTemplate;
     private Integer maxDepth;
     private Integer maxPages;
+    private String timeRange;
 
     // 进度
     private Integer totalPages;

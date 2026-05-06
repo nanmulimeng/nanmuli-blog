@@ -39,6 +39,10 @@ public class CreateCollectTaskCommand {
     @Size(max = 50, message = "AI 模板长度不能超过 50")
     private String aiTemplate = "tech_summary";
 
+    // 时间范围过滤（keyword 模式用，默认一周）
+    @Pattern(regexp = "^(day|week|month|year|all)?$", message = "时间范围必须是 day、week、month、year 或 all")
+    private String timeRange = "week";
+
     // 校验：single/deep 模式必须提供 URL
     public boolean isValid() {
         if ("single".equals(taskType) || "deep".equals(taskType)) {

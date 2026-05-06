@@ -80,6 +80,7 @@ public class WebCollectorAppService {
         task.setCrawlMode(command.getCrawlMode());
         task.setMaxDepth(command.getMaxDepth());
         task.setMaxPages(command.getMaxPages());
+        task.setTimeRange(command.getTimeRange());
         task.setAiTemplate(command.getAiTemplate());
         task.setTriggerType("manual");
         task.updateStatus(CollectTaskStatus.PENDING);
