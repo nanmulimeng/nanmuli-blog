@@ -53,6 +53,7 @@ class SearchCrawlRequest(BaseModel):
     keyword: str = Field(..., min_length=1, max_length=500)
     engine: str = Field(default="sogou", pattern="^(sogou|bing|duckduckgo|google)$")
     max_results: int = Field(default=10, ge=1, le=20)
+    time_range: str = Field(default="week", pattern="^(day|week|month|year|all)$")
     config: Optional[CrawlConfig] = Field(default_factory=CrawlConfig)
 
 
@@ -139,7 +140,8 @@ async def crawl_search(request: SearchCrawlRequest):
     try:
         pages = await crawl_by_keyword(
             keyword=request.keyword, engine=request.engine,
-            max_results=request.max_results, config=request.config
+            max_results=request.max_results, time_range=request.time_range,
+            config=request.config
         )
 
         total_time = sum(p.crawl_time_ms for p in pages)

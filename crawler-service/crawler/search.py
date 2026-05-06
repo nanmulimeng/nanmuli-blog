@@ -6,10 +6,11 @@
 
 import asyncio
 import random
+import re
 import time
 import logging
 from typing import List, Optional
-from urllib.parse import quote_plus, urlparse
+from urllib.parse import quote_plus, urlparse, parse_qs
 
 import httpx
 from bs4 import BeautifulSoup
@@ -18,6 +19,8 @@ from crawl4ai import AsyncWebCrawler
 
 from .config import get_browser_config, RunParams
 from .single import CrawlResult, crawl_single_page
+from .quality import evaluate_content
+from .dedup import dedup_results
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +39,7 @@ SEARCH_ENGINES = {
         'snippet_selector': 'p',
     },
     'duckduckgo': {
-        'url': 'https://html.duckduckgo.com/html/?q={query}&kl=cn-zh',
+        'url': 'https://html.duckduckgo.com/html/?q={query}&kl=us-en',
         'result_selector': '.result',
         'title_selector': '.result__a',
         'link_selector': '.result__a',
@@ -58,6 +61,7 @@ async def crawl_by_keyword(
     keyword: str,
     engine: str = 'sogou',
     max_results: int = 10,
+    time_range: str = 'week',
     config: Optional[object] = None
 ) -> List[CrawlResult]:
     """
@@ -68,14 +72,20 @@ async def crawl_by_keyword(
         keyword: 搜索关键词
         engine: 首选搜索引擎
         max_results: 最大结果数
+        time_range: 时间范围过滤 ('day'|'week'|'month'|'year'|'all')
         config: 爬取配置
 
     Returns:
         CrawlResult 列表
     """
+    # 参数校验
+    valid_time_ranges = {'day', 'week', 'month', 'year', 'all'}
+    if time_range not in valid_time_ranges:
+        raise ValueError(f"Invalid time_range '{time_range}'. Must be one of: {valid_time_ranges}")
+
     start_time = time.time()
 
-    logger.info(f"[Search] Keyword: '{keyword}', engine: {engine}, max_results={max_results}")
+    logger.info(f"[Search] Keyword: '{keyword}', engine: {engine}, max_results={max_results}, time_range={time_range}")
 
     # 构建引擎尝试顺序：首选引擎优先，其余按 ENGINE_PRIORITY 排序
     engines_to_try = [engine]
@@ -83,23 +93,29 @@ async def crawl_by_keyword(
         if e != engine and e not in engines_to_try:
             engines_to_try.append(e)
 
-    all_search_urls = []
+    url_set: set = set()
+    all_search_urls: list = []
+    url_source_map: dict = {}  # url -> 来源引擎
     tried_engines = []
 
     # 阶段1：尝试各搜索引擎获取 URL 列表
-    for current_engine in engines_to_try:
+    for idx, current_engine in enumerate(engines_to_try):
         try:
             logger.info(f"[Search] Trying engine '{current_engine}' for keyword: '{keyword}'")
             search_urls = await _get_search_results(
                 keyword=keyword,
                 engine=current_engine,
-                max_results=max_results
+                max_results=max_results,
+                time_range=time_range
             )
             tried_engines.append(current_engine)
 
             if search_urls:
-                # 合并去重（跨引擎）
-                new_urls = [u for u in search_urls if u not in all_search_urls]
+                # 合并去重（跨引擎），set保证O(1)查找
+                new_urls = [u for u in search_urls if u not in url_set]
+                for u in new_urls:
+                    url_set.add(u)
+                    url_source_map[u] = current_engine
                 all_search_urls.extend(new_urls)
                 logger.info(
                     f"[Search] Engine '{current_engine}' returned {len(search_urls)} URLs "
@@ -115,6 +131,10 @@ async def crawl_by_keyword(
         except Exception as e:
             logger.warning(f"[Search] Engine '{current_engine}' failed for '{keyword}': {e}")
             tried_engines.append(current_engine)
+
+        # 引擎间随机间隔，避免连续请求触发频率限制（验证码）
+        if idx < len(engines_to_try) - 1:
+            await asyncio.sleep(random.uniform(2.0, 5.0))
 
     if not all_search_urls:
         logger.error(f"[Search] All engines failed for keyword: '{keyword}'. Tried: {tried_engines}")
@@ -132,13 +152,22 @@ async def crawl_by_keyword(
     params = RunParams(config)
     browser_config = get_browser_config(text_mode=params.text_mode, light_mode=params.light_mode)
 
-    # 记录每个 URL 来自哪个引擎（取第一个成功返回该 URL 的引擎）
-    source_engine = engine if engine in tried_engines else (tried_engines[0] if tried_engines else 'unknown')
-
     results = await _crawl_urls_with_shared_browser(
-        urls=all_search_urls, keyword=keyword, engine=source_engine,
+        urls=all_search_urls, keyword=keyword,
+        url_source_map=url_source_map,
         config=config, browser_config=browser_config
     )
+
+    # 阶段3：内容去重（P3: 重复性要低）
+    try:
+        deduped = dedup_results(results)
+        removed = len(results) - len(deduped)
+        if removed > 0:
+            logger.info(f"[Search] Dedup removed {removed} duplicate results")
+        results = deduped
+    except Exception as de:
+        # 去重失败隔离：不打断主流程
+        logger.warning(f"[Search] Dedup failed: {de}")
 
     total_time = int((time.time() - start_time) * 1000)
     success_count = sum(1 for r in results if r.success)
@@ -150,7 +179,7 @@ async def crawl_by_keyword(
 async def _crawl_urls_with_shared_browser(
     urls: List[str],
     keyword: str,
-    engine: str,
+    url_source_map: dict,
     config: Optional[object],
     browser_config,
     is_fallback: bool = False
@@ -172,15 +201,47 @@ async def _crawl_urls_with_shared_browser(
                     result.success = False
                     result.error_message = f"Content too short ({result.word_count} words, min 50)"
 
+                # 多维度质量评估（P1: 宁可少而不可错）
+                if result.success and result.markdown:
+                    try:
+                        eval_result = evaluate_content(
+                            url=result.url,
+                            title=result.title or '',
+                            content=result.markdown
+                        )
+                        result.metadata['quality_eval'] = eval_result
+                        source_level = eval_result.get('source', {}).get('level', '')
+                        verdict = eval_result.get('verdict', 'pass')
+
+                        # spam/低质量来源 + 质量差 → 直接拒绝
+                        if verdict == 'reject':
+                            reason = eval_result.get('quality', {}).get('recommendation', 'low quality')
+                            logger.warning(
+                                f"[Search] Quality reject (source={source_level}, verdict={verdict}): {url}"
+                            )
+                            result.success = False
+                            result.error_message = f"Quality rejected: {reason}"
+                        elif verdict == 'review':
+                            # 标记为需 review，但不阻止，后续可由调用方决定是否保留
+                            logger.info(f"[Search] Quality review flagged: {url}")
+                    except Exception as qe:
+                        # 质量评估失败隔离：不打断主流程
+                        logger.debug(f"[Search] Quality eval failed for {url}: {qe}")
+
                 result.search_rank = rank
                 result.metadata['search_keyword'] = keyword
-                result.metadata['search_engine'] = engine
+                # 精确记录该URL来自哪个搜索引擎
+                result.metadata['search_engine'] = url_source_map.get(url, 'unknown')
                 if is_fallback:
                     result.metadata['fallback'] = True
                 return result
             except Exception as e:
                 logger.warning(f"[Search] Failed to crawl {url}: {e}")
-                meta = {'search_rank': rank, 'search_keyword': keyword}
+                meta = {
+                    'search_rank': rank,
+                    'search_keyword': keyword,
+                    'search_engine': url_source_map.get(url, 'unknown')
+                }
                 if is_fallback:
                     meta['fallback'] = True
                 return CrawlResult(
@@ -197,10 +258,44 @@ async def _crawl_urls_with_shared_browser(
         return list(results)
 
 
+# 搜索引擎时间过滤参数映射
+TIME_FILTER_PARAMS = {
+    'bing': {
+        'day': '&filters=ex1:"ez5_4251_4252"',
+        'week': '&filters=ex1:"ez5_4251_4253"',
+        'month': '&filters=ex1:"ez5_4251_4254"',
+        'year': '&filters=ex1:"ez5_4251_4255"',
+        'all': '',
+    },
+    'google': {
+        'day': '&tbs=qdr:d',
+        'week': '&tbs=qdr:w',
+        'month': '&tbs=qdr:m',
+        'year': '&tbs=qdr:y',
+        'all': '',
+    },
+    'sogou': {
+        'day': '&s_from=forecast&forecast=day',
+        'week': '&s_from=forecast&forecast=week',
+        'month': '&s_from=forecast&forecast=month',
+        'year': '&s_from=forecast&forecast=year',
+        'all': '',
+    },
+    'duckduckgo': {
+        'day': '&df=d',
+        'week': '&df=w',
+        'month': '&df=m',
+        'year': '&df=y',
+        'all': '',
+    },
+}
+
+
 async def _get_search_results(
     keyword: str,
     engine: str,
-    max_results: int
+    max_results: int,
+    time_range: str = 'week'
 ) -> List[str]:
     """
     获取搜索结果页面的 URL 列表（含预筛选与去重）
@@ -210,6 +305,7 @@ async def _get_search_results(
         keyword: 搜索关键词
         engine: 搜索引擎
         max_results: 最大结果数
+        time_range: 时间范围过滤 ('day'|'week'|'month'|'year'|'all')
 
     Returns:
         经过过滤的 URL 列表
@@ -221,7 +317,7 @@ async def _get_search_results(
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.5',
+        'Accept-Language': 'en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.5',
         'Accept-Encoding': 'gzip, deflate, br',
         'Connection': 'keep-alive',
     }
@@ -241,31 +337,46 @@ async def _get_search_results(
     total_raw = 0
     page = 0
 
+    # 获取时间过滤参数
+    time_filter = TIME_FILTER_PARAMS.get(engine, {}).get(time_range, '')
+    if time_range != 'all':
+        logger.info(f"[Search] Applying time filter '{time_range}' for engine '{engine}'")
+
     # 各引擎分页策略
     while len(urls) < max_results and page < 3:  # 最多翻3页
         if engine == 'bing':
             first = page * 10 + 1
             search_url = (
                 f"https://www.bing.com/search?q={quote_plus(keyword)}"
-                f"&count=10&setmkt=zh-CN&setlang=zh&first={first}"
+                f"&count=50&setmkt=en-US&setlang=en&first={first}"
+                f"{time_filter}"
             )
         elif engine == 'sogou':
             search_url = (
                 f"https://www.sogou.com/web?query={quote_plus(keyword)}"
                 f"&page={page + 1}"
+                f"{time_filter}"
             )
         elif engine == 'google':
             start = page * 10
             search_url = (
                 f"https://www.google.com/search?q={quote_plus(keyword)}"
-                f"&num=10&start={start}&hl=zh-CN"
+                f"&num=10&start={start}&hl=en"
+                f"{time_filter}"
             )
         else:
             # duckduckgo 等使用配置中的 URL 模板
-            search_url = config['url'].format(
-                query=quote_plus(keyword),
-                count=max_results * 4
-            )
+            search_url = config['url'].format(query=quote_plus(keyword))
+            # DDG 分页通过额外参数控制
+            if page > 0:
+                search_url += f"&s={page * 30}"  # DDG 每页约30条
+            if time_filter:
+                # 避免重复拼接?/&
+                sep = '&' if '?' in search_url else '?'
+                if not search_url.endswith(sep) and not search_url.endswith('&'):
+                    search_url += sep
+                # time_filter 已包含前缀 & 或 ?
+                search_url += time_filter.lstrip('&?')
 
         try:
             async with httpx.AsyncClient(follow_redirects=True, timeout=30) as client:
@@ -275,7 +386,11 @@ async def _get_search_results(
                 result_items = soup.select(config['result_selector'])
 
                 if not result_items:
-                    break  # 没有更多结果了
+                    # 检查是否被反爬/验证码拦截（页面有内容但无搜索结果）
+                    page_text = soup.get_text() if soup else ''
+                    if _is_anti_bot_page(page_text, response.text if response else ''):
+                        raise Exception(f"Engine '{engine}' blocked by anti-bot/captcha")
+                    break  # 真正没有更多结果了
 
                 total_raw += len(result_items)
                 page_new = 0
@@ -297,13 +412,11 @@ async def _get_search_results(
 
                     # 清理搜索引擎跳转链接
                     if engine == 'bing' and '/url?u=' in href:
-                        import urllib.parse
-                        parsed = urllib.parse.parse_qs(urllib.parse.urlparse(href).query)
+                        parsed = parse_qs(urlparse(href).query)
                         if 'u' in parsed:
                             href = parsed['u'][0]
                     elif engine == 'google' and href.startswith('/url?'):
-                        import urllib.parse
-                        parsed = urllib.parse.parse_qs(urllib.parse.urlparse(href).query)
+                        parsed = parse_qs(urlparse(href).query)
                         if 'q' in parsed:
                             href = parsed['q'][0]
                     elif engine == 'sogou' and 'weixin.sogou.com' in href:
@@ -323,7 +436,6 @@ async def _get_search_results(
                         continue
 
                     # 同域名去重：每个域名最多保留 1 个结果
-                    from urllib.parse import urlparse
                     domain = urlparse(href).netloc
                     if domain in seen_domains:
                         continue
@@ -376,9 +488,11 @@ def _is_excluded_domain(url: str) -> bool:
         # 电商平台
         'taobao.com', 'tmall.com', 'jd.com',
         'aliexpress.com', '1688.com', 'pdd.com', 'suning.com',
-        # 内容农场
+        # 内容农场 / 低质量平台
         'toutiao.com',
         'mp.weixin.qq.com',  # 公众号质量参差且反爬强
+        'baike.sogou.com',     # 搜狗百科，内容质量低且多为非技术内容
+        'ima.qq.com',          # 腾讯ima AI知识库，二手聚合内容
         # 占星/运势
         'astrologyanswers.com', 'astrology.com', 'horoscope.com',
         'chinesefortunecalendar.com', 'yourchineseastrology.com',
@@ -420,19 +534,30 @@ def _is_excluded_domain(url: str) -> bool:
     if domain_no_www.startswith('amazon.') or domain_no_www.startswith('ebay.'):
         return True
 
-    # === 知乎：排除问题页/搜索/短内容，保留专栏 ===
+    # === 知乎：仅排除搜索页和短内容，保留问题页和专栏
+    # 注：在中国大陆IP下，Bing返回中文结果中知乎占比极高，完全排除会导致大量关键词0结果
     if 'zhihu.com' in domain:
-        if '/pin' in path or '/question' in path or '/search' in path:
+        if '/pin' in path or '/search' in path:
             return True
 
     # === 腾讯/优酷视频域名 ===
     if domain_no_www in ('v.qq.com', 'v.youku.com'):
         return True
 
-    # === 低价值路径模式 ===
-    excluded_path_patterns = [
-        '/a/', '/dy/', '/c/',           # 搜狐号、网易号、凤凰号
-        '/p/', '/thread-',              # 百度贴吧
+    # === 域名限定的低价值路径（避免全局误杀）===
+    domain_path_exclusions = [
+        ('sohu.com', '/a/'),        # 搜狐号
+        ('163.com', '/dy/'),        # 网易号
+        ('ifeng.com', '/c/'),       # 凤凰号
+        ('baidu.com', '/p/'),       # 百度贴吧
+        ('baidu.com', '/thread-'),  # 百度贴吧
+    ]
+    for dom_pat, path_pat in domain_path_exclusions:
+        if dom_pat in domain and path_pat in path:
+            return True
+
+    # === 通用低价值路径（任何域名）===
+    generic_path_patterns = [
         '/tag/', '/tags/',
         '/category/', '/categories/',
         '/search?', '/query?', '/s?', '/find?',
@@ -442,7 +567,7 @@ def _is_excluded_domain(url: str) -> bool:
         '/print', '/share', '/email',
         '/amp/', '/promo', '/affiliate', '/ref=', '/utm_',
     ]
-    for pattern in excluded_path_patterns:
+    for pattern in generic_path_patterns:
         if pattern in path:
             return True
 
@@ -464,6 +589,17 @@ _EXCLUDED_KEYWORDS = [
     'daily horoscope', 'weekly horoscope', 'birth chart',
     'love compatibility', '星座配对', '今日运势',
 ]
+
+
+def _is_whole_word_match(text: str, keyword: str) -> bool:
+    """检查关键词在文本中是否作为整词出现（避免子串误匹配）"""
+    if not keyword:
+        return False
+    # 多词关键词或含中文：直接子串匹配
+    if len(keyword.split()) > 1 or any('一' <= c <= '鿿' for c in keyword):
+        return keyword in text
+    # 单英文单词：用词边界\b匹配，避免 "Java" 匹配 "JavaScript"
+    return bool(re.search(r'\b' + re.escape(keyword) + r'\b', text))
 
 
 def _is_relevant_to_keyword(keyword: str, title: str, snippet: str) -> bool:
@@ -493,9 +629,9 @@ def _is_relevant_to_keyword(keyword: str, title: str, snippet: str) -> bool:
     keyword_lower = keyword.lower().strip()
 
     # 整词匹配优先（标题权重最高）
-    if keyword_lower in title_lower:
+    if _is_whole_word_match(title_lower, keyword_lower):
         return True
-    if keyword_lower in snippet_lower:
+    if _is_whole_word_match(snippet_lower, keyword_lower):
         return True
 
     # 拆分关键词（空格分隔）后分级检查
@@ -505,14 +641,26 @@ def _is_relevant_to_keyword(keyword: str, title: str, snippet: str) -> bool:
         return True
 
     # 标题中出现任意拆分词 → 强信号，直接通过
-    title_matches = sum(1 for p in keyword_parts if p in title_lower)
+    title_matches = sum(1 for p in keyword_parts if _is_whole_word_match(title_lower, p))
     if title_matches >= 1:
         return True
 
     # 摘要中需匹配多数拆分词（避免单个常见词如 "the" "and" 导致误过）
-    snippet_matches = sum(1 for p in keyword_parts if p in snippet_lower)
+    snippet_matches = sum(1 for p in keyword_parts if _is_whole_word_match(snippet_lower, p))
     min_required = max(1, int(len(keyword_parts) * 0.5 + 0.5))  # 向上取整的50%
     return snippet_matches >= min_required
+
+
+def _is_anti_bot_page(page_text: str, raw_html: str = '') -> bool:
+    """检测页面是否为反爬虫/验证码拦截页"""
+    text_lower = page_text.lower()
+    html_lower = raw_html.lower()
+    indicators = [
+        '验证码', 'captcha', 'security check', 'verify you are human',
+        'unusual traffic', 'automated requests', 'ip address has been blocked',
+        'please verify', 'i\'m not a robot', 'recaptcha',
+    ]
+    return any(ind in text_lower or ind in html_lower for ind in indicators)
 
 
 # 降级搜索策略（如果主搜索引擎失败）
