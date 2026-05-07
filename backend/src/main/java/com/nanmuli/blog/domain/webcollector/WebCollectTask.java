@@ -24,7 +24,7 @@ public class WebCollectTask extends BaseAggregateRoot<Long> {
     private String taskType; // single / deep / keyword / digest
     private String sourceUrl;
     private String keyword;
-    private String searchEngine; // bing / duckduckgo
+    private String searchEngine; // sogou / bing / baidu / google
     private String triggerType; // manual / scheduled
 
     // 关联
@@ -40,6 +40,7 @@ public class WebCollectTask extends BaseAggregateRoot<Long> {
     private String aiTags; // JSON
     private String aiCategory;
     private String aiFullContent;
+    private String aiSearchMetadata; // JSON
 
     // 任务状态
     private Integer status; // 0=待处理 1=爬取中 2=整理中 3=已完成 4=失败

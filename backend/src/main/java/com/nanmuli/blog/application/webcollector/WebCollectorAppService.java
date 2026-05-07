@@ -87,6 +87,7 @@ public class WebCollectorAppService {
         task.setTotalPages(switch (command.getTaskType()) {
             case "deep" -> command.getMaxPages() != null ? command.getMaxPages() : 10;
             case "keyword" -> command.getMaxPages() != null ? command.getMaxPages() : 10;
+            case "digest" -> 4; // 4个板块（news/articles/papers/opensource）
             default -> 1;
         });
         task.setCompletedPages(0);
@@ -296,6 +297,14 @@ public class WebCollectorAppService {
         task.setCrawlDuration(null);
         task.setAiDuration(null);
         task.setTotalWordCount(null);
+        task.setAiTitle(null);
+        task.setAiSummary(null);
+        task.setAiKeyPoints(null);
+        task.setAiTags(null);
+        task.setAiCategory(null);
+        task.setAiFullContent(null);
+        task.setAiSearchMetadata(null);
+        task.setTokensUsed(null);
         task.setCompletedPages(0);
         task.updateStatus(CollectTaskStatus.PENDING);
         taskRepository.save(task);
@@ -404,6 +413,14 @@ public class WebCollectorAppService {
         dto.setTaskTypeLabel(getTaskTypeLabel(task.getTaskType()));
         dto.setStatusLabel(getStatusLabel(task.getStatus()));
         dto.setStatusDisplay(getStatusDisplay(task.getStatus()));
+        if (task.getAiSearchMetadata() != null && !task.getAiSearchMetadata().isBlank()) {
+            try {
+                dto.setAiSearchMetadata(objectMapper.readValue(
+                        task.getAiSearchMetadata(), new TypeReference<Map<String, Object>>() {}));
+            } catch (Exception e) {
+                dto.setAiSearchMetadata(Collections.emptyMap());
+            }
+        }
 
         // 解析 JSON 字段
         if (task.getAiKeyPoints() != null) {

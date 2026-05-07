@@ -5,6 +5,7 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 采集任务详情 DTO
@@ -26,6 +27,7 @@ public class CollectTaskDTO {
     private List<String> aiTags;
     private String aiCategory;
     private String aiFullContent;
+    private Map<String, Object> aiSearchMetadata;
 
     // 状态
     private Integer status;

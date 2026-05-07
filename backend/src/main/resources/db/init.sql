@@ -648,7 +648,7 @@ CREATE TABLE IF NOT EXISTS web_collect_source (
 
 COMMENT ON TABLE web_collect_source IS 'Web Collector 订阅源表 - 管理 URL/关键词/RSS 订阅';
 COMMENT ON COLUMN web_collect_source.type IS '源类型：url / keyword / rss';
-COMMENT ON COLUMN web_collect_source.content_category IS '内容分类：hot_trend / open_source / tech_article / dev_tool / creative';
+COMMENT ON COLUMN web_collect_source.content_category IS '内容分类：hot_trend / open_source / tech_article / dev_tool / creative / paper';
 COMMENT ON COLUMN web_collect_source.crawl_mode IS '爬取模式：single / deep';
 COMMENT ON COLUMN web_collect_source.freshness_hours IS '时效窗口（小时）';
 COMMENT ON COLUMN web_collect_source.last_run_status IS '上次执行结果：success / failed';
@@ -674,6 +674,7 @@ CREATE TABLE IF NOT EXISTS web_collect_task (
     ai_tags         TEXT,
     ai_category     VARCHAR(100),
     ai_full_content TEXT,
+    ai_search_metadata TEXT,
     status          SMALLINT NOT NULL DEFAULT 0,
     error_message   TEXT,
     crawl_mode      VARCHAR(20) DEFAULT 'single',

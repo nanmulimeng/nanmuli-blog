@@ -4,38 +4,50 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * AI 内容整理服务接口（领域层定义）
- *
- * 职责：将爬取的原始内容整理为结构化知识
- * 注意：与 AiService 职责分离，AiService 服务文章聚合
+ * AI 内容整理服务接口。
+ * 负责将爬取的原始内容整理为结构化结果，并提供关键词优化、扩展与日报生成能力。
  */
 public interface AiContentOrganizer {
 
     /**
-     * 单页内容整理
+     * 单页内容整理。
      *
-     * @param rawMarkdown 爬取的 Markdown 内容
-     * @param template    AI 整理模板
+     * @param rawMarkdown 原始 Markdown 内容
+     * @param template AI 整理模板
      * @return 整理结果
      */
     CompletableFuture<OrganizedContent> organize(String rawMarkdown, AiTemplate template);
 
     /**
-     * 多页/多源内容汇总整理
+     * 单页内容整理（带搜索上下文）。
+     * 关键词搜索任务可覆盖此方法，将实际搜索上下文注入提示词；默认忽略上下文。
      *
-     * @param pages    多个页面的内容
+     * @param rawMarkdown 原始 Markdown 内容
+     * @param template AI 整理模板
+     * @param keywordContext 搜索上下文，可为空
+     * @return 整理结果
+     */
+    default CompletableFuture<OrganizedContent> organize(
+            String rawMarkdown, AiTemplate template, String keywordContext) {
+        return organize(rawMarkdown, template);
+    }
+
+    /**
+     * 多页或多来源内容汇总整理。
+     *
+     * @param pages 页面内容列表
      * @param template AI 整理模板
      * @return 整理结果
      */
     CompletableFuture<OrganizedContent> organizeMultiple(List<PageContent> pages, AiTemplate template);
 
     /**
-     * 多页/多源内容汇总整理（带搜索关键词上下文）
-     * <p>实现类可覆写此方法以利用关键词优化整理策略；默认忽略关键词委托给 {@link #organizeMultiple}</p>
+     * 多页或多来源内容汇总整理（带搜索上下文）。
+     * 实现类可覆盖此方法利用关键词上下文优化整理策略；默认忽略上下文。
      *
-     * @param pages    多个页面的内容
+     * @param pages 页面内容列表
      * @param template AI 整理模板
-     * @param keyword  搜索关键词（可为 null）
+     * @param keyword 搜索关键词上下文，可为空
      * @return 整理结果
      */
     default CompletableFuture<OrganizedContent> organizeMultiple(
@@ -44,41 +56,34 @@ public interface AiContentOrganizer {
     }
 
     /**
-     * 关键词优化（搜索前）
-     * <p>将用户输入的关键词优化为更精准的搜索引擎查询词。</p>
-     * <p>默认实现直接返回原关键词，不做任何修改。</p>
+     * 搜索前的关键词优化。
      *
-     * @param keyword 用户输入的关键词
-     * @return 优化后的关键词（失败时回退到原关键词）
+     * @param keyword 用户原始关键词
+     * @return 优化后的关键词，失败时回退原词
      */
     default CompletableFuture<String> optimizeKeyword(String keyword) {
         return CompletableFuture.completedFuture(keyword);
     }
 
     /**
-     * 关键词扩展（搜索前）
-     * <p>将用户输入的关键词扩展为多个相关搜索词变体，用于多路并行爬取。</p>
-     * <p>默认实现返回包含原关键词的单元素列表。</p>
+     * 搜索前的关键词扩展。
      *
-     * @param keyword 用户输入的关键词
-     * @return 扩展后的关键词列表（失败时回退到单元素列表）
+     * @param keyword 用户原始关键词
+     * @return 扩展后的关键词列表，失败时回退为仅包含原词
      */
     default CompletableFuture<List<String>> expandKeywords(String keyword) {
         return CompletableFuture.completedFuture(List.of(keyword));
     }
 
     /**
-     * 每日日报生成
+     * 生成技术日报。
      *
-     * @param pages 当日收集的所有页面内容
-     * @param date  日报日期
+     * @param pages 当日收集的页面内容
+     * @param date 日报日期
      * @return 日报内容
      */
     CompletableFuture<DigestContent> generateDigest(List<DigestPageContent> pages, String date);
 
-    /**
-     * 整理结果数据类
-     */
     class OrganizedContent {
         public String title;
         public String summary;
@@ -90,9 +95,6 @@ public interface AiContentOrganizer {
         public int durationMs;
     }
 
-    /**
-     * 页面内容（用于多源整理）
-     */
     class PageContent {
         public String url;
         public String title;
@@ -101,9 +103,6 @@ public interface AiContentOrganizer {
         public int depth;
     }
 
-    /**
-     * 日报页面内容（带分类）
-     */
     class DigestPageContent {
         public String url;
         public String title;
@@ -113,9 +112,6 @@ public interface AiContentOrganizer {
         public String sourceName;
     }
 
-    /**
-     * 日报内容
-     */
     class DigestContent {
         public String title;
         public String summary;
@@ -127,9 +123,6 @@ public interface AiContentOrganizer {
         public int durationMs;
     }
 
-    /**
-     * 日报章节
-     */
     class DigestSection {
         public String category;
         public String categoryName;
@@ -137,9 +130,6 @@ public interface AiContentOrganizer {
         public List<DigestItem> items;
     }
 
-    /**
-     * 日报条目
-     */
     class DigestItem {
         public String title;
         public String oneLiner;

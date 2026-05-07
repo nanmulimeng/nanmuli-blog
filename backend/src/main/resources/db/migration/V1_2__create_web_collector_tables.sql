@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS web_collect_task (
     task_type       VARCHAR(20) NOT NULL DEFAULT 'single',  -- single / deep / keyword / digest
     source_url      VARCHAR(2048),                  -- URL（single/deep 模式）
     keyword         VARCHAR(500),                   -- 关键词（keyword 模式）
-    search_engine   VARCHAR(50),                    -- bing / duckduckgo（keyword 模式）
+    search_engine   VARCHAR(50),                    -- sogou / bing / baidu / google（keyword 模式）
     trigger_type    VARCHAR(20) DEFAULT 'manual',   -- manual / scheduled
 
     -- 关联
@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS web_collect_task (
     ai_tags         TEXT,                           -- 标签建议 JSON 字符串
     ai_category     VARCHAR(100),                   -- 分类建议
     ai_full_content TEXT,                           -- AI 整理后的完整 Markdown
+    ai_search_metadata TEXT,                        -- 关键词 AI 中间产物 JSON（原词/优化词/搜索变体）
 
     -- 任务状态
     status          SMALLINT NOT NULL DEFAULT 0,    -- 0=待处理 1=爬取中 2=整理中 3=已完成 4=失败
@@ -180,7 +181,7 @@ COMMENT ON TABLE web_collect_source IS 'Web Collector 订阅源表 - 管理 URL/
 COMMENT ON TABLE web_collect_task IS 'Web Collector 采集任务表 - 记录单次采集任务的完整生命周期';
 COMMENT ON TABLE web_collect_page IS 'Web Collector 爬取页面表 - 存储每个 URL 的爬取结果';
 
-COMMENT ON COLUMN web_collect_source.content_category IS '内容分类：hot_trend-热点动态, open_source-开源项目, tech_article-技术文章, dev_tool-开发工具, creative-创意发现';
+COMMENT ON COLUMN web_collect_source.content_category IS '内容分类：hot_trend-热点动态, open_source-开源项目, tech_article-技术文章, dev_tool-开发工具, creative-创意发现, paper-技术论文';
 COMMENT ON COLUMN web_collect_task.task_type IS '任务类型：single-单页, deep-深度, keyword-关键词搜索, digest-每日日报';
 COMMENT ON COLUMN web_collect_task.status IS '任务状态：0-待处理, 1-爬取中, 2-整理中, 3-已完成, 4-失败';
 COMMENT ON COLUMN web_collect_page.crawl_status IS '页面爬取状态：0-待爬取, 1-爬取中, 2-已完成, 3-失败';

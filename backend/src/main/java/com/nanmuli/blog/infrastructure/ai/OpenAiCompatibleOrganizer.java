@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nanmuli.blog.domain.webcollector.AiContentOrganizer;
 import com.nanmuli.blog.domain.webcollector.AiOrganizerException;
 import com.nanmuli.blog.domain.webcollector.AiTemplate;
+import com.nanmuli.blog.domain.webcollector.ContentCategory;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
@@ -11,14 +12,23 @@ import org.springframework.web.client.RestClient;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 通用 OpenAI 兼容端点内容整理器
- * 支持任意 OpenAI 兼容 API（DashScope、DeepSeek、OpenAI 等），配置从 sys_config 动态读取
+ * OpenAI 兼容端点内容整理器。
+ * 支持任意 OpenAI 兼容 API，例如 DashScope、DeepSeek、OpenAI 等。
  */
 @Slf4j
 @Service
@@ -27,14 +37,125 @@ public class OpenAiCompatibleOrganizer implements AiContentOrganizer {
     private final AiConfig aiConfig;
     private final ObjectMapper objectMapper;
 
-    // RestClient 缓存（配置变化时重建）
     private volatile RestClient cachedRestClient;
     private volatile String cachedConfigHash;
 
-    // 提示词预算（静态配置，不常变更）
-    private static final int SINGLE_PAGE_MAX_CHARS = 80000;
-    private static final int MULTI_PAGE_PER_MAX_CHARS = 20000;
-    private static final int MULTI_PAGE_TOTAL_BUDGET = 150000;
+    private static final int SINGLE_PAGE_MAX_CHARS = 80_000;
+    private static final int MULTI_PAGE_PER_MAX_CHARS = 20_000;
+    private static final int MULTI_PAGE_TOTAL_BUDGET = 150_000;
+    private static final int MIN_SUMMARY_LENGTH = 10;
+    private static final int MIN_FULL_CONTENT_LENGTH = 20;
+    private static final int MAX_KEY_POINTS = 10;
+    private static final int MAX_TAGS = 10;
+
+    private static final Set<String> ALLOWED_ORGANIZED_CATEGORIES = Set.of(
+            "后端开发", "前端开发", "移动开发", "数据库", "DevOps",
+            "云计算", "AI与机器学习", "安全", "区块链", "其他"
+    );
+
+    private static final Map<String, String> ORGANIZED_CATEGORY_ALIASES = Map.ofEntries(
+            Map.entry("backend", "后端开发"),
+            Map.entry("frontend", "前端开发"),
+            Map.entry("mobile", "移动开发"),
+            Map.entry("database", "数据库"),
+            Map.entry("devops", "DevOps"),
+            Map.entry("cloud", "云计算"),
+            Map.entry("ai", "AI与机器学习"),
+            Map.entry("ai/ml", "AI与机器学习"),
+            Map.entry("machine learning", "AI与机器学习"),
+            Map.entry("security", "安全"),
+            Map.entry("blockchain", "区块链"),
+            Map.entry("other", "其他")
+    );
+
+    private static final String SYSTEM_PROMPT = """
+            你是一位资深技术内容编辑，擅长从网页原始内容中提取、整理并重组为高质量技术文章。
+            ## 输出规则
+            1. 严格输出 JSON，不要包裹在 markdown 代码块中
+            2. fullContent 使用 Markdown 格式，代码块请使用 ```language 标记，正文建议 1000-5000 字
+            3. 保留原文中有价值的代码示例，不要丢弃关键信息
+            4. 英文内容翻译为中文，保留专有名词原文，例如 React、Kubernetes
+            5. tags 必须是具体技术关键词，建议 3-7 个，避免过泛标签
+            6. category 必须是以下之一：后端开发、前端开发、移动开发、数据库、DevOps、云计算、AI与机器学习、安全、区块链、其他
+            7. 如果输入不是有效技术内容，例如登录页、错误页、空白页，请返回一个明确的无效结果，而不是胡乱总结
+            8. 忽略导航、Cookie 提示、评论区、分享按钮、广告等与正文无关的内容
+            """;
+
+    private static final String OUTPUT_SCHEMA = """
+
+            ## 输出格式
+            {
+              "title": "吸引人的中文标题（15-30字）",
+              "summary": "200-300字核心摘要",
+              "keyPoints": ["要点1", "要点2"],
+              "tags": ["标签1", "标签2"],
+              "category": "后端开发|前端开发|移动开发|数据库|DevOps|云计算|AI与机器学习|安全|区块链|其他",
+              "fullContent": "完整 Markdown 格式整理文章"
+            }
+            """;
+
+    private static final String FEW_SHOT_EXAMPLE = """
+
+            ## 输出示例
+            {
+              "title": "Spring Boot 3 优雅停机配置详解",
+              "summary": "本文讲解 Spring Boot 3 的优雅停机机制，包括 server.shutdown=graceful 配置、SmartLifecycle 资源释放，以及在 Docker 和 Kubernetes 环境中的协同策略。通过合理配置，可以让应用在关闭时安全释放资源并尽可能完成正在处理的请求。",
+              "keyPoints": [
+                "通过 server.shutdown=graceful 开启内置优雅停机",
+                "使用 SmartLifecycle 处理线程池和连接等资源释放",
+                "在 Kubernetes 中需要配合 terminationGracePeriodSeconds"
+              ],
+              "tags": ["Spring Boot 3", "优雅停机", "Kubernetes", "微服务"],
+              "category": "后端开发",
+              "fullContent": "## Spring Boot 3 优雅停机\\n\\n### 开启优雅停机\\n\\n在 application.yml 中配置：\\n\\n```yaml\\nserver:\\n  shutdown: graceful\\nspring:\\n  lifecycle:\\n    timeout-per-shutdown-phase: 30s\\n```\\n\\n启用后，应用关闭时 Web 服务器会拒绝新的请求，并等待正在处理的请求完成。\\n\\n### 使用 SmartLifecycle 释放资源\\n\\n对于需要自定义清理逻辑的组件，可以实现 SmartLifecycle 接口：\\n\\n```java\\n@Component\\npublic class ResourceCleanup implements SmartLifecycle {\\n    private volatile boolean running = false;\\n\\n    @Override\\n    public void start() {\\n        running = true;\\n    }\\n\\n    @Override\\n    public void stop() {\\n        running = false;\\n    }\\n\\n    @Override\\n    public boolean isRunning() {\\n        return running;\\n    }\\n}\\n```\\n\\n### Kubernetes 中的配合\\n\\n需要在 Pod 配置中预留足够的终止窗口，避免流量仍然打到即将下线的实例。"
+            }
+            """;
+
+    private static final String DIGEST_SYSTEM_PROMPT_CLEAN = """
+            你是一位资深技术资讯编辑，负责生成每日技术日报。
+            ## 任务
+            根据提供的多个来源内容，生成一份结构化、可读性强的中文技术日报。
+            ## 输出规则
+            1. 严格输出 JSON，不要包裹在 markdown 代码块中
+            2. fullContent 使用 Markdown 格式，包含标题、列表和链接
+            3. 每个条目必须压缩为一句话摘要，突出核心信息
+            4. 对重复报道进行合并，优先保留信息更完整的来源
+            5. 使用中文表达，保留必要的技术专有名词原文
+            6. tags 使用具体技术关键词，建议 5-10 个
+            ## 输出格式
+            {
+              "title": "日报标题（含日期）",
+              "summary": "200-300 字今日摘要",
+              "sections": [
+                {
+                  "category": "分类代码",
+                  "categoryName": "分类显示名",
+                  "emoji": "emoji",
+                  "items": [
+                    {
+                      "title": "文章标题",
+                      "oneLiner": "一句话摘要",
+                      "sourceUrl": "原文链接",
+                      "sourceName": "来源域名"
+                    }
+                  ]
+                }
+              ],
+              "highlight": "今日最值得关注的一条亮点（100 字内）",
+              "tags": ["标签1", "标签2"],
+              "fullContent": "完整 Markdown 日报正文"
+            }
+
+            ## 分类代码对照
+            - hot_trend -> 热点动态 -> 🔥
+            - open_source -> 开源项目 -> 🌟
+            - tech_article -> 技术文章 -> 📖
+            - dev_tool -> 开发工具 -> 🔧
+            - creative -> 创意发现 -> 💡
+            - paper -> 技术论文 -> 📄
+            """;
+
+    private static final Pattern JSON_BLOCK = Pattern.compile("```(?:json)?\\s*\\n?([\\s\\S]*?)```");
 
     public OpenAiCompatibleOrganizer(AiConfig aiConfig, ObjectMapper objectMapper) {
         this.aiConfig = aiConfig;
@@ -43,10 +164,15 @@ public class OpenAiCompatibleOrganizer implements AiContentOrganizer {
 
     @Override
     public CompletableFuture<OrganizedContent> organize(String rawMarkdown, AiTemplate template) {
+        return organize(rawMarkdown, template, null);
+    }
+
+    @Override
+    public CompletableFuture<OrganizedContent> organize(String rawMarkdown, AiTemplate template, String keywordContext) {
         long start = System.currentTimeMillis();
         try {
             ensureConfigured();
-            String userPrompt = buildSinglePagePrompt(rawMarkdown, template);
+            String userPrompt = buildSinglePagePrompt(rawMarkdown, template, keywordContext);
             AiResponse aiResponse = callAi(SYSTEM_PROMPT, userPrompt);
             OrganizedContent result = parseOrganizedContent(aiResponse.content);
             result.durationMs = (int) (System.currentTimeMillis() - start);
@@ -92,31 +218,26 @@ public class OpenAiCompatibleOrganizer implements AiContentOrganizer {
         }
         try {
             String systemPrompt = """
-                    你是一个搜索引擎关键词优化专家。
-
-                    任务：将用户输入的关键词优化为更精准的搜索引擎查询词。
-
-                    优化策略：
-                    1. 补充同义词和相关技术术语
-                    2. 去除歧义（多义词添加限定词）
-                    3. 将口语化表达转为专业术语
-                    4. 保持中文，长度控制在30字以内
-                    5. 不要添加解释，不要加引号，只输出优化后的关键词本身
+                    你是一名搜索关键词优化专家。
+                    任务：将用户输入的技术主题优化为更适合搜索引擎查询的关键词。
+                    规则：
+                    1. 补充必要的技术限定词，减少歧义
+                    2. 将口语化表达改写为专业术语
+                    3. 保持中文表达，长度尽量控制在 30 字内
+                    4. 不要输出解释、引号或代码块，只输出关键词本身
                     """;
             String userPrompt = "用户关键词：" + keyword + "\n优化结果：";
 
             AiResponse response = callAi(systemPrompt, userPrompt);
             String optimized = response.content != null ? response.content.trim() : keyword;
-
-            // 清理可能的引号、换行、代码块标记
             optimized = optimized.replaceAll("^```\\w*\\s*", "")
                     .replaceAll("\\s*```$", "")
                     .replaceAll("^[\"']|[\"']$", "")
                     .trim();
 
-            // 校验：为空或过长则回退
             if (optimized.isBlank() || optimized.length() > 100 || optimized.length() < 2) {
-                log.warn("[AiKeywordOptimizer] Invalid result '{}', fallback to original", optimized);
+                log.warn("[AiKeywordOptimizer] fallback reason=invalid_output original='{}' candidate='{}'",
+                        keyword, optimized);
                 optimized = keyword;
             }
 
@@ -125,7 +246,7 @@ public class OpenAiCompatibleOrganizer implements AiContentOrganizer {
             }
             return CompletableFuture.completedFuture(optimized);
         } catch (Exception e) {
-            log.warn("[AiKeywordOptimizer] Failed to optimize keyword '{}', using original. {}",
+            log.warn("[AiKeywordOptimizer] fallback reason=exception original='{}' message={}",
                     keyword, e.getMessage());
             return CompletableFuture.completedFuture(keyword);
         }
@@ -138,58 +259,44 @@ public class OpenAiCompatibleOrganizer implements AiContentOrganizer {
         }
         try {
             String systemPrompt = """
-                    你是一个搜索引擎关键词扩展专家。用户在一个技术博客系统中使用网页采集器，目的是收集技术文章素材。
-
-                    任务：根据用户输入的关键词，生成2-3个不同的搜索引擎查询词变体。
-                    注意：变体数量必须控制在3个以内，避免过多相似搜索触发反爬机制。
-
-                    核心规则：
-                    1. 语境判断优先：关键词在技术语境下有特定含义时（如Gemini=Google AI模型、React=前端框架、Go=编程语言），必须生成保持技术语境的扩展词，避免被搜索引擎的通用/非技术结果主导。
-                    2. 歧义词处理：如果关键词是多义词（如Gemini/Scala/Chrome/Cocoa），至少生成一个带明确技术限定词的变体（如"Google Gemini AI"、"Scala 编程语言"）。
-                    3. 禁止过度泛化：不要生成过于宽泛的查询词（如仅添加"功能""介绍"），应添加能精确锁定技术内容的技术限定词（如版本号、厂商名、技术领域）。
-
-                    策略（最多选3个）：
-                    1. 直接优化版（更精准的专业术语 + 技术限定词）
-                    2. 同义词/别名替换版（技术圈内常用别名）
-                    3. 补充限定词版（添加厂商/版本/技术领域，确保搜索结果锁定技术内容）
-
-                    要求：
-                    - 严格输出JSON数组格式，不要包裹在markdown代码块中
-                    - 每个变体不超过30字
-                    - 变体之间要有明显差异，避免重复
-                    - 如果关键词已经很精准，可以只生成1-2个变体
+                    你是一名搜索关键词扩展专家。
+                    场景：用户在技术博客系统中使用网页采集器，希望获取高质量技术资料。
+                    任务：基于输入关键词生成 2-3 个不同的搜索变体。
+                    规则：
+                    1. 优先保持技术语境，不要偏向泛化搜索
+                    2. 对多义词补足技术限定词，例如产品名、厂商名、技术领域
+                    3. 不要生成只有“介绍”“功能”之类的宽泛查询
+                    4. 严格输出 JSON 数组，不要包裹在 markdown 中
+                    5. 每个变体不超过 30 个字，变体之间要有明显差异
                     """;
             String userPrompt = "用户关键词：" + keyword + "\n输出：";
 
             AiResponse response = callAi(systemPrompt, userPrompt);
             String content = response.content != null ? response.content.trim() : "[]";
-
-            // 清理可能的代码块标记
             content = content.replaceAll("^```(?:json)?\\s*", "")
                     .replaceAll("\\s*```$", "")
                     .trim();
 
-            // 解析JSON数组
             @SuppressWarnings("unchecked")
             List<Object> rawList = objectMapper.readValue(content, List.class);
             List<String> keywords = rawList.stream()
                     .map(Object::toString)
                     .map(String::trim)
                     .filter(s -> !s.isBlank() && s.length() <= 100)
-                    .filter(s -> !s.equalsIgnoreCase(keyword)) // 过滤与原始词重复的扩展词
+                    .filter(s -> !s.equalsIgnoreCase(keyword))
                     .distinct()
                     .limit(3)
                     .toList();
 
             if (keywords.isEmpty()) {
-                log.warn("[AiKeywordExpander] Empty result, fallback to original");
+                log.warn("[AiKeywordExpander] fallback reason=empty_result original='{}'", keyword);
                 return CompletableFuture.completedFuture(List.of(keyword));
             }
 
             log.info("[AiKeywordExpander] '{}' -> {}", keyword, keywords);
             return CompletableFuture.completedFuture(keywords);
         } catch (Exception e) {
-            log.warn("[AiKeywordExpander] Failed to expand keyword '{}', using original. {}",
+            log.warn("[AiKeywordExpander] fallback reason=exception original='{}' message={}",
                     keyword, e.getMessage());
             return CompletableFuture.completedFuture(List.of(keyword));
         }
@@ -197,144 +304,128 @@ public class OpenAiCompatibleOrganizer implements AiContentOrganizer {
 
     @Override
     public CompletableFuture<DigestContent> generateDigest(List<DigestPageContent> pages, String date) {
-        log.warn("[AiOrganizer] generateDigest not yet implemented");
-        return CompletableFuture.failedFuture(
-                new UnsupportedOperationException("generateDigest not implemented yet"));
+        long start = System.currentTimeMillis();
+        try {
+            ensureConfigured();
+            String userPrompt = buildDigestPromptClean(pages, date);
+            AiResponse aiResponse = callAi(DIGEST_SYSTEM_PROMPT_CLEAN, userPrompt);
+            DigestContent result = parseDigestContent(aiResponse.content);
+            result.durationMs = (int) (System.currentTimeMillis() - start);
+            result.tokensUsed = aiResponse.totalTokens;
+            log.info("[AiOrganizer] Digest generated: title={}, provider={}, model={}, duration={}ms, tokens={}",
+                    result.title, aiConfig.getProvider(), aiConfig.getModel(), result.durationMs, result.tokensUsed);
+            return CompletableFuture.completedFuture(result);
+        } catch (Exception e) {
+            log.error("[AiOrganizer] generateDigest failed", e);
+            return CompletableFuture.failedFuture(e);
+        }
     }
 
     private void ensureConfigured() {
         if (!aiConfig.isConfigured()) {
             throw new AiOrganizerException.UnrecoverableException(
                     "AI not configured: enabled=" + aiConfig.isEnabled()
-                    + ", hasKey=" + !aiConfig.getApiKey().isBlank()
-                    + ", hasBaseUrl=" + !aiConfig.getBaseUrl().isBlank()
-                    + ", hasModel=" + !aiConfig.getModel().isBlank());
+                            + ", hasKey=" + !aiConfig.getApiKey().isBlank()
+                            + ", hasBaseUrl=" + !aiConfig.getBaseUrl().isBlank()
+                            + ", hasModel=" + !aiConfig.getModel().isBlank());
         }
     }
 
-    // ============== Prompt 构建 ==============
-
-    private static final String SYSTEM_PROMPT = """
-            你是一位资深技术内容编辑，擅长从网页原始内容中提取、整理、重组高质量技术文章。
-
-            ## 输出规则
-            1. 严格输出 JSON 格式，不要包裹在 markdown 代码块中
-            2. fullContent 使用 Markdown 格式，代码块用 ```language 标记，长度 1000-5000 字
-               - 若无法判断编程语言，使用 ``` 或不标记语言，禁止猜测错误语言
-            3. 保留原文有价值的代码示例，不要丢弃
-            4. 英文内容翻译为中文，保留专有名词原文（如 React、Kubernetes）
-            5. 标签是具体技术关键词（如 "Spring Boot 3" 而非 "Java"），3-7 个
-            6. category 必须是以下之一：后端开发/前端开发/移动开发/数据库/DevOps/云计算/AI与机器学习/安全/区块链/其他
-               - 根据内容实际所属领域自动判断，不要强制归类为"其他"
-            7. 如果输入内容不是技术文章（如登录页、错误页、空白页），输出：{"title":"无效内容","summary":"输入非有效技术文档","keyPoints":[],"tags":[],"category":"其他","fullContent":""}
-            8. 忽略原始内容中的导航栏、Cookie 提示、评论区、分享按钮、广告等无关文本
-            """;
-
-    private static final String OUTPUT_SCHEMA = """
-
-            ## 输出格式
-            {
-                "title": "吸引人的中文标题（15-30字）",
-                "summary": "200-300字核心摘要",
-                "keyPoints": ["要点1", "要点2", ...],
-                "tags": ["标签1", ...],
-                "category": "后端开发/前端开发/移动开发/数据库/DevOps/云计算/AI与机器学习/安全/区块链/其他",
-                "fullContent": "完整 Markdown 格式整理文章"
-            }
-            """;
-
-    private static final String FEW_SHOT_EXAMPLE = """
-
-            ## 输出示例（注意：fullContent 必须是完整文章，不要用省略号截断）
-            {
-                "title": "Spring Boot 3 优雅停机配置详解",
-                "summary": "本文讲解 Spring Boot 3 的优雅停机机制，包括 server.shutdown=graceful 配置、SmartLifecycle 接口处理资源释放、以及 Docker/K8s 环境下的 terminationGracePeriodSeconds 配合方案。通过合理配置，可以确保应用在关闭时安全释放资源并完成正在处理的请求。",
-                "keyPoints": [
-                    "server.shutdown=graceful 开启内置优雅停机",
-                    "自定义 SmartLifecycle 接口处理资源释放",
-                    "K8s 环境需配合 terminationGracePeriodSeconds"
-                ],
-                "tags": ["Spring Boot 3", "优雅停机", "Kubernetes", "微服务"],
-                "category": "后端开发",
-                "fullContent": "## Spring Boot 3 优雅停机\\n\\n### 开启优雅停机\\n\\n在 application.yml 中配置：\\n\\n```yaml\\nserver:\\n  shutdown: graceful\\nspring:\\n  lifecycle:\\n    timeout-per-shutdown-phase: 30s\\n```\\n\\n启用后，应用关闭时 Web 服务器会拒绝新请求并等待活跃请求完成，超时后强制关闭。\\n\\n### SmartLifecycle 资源释放\\n\\n对于需要自定义清理逻辑的组件（如线程池、缓存连接），实现 SmartLifecycle 接口：\\n\\n```java\\n@Component\\npublic class ResourceCleanup implements SmartLifecycle {\\n    private volatile boolean running = false;\\n\\n    @Override\\n    public void start() { running = true; }\\n\\n    @Override\\n    public void stop() {\\n        // 关闭线程池、释放连接\\n        running = false;\\n    }\\n\\n    @Override\\n    public boolean isRunning() { return running; }\\n}\\n```\\n\\n### K8s 环境配置\\n\\n需在 Pod spec 中设置：\\n\\n```yaml\\nspec:\\n  terminationGracePeriodSeconds: 60\\n  containers:\\n    - name: app\\n      lifecycle:\\n        preStop:\\n          exec:\\n            command: [\\"sh\\", \\"-c\\", \\"sleep 10\\"]\\n```\\n\\npreStop hook 给 kubelet 发送 SIGTERM 之前留出时间让 Pod 从 Service 中摘除，避免流量打到已停止的实例。"
-            }
-            """;
-
-    private String buildSinglePagePrompt(String rawMarkdown, AiTemplate template) {
+    private String buildSinglePagePrompt(String rawMarkdown, AiTemplate template, String keywordContext) {
         String truncated = truncateAtParagraphBoundary(rawMarkdown, SINGLE_PAGE_MAX_CHARS);
 
         String roleInstruction = switch (template) {
-            case TECH_SUMMARY -> "请对以下网页内容进行深度阅读和结构化整理。"
-                    + "重点：提炼核心技术要点、梳理逻辑脉络、补充必要的技术背景、生成结构清晰的技术摘要。"
-                    + "根据内容所属技术领域（后端/前端/AI/移动/云原生等），自动选择最合适的分类和标签。\n";
-            case TUTORIAL -> "请将以下内容整理为 step-by-step 教程。"
-                    + "重点：循序渐进的学习路径、每步配代码和预期结果、常见坑和注意事项。"
-                    + "根据内容所属技术领域，自动选择最合适的分类和标签。\n";
-            case COMPARISON -> "请对以下内容进行分析，提取技术方案对比信息。"
-                    + "输出包含：技术方案概述、对比表格（功能/性能/适用场景）、推荐场景。"
-                    + "根据内容所属技术领域，自动选择最合适的分类和标签。\n";
-            default -> "请对以下网页内容进行深度阅读和结构化整理。"
-                    + "根据内容所属技术领域，自动选择最合适的分类和标签。\n";
+            case TECH_SUMMARY -> """
+                    请对以下网页内容进行深度阅读和结构化整理。
+                    重点：提炼核心技术要点，梳理逻辑脉络，补充必要背景，输出一篇结构清晰的技术摘要。
+                    """;
+            case TUTORIAL -> """
+                    请将以下内容整理为循序渐进的 step-by-step 教程。
+                    重点：拆解学习路径，明确每一步的操作、代码和预期结果，并提示常见坑点。
+                    """;
+            case COMPARISON -> """
+                    请对以下内容进行分析，提取技术方案对比信息。
+                    重点：总结方案差异、适用场景、优缺点，并尽量形成可读的对比结构。
+                    """;
+            default -> """
+                    请对以下网页内容进行深度阅读和结构化整理。
+                    根据内容所属技术领域，自动选择最合适的分类和标签。
+                    """;
         };
 
-        return roleInstruction + "\n## 原始内容\n" + truncated + "\n" + OUTPUT_SCHEMA + FEW_SHOT_EXAMPLE;
+        StringBuilder sb = new StringBuilder(roleInstruction).append('\n');
+        appendKeywordContextSection(sb, keywordContext);
+        sb.append("## 原始内容\n")
+                .append(truncated)
+                .append("\n")
+                .append(OUTPUT_SCHEMA)
+                .append(FEW_SHOT_EXAMPLE);
+        return sb.toString();
     }
 
-    private String buildMultiPagePrompt(List<PageContent> pages, AiTemplate template, String keyword) {
-        StringBuilder sb = new StringBuilder();
-
+    private String buildMultiPagePrompt(List<PageContent> pages, AiTemplate template, String keywordContext) {
         String roleInstruction = switch (template) {
-            case TECH_SUMMARY -> "以下是从多个来源收集的技术内容，请进行深度阅读和综合分析整理。"
-                    + "重点：提炼各来源核心技术要点、梳理逻辑脉络、去重合并重叠内容、补充必要的技术背景、生成结构清晰的综合技术摘要。\n";
-            case TUTORIAL -> "以下是从多个来源收集的教程相关内容，请整合为一篇循序渐进的 step-by-step 教程。"
-                    + "重点：统一学习路径、去重合并相同步骤、补充缺失环节、标注各来源差异。\n";
-            case COMPARISON -> "以下是从多个来源收集的内容，请进行横向技术方案对比分析。"
-                    + "重点：提取各方案优缺点、制作对比表格、给出不同场景下的推荐。\n";
-            case KNOWLEDGE_REPORT -> "以下是从多个来源收集的内容，请生成一份综合性知识报告。"
-                    + "重点：背景概述、技术原理、现状分析、趋势预测、参考来源。\n";
-            default -> "以下是从多个来源收集的内容，请进行综合分析整理，去重合并，生成结构化的技术文章。\n";
+            case TECH_SUMMARY -> """
+                    以下是从多个来源收集的技术内容，请进行综合分析和结构化整理。
+                    重点：提炼共识，去重合并重复信息，保留互补细节，并形成一篇可直接沉淀的技术总结。
+                    """;
+            case TUTORIAL -> """
+                    以下是从多个来源收集的教程相关内容，请整合为一篇循序渐进的教程。
+                    重点：统一步骤顺序，补足缺失环节，去除重复说明，保留关键代码与注意事项。
+                    """;
+            case COMPARISON -> """
+                    以下是从多个来源收集的内容，请进行横向技术方案对比。
+                    重点：总结差异、适用场景和推荐建议，尽量用结构化方式呈现。
+                    """;
+            case KNOWLEDGE_REPORT -> """
+                    以下是从多个来源收集的内容，请生成一份综合性的知识报告。
+                    重点：包含背景概览、核心原理、现状分析、趋势判断和主要参考来源。
+                    """;
+            default -> """
+                    以下是从多个来源收集的内容，请进行综合分析整理，去重合并并输出结构化文章。
+                    """;
         };
-        sb.append(roleInstruction).append("\n");
 
-        if (keyword != null && !keyword.isBlank()) {
-            sb.append("## 搜索关键词\n");
-            sb.append("用户通过搜索引擎搜索「").append(keyword).append("」找到了以下页面。");
-            sb.append("请围绕该关键词组织内容，重点关注与关键词直接相关的技术信息。\n\n");
-        }
-
+        StringBuilder sb = new StringBuilder(roleInstruction).append('\n');
+        appendKeywordContextSection(sb, keywordContext);
         sb.append("## 来源内容\n\n");
 
-        // 按字数降序排序：优先将预算分配给内容更丰富的页面
         List<PageContent> sortedPages = pages.stream()
                 .sorted((a, b) -> Integer.compare(
-                        (b.markdown != null ? b.markdown.length() : 0),
-                        (a.markdown != null ? a.markdown.length() : 0)))
+                        b.markdown != null ? b.markdown.length() : 0,
+                        a.markdown != null ? a.markdown.length() : 0))
                 .toList();
 
         int remainingBudget = MULTI_PAGE_TOTAL_BUDGET;
         for (int i = 0; i < sortedPages.size(); i++) {
             PageContent page = sortedPages.get(i);
             sb.append("### 来源 ").append(i + 1).append(": ")
-                    .append(page.title != null ? page.title : "未知标题").append("\n");
+                    .append(page.title != null ? page.title : "未知标题").append('\n');
             sb.append("URL: ").append(page.url != null ? page.url : "未知").append("\n\n");
 
-            String md = page.markdown != null ? page.markdown : "";
+            String markdown = page.markdown != null ? page.markdown : "";
             int perPageBudget = Math.min(MULTI_PAGE_PER_MAX_CHARS, remainingBudget);
             if (perPageBudget <= 0) {
                 sb.append("[已达到总输入预算上限，后续来源已省略]\n\n");
                 continue;
             }
-            md = truncateAtParagraphBoundary(md, perPageBudget);
-            sb.append(md).append("\n\n---\n\n");
-            remainingBudget -= md.length();
+            markdown = truncateAtParagraphBoundary(markdown, perPageBudget);
+            sb.append(markdown).append("\n\n---\n\n");
+            remainingBudget -= markdown.length();
         }
 
-        sb.append(OUTPUT_SCHEMA);
-        sb.append(FEW_SHOT_EXAMPLE);
+        sb.append(OUTPUT_SCHEMA).append(FEW_SHOT_EXAMPLE);
         return sb.toString();
     }
 
-    // ============== AI 调用（OpenAI 兼容格式） ==============
+    private void appendKeywordContextSection(StringBuilder sb, String keywordContext) {
+        if (keywordContext == null || keywordContext.isBlank()) {
+            return;
+        }
+        sb.append("## 搜索上下文\n");
+        sb.append(keywordContext.trim()).append("\n");
+        sb.append("请优先围绕以上实际搜索意图组织内容，避免被来源页面中的旁支主题带偏。\n\n");
+    }
 
     private static class AiResponse {
         String content;
@@ -383,23 +474,27 @@ public class OpenAiCompatibleOrganizer implements AiContentOrganizer {
             Map<String, Object> respMap = objectMapper.readValue(response, Map.class);
 
             AiResponse aiResponse = new AiResponse();
-
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> choices = (List<Map<String, Object>>) respMap.get("choices");
             if (choices != null && !choices.isEmpty()) {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> message = (Map<String, Object>) choices.get(0).get("message");
-                if (message != null) {
-                    aiResponse.content = (String) message.get("content");
+                for (Map<String, Object> choice : choices) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> message = (Map<String, Object>) choice.get("message");
+                    String content = extractMessageContent(message != null ? message.get("content") : null);
+                    if (!content.isBlank()) {
+                        aiResponse.content = content;
+                        Object finishReason = choice.get("finish_reason");
+                        aiResponse.finishReason = finishReason != null ? finishReason.toString() : "unknown";
+                        break;
+                    }
                 }
             }
+
             if (aiResponse.content == null) {
                 throw new RuntimeException("Unexpected API response format: no content");
             }
-
-            if (choices != null && !choices.isEmpty()) {
-                Object fr = choices.get(0).get("finish_reason");
-                aiResponse.finishReason = fr != null ? fr.toString() : "unknown";
+            if (aiResponse.finishReason == null) {
+                aiResponse.finishReason = "unknown";
             }
 
             @SuppressWarnings("unchecked")
@@ -420,6 +515,33 @@ public class OpenAiCompatibleOrganizer implements AiContentOrganizer {
         } catch (Exception e) {
             throw new RuntimeException("Failed to parse AI response: " + e.getMessage(), e);
         }
+    }
+
+    private String extractMessageContent(Object content) {
+        if (content instanceof String str) {
+            return str.trim();
+        }
+        if (content instanceof List<?> parts) {
+            StringBuilder sb = new StringBuilder();
+            for (Object part : parts) {
+                if (part instanceof Map<?, ?> map) {
+                    Object text = map.get("text");
+                    if (text != null) {
+                        if (sb.length() > 0) {
+                            sb.append('\n');
+                        }
+                        sb.append(text);
+                    }
+                } else if (part != null) {
+                    if (sb.length() > 0) {
+                        sb.append('\n');
+                    }
+                    sb.append(part);
+                }
+            }
+            return sb.toString().trim();
+        }
+        return "";
     }
 
     private RestClient getRestClient() {
@@ -457,10 +579,6 @@ public class OpenAiCompatibleOrganizer implements AiContentOrganizer {
                 .build();
     }
 
-    // ============== 响应解析 ==============
-
-    private static final Pattern JSON_BLOCK = Pattern.compile("```(?:json)?\\s*\\n?([\\s\\S]*?)```");
-
     @SuppressWarnings("unchecked")
     private OrganizedContent parseOrganizedContent(String response) throws Exception {
         String json = extractJson(response);
@@ -468,17 +586,39 @@ public class OpenAiCompatibleOrganizer implements AiContentOrganizer {
             Map<String, Object> map = objectMapper.readValue(json, Map.class);
 
             OrganizedContent content = new OrganizedContent();
-            content.title = (String) map.getOrDefault("title", "");
-            content.summary = (String) map.getOrDefault("summary", "");
-            content.keyPoints = toStringList(map.get("keyPoints"));
-            content.tags = toStringList(map.get("tags"));
-            content.category = (String) map.getOrDefault("category", "");
-            content.fullContent = (String) map.getOrDefault("fullContent", "");
+            content.title = normalizeText(map.get("title"));
+            content.summary = normalizeText(map.get("summary"));
+            content.keyPoints = normalizeStringList(map.get("keyPoints"), MAX_KEY_POINTS);
+            content.tags = normalizeStringList(map.get("tags"), MAX_TAGS);
+            content.category = normalizeOrganizedCategory(map.get("category"));
+            content.fullContent = normalizeText(map.get("fullContent"));
+            validateOrganizedContent(content);
             return content;
         } catch (Exception e) {
             log.error("[AiOrganizer] JSON parse failed. Raw (first 500): {}",
                     json.substring(0, Math.min(500, json.length())));
             throw e;
+        }
+    }
+
+    private void validateOrganizedContent(OrganizedContent content) {
+        if (content.title.isBlank()) {
+            throw new AiOrganizerException.InvalidOutputException("AI organized content missing title");
+        }
+        if (content.summary.isBlank() || content.summary.length() < MIN_SUMMARY_LENGTH) {
+            throw new AiOrganizerException.InvalidOutputException("AI organized content summary too short");
+        }
+        if (content.fullContent.isBlank() || content.fullContent.length() < MIN_FULL_CONTENT_LENGTH) {
+            throw new AiOrganizerException.InvalidOutputException("AI organized content fullContent too short");
+        }
+        if (content.keyPoints == null || content.keyPoints.isEmpty()) {
+            throw new AiOrganizerException.InvalidOutputException("AI organized content missing keyPoints");
+        }
+        if (content.tags == null || content.tags.isEmpty()) {
+            throw new AiOrganizerException.InvalidOutputException("AI organized content missing tags");
+        }
+        if (!ALLOWED_ORGANIZED_CATEGORIES.contains(content.category)) {
+            throw new AiOrganizerException.InvalidOutputException("AI organized content category invalid");
         }
     }
 
@@ -513,25 +653,62 @@ public class OpenAiCompatibleOrganizer implements AiContentOrganizer {
                 inString = !inString;
                 continue;
             }
-            if (inString) continue;
-            if (c == '{') depth++;
-            else if (c == '}') {
+            if (inString) {
+                continue;
+            }
+            if (c == '{') {
+                depth++;
+            } else if (c == '}') {
                 depth--;
-                if (depth == 0) return response.substring(start, i + 1);
+                if (depth == 0) {
+                    return response.substring(start, i + 1);
+                }
             }
         }
         throw new RuntimeException("No balanced JSON found in AI response");
     }
 
-    private List<String> toStringList(Object obj) {
-        if (obj instanceof List<?> list) {
-            return list.stream().map(Object::toString).toList();
+    private String asString(Object value) {
+        return value == null ? "" : value.toString();
+    }
+
+    private String normalizeText(Object value) {
+        return asString(value).trim();
+    }
+
+    private List<String> normalizeStringList(Object obj, int maxItems) {
+        if (!(obj instanceof List<?> list)) {
+            return Collections.emptyList();
         }
-        return Collections.emptyList();
+        return list.stream()
+                .map(this::normalizeText)
+                .filter(s -> !s.isBlank())
+                .distinct()
+                .limit(maxItems)
+                .toList();
+    }
+
+    private String normalizeOrganizedCategory(Object value) {
+        String raw = normalizeText(value);
+        if (raw.isBlank()) {
+            return raw;
+        }
+        return ORGANIZED_CATEGORY_ALIASES.getOrDefault(raw.toLowerCase(Locale.ROOT), raw);
+    }
+
+    private String normalizeDigestCategory(Object value) {
+        String raw = normalizeText(value);
+        if (raw.isBlank()) {
+            return raw;
+        }
+        ContentCategory category = ContentCategory.of(raw.toLowerCase(Locale.ROOT));
+        return category != null ? category.getCode() : raw;
     }
 
     private static String truncateAtParagraphBoundary(String text, int maxLen) {
-        if (text.length() <= maxLen) return text;
+        if (text.length() <= maxLen) {
+            return text;
+        }
         int cutPos = text.lastIndexOf("\n\n", maxLen);
         if (cutPos < maxLen * 0.8) {
             cutPos = text.lastIndexOf('\n', maxLen);
@@ -540,5 +717,147 @@ public class OpenAiCompatibleOrganizer implements AiContentOrganizer {
             cutPos = maxLen;
         }
         return text.substring(0, cutPos) + "\n\n[...内容过长已截断]";
+    }
+
+    private String buildDigestPrompt(List<DigestPageContent> pages, String date) {
+        return buildDigestPromptClean(pages, date);
+    }
+
+    private String buildDigestPromptClean(List<DigestPageContent> pages, String date) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("## 日报日期\n").append(date).append("\n\n");
+        sb.append("## 来源内容\n\n");
+
+        Map<String, List<DigestPageContent>> byCategory = pages.stream()
+                .filter(p -> p.markdown != null && !p.markdown.isBlank())
+                .collect(java.util.stream.Collectors.groupingBy(p ->
+                                p.category != null ? p.category.getCode() : "tech_article",
+                        TreeMap::new,
+                        java.util.stream.Collectors.collectingAndThen(
+                                java.util.stream.Collectors.toList(),
+                                list -> list.stream()
+                                        .sorted(Comparator
+                                                .comparing((DigestPageContent p) -> asString(p.title))
+                                                .thenComparing(p -> asString(p.url)))
+                                        .toList()
+                        )));
+
+        int remainingBudget = MULTI_PAGE_TOTAL_BUDGET;
+        for (Map.Entry<String, List<DigestPageContent>> entry : byCategory.entrySet()) {
+            sb.append("### 分类: ").append(entry.getKey()).append("\n\n");
+            for (int i = 0; i < entry.getValue().size(); i++) {
+                DigestPageContent page = entry.getValue().get(i);
+                sb.append("#### 来源 ").append(i + 1).append(": ")
+                        .append(page.title != null ? page.title : "未知标题").append('\n');
+                sb.append("URL: ").append(page.url != null ? page.url : "未知").append('\n');
+                if (page.summary != null && !page.summary.isBlank()) {
+                    sb.append("摘要: ").append(page.summary).append('\n');
+                }
+
+                String markdown = page.markdown != null ? page.markdown : "";
+                int budget = Math.min(MULTI_PAGE_PER_MAX_CHARS, remainingBudget);
+                if (budget <= 0) {
+                    sb.append("[已达到总输入预算上限，后续来源已省略]\n\n");
+                    continue;
+                }
+                markdown = truncateAtParagraphBoundary(markdown, budget);
+                sb.append(markdown).append("\n\n---\n\n");
+                remainingBudget -= markdown.length();
+            }
+        }
+
+        sb.append("\n请根据以上内容生成结构化技术日报。");
+        return sb.toString();
+    }
+
+    @SuppressWarnings("unchecked")
+    private DigestContent parseDigestContent(String response) throws Exception {
+        String json = extractJson(response);
+        try {
+            Map<String, Object> map = objectMapper.readValue(json, Map.class);
+
+            DigestContent content = new DigestContent();
+            content.title = normalizeText(map.get("title"));
+            content.summary = normalizeText(map.get("summary"));
+            content.highlight = normalizeText(map.get("highlight"));
+            content.tags = normalizeStringList(map.get("tags"), MAX_TAGS);
+            content.fullContent = normalizeText(map.get("fullContent"));
+
+            Object sectionsObj = map.get("sections");
+            if (sectionsObj instanceof List<?> sectionsRaw) {
+                content.sections = new ArrayList<>();
+                for (Object secObj : sectionsRaw) {
+                    if (!(secObj instanceof Map<?, ?> secMap)) {
+                        continue;
+                    }
+                    DigestSection section = new DigestSection();
+                    section.category = normalizeDigestCategory(secMap.get("category"));
+                    section.categoryName = normalizeText(secMap.get("categoryName"));
+                    section.emoji = normalizeText(secMap.get("emoji"));
+
+                    Object itemsObj = secMap.get("items");
+                    if (itemsObj instanceof List<?> itemsRaw) {
+                        section.items = new ArrayList<>();
+                        for (Object itemObj : itemsRaw) {
+                            if (!(itemObj instanceof Map<?, ?> itemMap)) {
+                                continue;
+                            }
+                            DigestItem item = new DigestItem();
+                            item.title = normalizeText(itemMap.get("title"));
+                            item.oneLiner = normalizeText(itemMap.get("oneLiner"));
+                            item.sourceUrl = normalizeText(itemMap.get("sourceUrl"));
+                            item.sourceName = normalizeText(itemMap.get("sourceName"));
+                            section.items.add(item);
+                        }
+                    } else {
+                        section.items = Collections.emptyList();
+                    }
+                    content.sections.add(section);
+                }
+            } else {
+                content.sections = Collections.emptyList();
+            }
+
+            validateDigestContent(content);
+            return content;
+        } catch (Exception e) {
+            log.error("[AiOrganizer] Digest JSON parse failed. Raw (first 500): {}",
+                    json.substring(0, Math.min(500, json.length())));
+            throw e;
+        }
+    }
+
+    private void validateDigestContent(DigestContent content) {
+        if (content.title.isBlank()) {
+            throw new AiOrganizerException.InvalidOutputException("AI digest content missing title");
+        }
+        if (content.summary.isBlank() || content.summary.length() < MIN_SUMMARY_LENGTH) {
+            throw new AiOrganizerException.InvalidOutputException("AI digest content summary too short");
+        }
+        if (content.fullContent.isBlank() || content.fullContent.length() < MIN_FULL_CONTENT_LENGTH) {
+            throw new AiOrganizerException.InvalidOutputException("AI digest content fullContent too short");
+        }
+        if (content.tags == null || content.tags.isEmpty()) {
+            throw new AiOrganizerException.InvalidOutputException("AI digest content missing tags");
+        }
+        boolean hasValidItem = content.sections != null && content.sections.stream()
+                .filter(Objects::nonNull)
+                .anyMatch(section -> {
+                    if (section.category.isBlank() || ContentCategory.of(section.category) == null) {
+                        return false;
+                    }
+                    if (section.categoryName.isBlank()) {
+                        return false;
+                    }
+                    return section.items != null && section.items.stream()
+                            .filter(Objects::nonNull)
+                            .anyMatch(item -> !item.title.isBlank()
+                                    && !item.oneLiner.isBlank()
+                                    && !item.sourceUrl.isBlank()
+                                    && !item.sourceName.isBlank());
+                });
+        if (!hasValidItem) {
+            throw new AiOrganizerException.InvalidOutputException("AI digest content missing valid items");
+        }
     }
 }

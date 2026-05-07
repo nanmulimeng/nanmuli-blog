@@ -1,6 +1,8 @@
 package com.nanmuli.blog.infrastructure.crawler;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
@@ -20,13 +22,17 @@ import java.util.Map;
 @Service
 public class Crawl4AiCrawlerService implements CrawlerService {
 
+    private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
+
     private final RestTemplate crawlerRestTemplate;
     private final String baseUrl;
+    private final ObjectMapper objectMapper;
 
     public Crawl4AiCrawlerService(
             @Value("${crawler.service.base-url:http://localhost:8500}") String baseUrl,
             @Value("${crawler.service.timeout:180000}") int timeout) {
         this.baseUrl = baseUrl;
+        this.objectMapper = new ObjectMapper();
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(10000);
         factory.setReadTimeout(timeout);
@@ -190,24 +196,7 @@ public class Crawl4AiCrawlerService implements CrawlerService {
         // Parse metadata - 保留原始类型（数值、布尔等），不全部转为字符串
         JsonNode metadataNode = node.path("metadata");
         if (metadataNode.isObject()) {
-            Map<String, Object> metadata = new HashMap<>();
-            metadataNode.fields().forEachRemaining(entry -> {
-                JsonNode val = entry.getValue();
-                if (val.isBoolean()) {
-                    metadata.put(entry.getKey(), val.asBoolean());
-                } else if (val.isInt()) {
-                    metadata.put(entry.getKey(), val.asInt());
-                } else if (val.isLong()) {
-                    metadata.put(entry.getKey(), val.asLong());
-                } else if (val.isDouble()) {
-                    metadata.put(entry.getKey(), val.asDouble());
-                } else if (val.isNull()) {
-                    metadata.put(entry.getKey(), null);
-                } else {
-                    metadata.put(entry.getKey(), val.asText());
-                }
-            });
-            result.setMetadata(metadata);
+            result.setMetadata(objectMapper.convertValue(metadataNode, MAP_TYPE));
         }
 
         return result;

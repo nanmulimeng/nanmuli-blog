@@ -3,7 +3,7 @@ package com.nanmuli.blog.domain.webcollector;
 import lombok.Getter;
 
 /**
- * 内容分类枚举（用于日报和订阅源）
+ * 内容分类枚举，用于日报与订阅源内容归类。
  */
 @Getter
 public enum ContentCategory {
@@ -11,7 +11,8 @@ public enum ContentCategory {
     OPEN_SOURCE("open_source", "开源项目", "🌟"),
     TECH_ARTICLE("tech_article", "技术文章", "📖"),
     DEV_TOOL("dev_tool", "开发工具", "🔧"),
-    CREATIVE("creative", "创意发现", "💡");
+    CREATIVE("creative", "创意发现", "💡"),
+    PAPER("paper", "技术论文", "📄");
 
     private final String code;
     private final String label;

@@ -1,6 +1,10 @@
 package com.nanmuli.blog.application.webcollector.command;
 
-import jakarta.validation.constraints.*;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 /**
@@ -10,20 +14,17 @@ import lombok.Data;
 public class CreateCollectTaskCommand {
 
     @NotBlank(message = "任务类型不能为空")
-    @Pattern(regexp = "^(single|deep|keyword)$", message = "任务类型必须是 single、deep 或 keyword")
+    @Pattern(regexp = "^(single|deep|keyword|digest)$", message = "任务类型必须是 single、deep、keyword 或 digest")
     private String taskType;
 
-    // URL（single/deep 模式必填）
     @Size(max = 2048, message = "URL 长度不能超过 2048")
     private String sourceUrl;
 
-    // 关键词（keyword 模式必填）
     @Size(max = 500, message = "关键词长度不能超过 500")
     private String keyword;
 
-    // 搜索引擎（keyword 模式可选，默认 sogou）
-    @Pattern(regexp = "^(sogou|bing|duckduckgo|google)?$", message = "搜索引擎必须是 sogou、bing、duckduckgo 或 google")
-    private String searchEngine = "sogou";
+    @Pattern(regexp = "^(sogou|bing|baidu|google)?$", message = "搜索引擎必须是 sogou、bing、baidu 或 google")
+    private String searchEngine = "bing";
 
     @Pattern(regexp = "^(single|deep)?$", message = "爬取模式必须是 single 或 deep")
     private String crawlMode = "single";
@@ -39,16 +40,14 @@ public class CreateCollectTaskCommand {
     @Size(max = 50, message = "AI 模板长度不能超过 50")
     private String aiTemplate = "tech_summary";
 
-    // 时间范围过滤（keyword 模式用，默认一周）
     @Pattern(regexp = "^(day|week|month|year|all)?$", message = "时间范围必须是 day、week、month、year 或 all")
     private String timeRange = "week";
 
-    // 校验：single/deep 模式必须提供 URL
     public boolean isValid() {
         if ("single".equals(taskType) || "deep".equals(taskType)) {
             return sourceUrl != null && !sourceUrl.isBlank();
         }
-        if ("keyword".equals(taskType)) {
+        if ("keyword".equals(taskType) || "digest".equals(taskType)) {
             return keyword != null && !keyword.isBlank();
         }
         return true;

@@ -76,3 +76,27 @@ blog:
       # 整理 Future 等待超时(秒)
       single-page-future-timeout-seconds: 120
       multi-page-future-timeout-seconds: 180
+  webcollector:
+    daily-digest:
+      enabled: true
+      sections:
+        - name: "news"
+          display-name: "科技新闻"
+          keyword: "tech news"
+          time-range: "day"
+          max-items: 5
+        - name: "articles"
+          display-name: "技术文章"
+          keyword: "technology blog"
+          time-range: "week"
+          max-items: 3
+        - name: "papers"
+          display-name: "技术论文"
+          keyword: "AI breakthrough 2025"
+          time-range: "week"
+          max-items: 3
+        - name: "opensource"
+          display-name: "开源动态"
+          keyword: "GitHub trending"
+          time-range: "week"
+          max-items: 3
