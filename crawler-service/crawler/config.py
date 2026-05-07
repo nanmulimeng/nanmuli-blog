@@ -41,17 +41,33 @@ class RunParams:
             self.page_timeout = getattr(config, 'page_timeout', 60000)
 
 
-def get_browser_config(text_mode: bool = True, light_mode: bool = False) -> BrowserConfig:
+def get_browser_config(text_mode: bool = True, light_mode: bool = False, proxy: str = '') -> BrowserConfig:
     """
     获取浏览器配置
 
     Args:
         text_mode: 不加载图片，节省内存和带宽
         light_mode: 轻量模式，减少资源占用（可能影响 SPA 渲染，默认关闭）
+        proxy: 代理服务器地址（如 http://127.0.0.1:7890）
 
     Returns:
         BrowserConfig 实例
     """
+    extra_args = [
+        "--disable-gpu",
+        "--disable-dev-shm-usage",
+        "--disable-setuid-sandbox",
+        "--no-sandbox",
+        "--disable-blink-features=AutomationControlled",
+        "--disable-features=IsolateOrigins,site-per-process",
+        "--disable-site-isolation-trials",
+        "--disable-web-security",
+        "--disable-features=BlockInsecurePrivateNetworkRequests",
+    ]
+
+    if proxy:
+        extra_args.append(f"--proxy-server={proxy}")
+
     return BrowserConfig(
         headless=True,
         browser_type="chromium",
@@ -63,13 +79,7 @@ def get_browser_config(text_mode: bool = True, light_mode: bool = False) -> Brow
         enable_stealth=True,       # 启用 stealth 模式反检测
         avoid_ads=True,            # 阻止广告/追踪域名请求
         ignore_https_errors=True,  # 忽略 HTTPS 证书错误
-        extra_args=[
-            "--disable-gpu",
-            "--disable-dev-shm-usage",
-            "--disable-setuid-sandbox",
-            "--no-sandbox",
-            "--disable-blink-features=AutomationControlled",
-        ]
+        extra_args=extra_args
     )
 
 
@@ -114,6 +124,34 @@ def get_crawler_run_config(
                 threshold_type="fixed"
             )
         )
+    )
+
+
+def get_search_run_config(page_timeout: int = 15000) -> CrawlerRunConfig:
+    """
+    获取搜索引擎结果页专用的轻量爬虫配置。
+
+    针对搜索页优化：
+    - 无需模拟人类交互（simulate_user=False）
+    - 无需 magic 模式
+    - 只需 DOM 加载完成即可解析（domcontentloaded）
+    - 不生成 markdown，只取 raw HTML
+    """
+    return CrawlerRunConfig(
+        cache_mode=CacheMode.BYPASS,
+        word_count_threshold=3,
+        excluded_tags=DEFAULT_EXCLUDED_TAGS.copy(),
+        remove_overlay_elements=True,
+        remove_forms=False,
+        exclude_external_links=True,
+        wait_until="domcontentloaded",
+        page_timeout=page_timeout,
+        magic=False,
+        simulate_user=False,
+        override_navigator=True,
+        scan_full_page=False,
+        scroll_delay=0.0,
+        # 搜索页不需要 markdown 生成器，我们只解析 raw HTML
     )
 
 

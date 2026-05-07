@@ -13,6 +13,7 @@ from typing import Dict, List, Optional
 from urllib.parse import urlparse
 
 
+
 # ============ 来源可信度数据库 ============
 
 class SourceAuthority:
@@ -62,22 +63,6 @@ class SourceAuthority:
         'netlify.app', 'vercel.app',
     }
 
-    # 内容农场/低质量来源 (0-30分，直接降权)
-    CONTENT_FARMS = {
-        'baijiahao.baidu.com',
-        'haokan.baidu.com',
-        'toutiao.com',
-        'sohu.com',      # 搜狐号文章 /a/
-        '163.com',       # 网易号文章 /dy/
-        'ifeng.com',     # 凤凰号 /c/
-        'sina.com.cn',   # 新浪看点
-    }
-
-    # 广告/营销/非技术站点 (直接过滤)
-    SPAM_DOMAINS = {
-        'mp.weixin.qq.com',   # 公众号质量参差
-    }
-
     @classmethod
     def score(cls, url: str) -> Dict:
         """
@@ -99,10 +84,8 @@ class SourceAuthority:
         if domain in cls.HIGH_QUALITY_COMMUNITIES:
             return {"score": 80, "level": "high", "reason": f"高质量技术社区: {domain}"}
 
-        if domain in cls.CONTENT_FARMS:
-            return {"score": 20, "level": "low", "reason": f"内容农场: {domain}"}
-
-        if domain in cls.SPAM_DOMAINS:
+        from .filters import is_excluded_domain
+        if is_excluded_domain(url):
             return {"score": 5, "level": "spam", "reason": f"低质量/营销来源: {domain}"}
 
         # 后缀匹配（GitHub Pages等）

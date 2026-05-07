@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     db_path: str = "data/crawler.db"
     max_concurrent_tasks: int = 3
 
+    # 代理配置（HTTP/HTTPS/SOCKS5）
+    proxy_url: str = ""
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 

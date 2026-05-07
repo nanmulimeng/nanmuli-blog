@@ -75,7 +75,6 @@ async def crawl_single_page(
         CrawlResult 对象
     """
     start_time = time.time()
-    own_crawler = crawler is None
 
     try:
         params = RunParams(config)
@@ -90,58 +89,11 @@ async def crawl_single_page(
             page_timeout=params.page_timeout
         )
 
-        if own_crawler:
-            crawler = AsyncWebCrawler(config=browser_config)
-            await crawler.__aenter__()
-
-        try:
-            result = await crawler.arun(url=url, config=run_config)
-
-            if result.success:
-                # 智能提取 markdown：fit_markdown 优先，过度裁剪时自动回退 raw_markdown
-                markdown = extract_markdown(result)
-
-                # 字数统计：中文字符 + 英文单词
-                word_count = _count_words(markdown) if markdown else 0
-
-                # 提取元数据
-                metadata = extract_metadata(
-                    html_content=result.html,
-                    base_url=url
-                )
-
-                if hasattr(result, 'metadata') and isinstance(result.metadata, dict):
-                    metadata.update({
-                        'crawl4ai_title': result.metadata.get('title'),
-                        'crawl4ai_description': result.metadata.get('description'),
-                    })
-
-                crawl_time_ms = int((time.time() - start_time) * 1000)
-
-                logger.info(f"[Single] Success: {url}, words: {word_count}, time: {crawl_time_ms}ms")
-
-                return CrawlResult(
-                    success=True,
-                    url=url,
-                    title=metadata.get('title') or metadata.get('crawl4ai_title'),
-                    markdown=markdown,
-                    metadata=metadata,
-                    word_count=word_count,
-                    crawl_time_ms=crawl_time_ms
-                )
-            else:
-                error_msg = f"Crawl4AI returned unsuccessful result: {getattr(result, 'error_message', 'Unknown error')}"
-                logger.warning(f"[Single] Failed: {url}, {error_msg}")
-
-                return CrawlResult(
-                    success=False,
-                    url=url,
-                    error_message=error_msg,
-                    crawl_time_ms=int((time.time() - start_time) * 1000)
-                )
-        finally:
-            if own_crawler:
-                await crawler.__aexit__(None, None, None)
+        if crawler is None:
+            async with AsyncWebCrawler(config=browser_config) as crawler:
+                return await _run_crawl(crawler, url, run_config, start_time)
+        else:
+            return await _run_crawl(crawler, url, run_config, start_time)
 
     except Exception as e:
         logger.error(f"[Single] Exception: {url}, {str(e)}", exc_info=True)
@@ -150,6 +102,49 @@ async def crawl_single_page(
             success=False,
             url=url,
             error_message=str(e),
+            crawl_time_ms=int((time.time() - start_time) * 1000)
+        )
+
+
+async def _run_crawl(crawler, url: str, run_config, start_time: float) -> CrawlResult:
+    """执行单次爬取（与 crawler 生命周期解耦）"""
+    result = await crawler.arun(url=url, config=run_config)
+
+    if result.success:
+        markdown = extract_markdown(result)
+        word_count = _count_words(markdown) if markdown else 0
+
+        metadata = extract_metadata(
+            html_content=result.html,
+            base_url=url
+        )
+
+        if hasattr(result, 'metadata') and isinstance(result.metadata, dict):
+            metadata.update({
+                'crawl4ai_title': result.metadata.get('title'),
+                'crawl4ai_description': result.metadata.get('description'),
+            })
+
+        crawl_time_ms = int((time.time() - start_time) * 1000)
+        logger.info(f"[Single] Success: {url}, words: {word_count}, time: {crawl_time_ms}ms")
+
+        return CrawlResult(
+            success=True,
+            url=url,
+            title=metadata.get('title') or metadata.get('crawl4ai_title'),
+            markdown=markdown,
+            metadata=metadata,
+            word_count=word_count,
+            crawl_time_ms=crawl_time_ms
+        )
+    else:
+        error_msg = f"Crawl4AI returned unsuccessful result: {getattr(result, 'error_message', 'Unknown error')}"
+        logger.warning(f"[Single] Failed: {url}, {error_msg}")
+
+        return CrawlResult(
+            success=False,
+            url=url,
+            error_message=error_msg,
             crawl_time_ms=int((time.time() - start_time) * 1000)
         )
 

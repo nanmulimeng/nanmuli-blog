@@ -15,7 +15,7 @@ from crawl4ai.deep_crawling.filters import FilterChain, DomainFilter
 
 from .config import get_browser_config, get_crawler_run_config, RunParams, extract_markdown
 from .metadata import extract_metadata
-from .single import CrawlResult
+from .single import CrawlResult, _count_words
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +81,7 @@ async def crawl_deep_pages(
                     # 智能提取 markdown：fit_markdown 优先，过度裁剪时自动回退 raw_markdown
                     markdown = extract_markdown(result)
 
-                    word_count = len(markdown.replace('\n', '').replace(' ', '')) if markdown else 0
+                    word_count = _count_words(markdown) if markdown else 0
 
                     # 获取深度信息（Crawl4AI 0.8.x: depth 在 metadata 中）
                     depth = getattr(result, 'depth', None)
