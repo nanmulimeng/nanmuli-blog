@@ -127,7 +127,7 @@ function handleClose(): void {
           <el-select v-model="form.searchEngine" class="w-full">
             <el-option label="搜狗 (推荐)" value="sogou" />
             <el-option label="Bing" value="bing" />
-            <el-option label="DuckDuckGo" value="duckduckgo" />
+            <el-option label="百度" value="baidu" />
             <el-option label="Google" value="google" />
           </el-select>
         </el-form-item>

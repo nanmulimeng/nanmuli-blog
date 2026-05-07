@@ -223,7 +223,7 @@ onMounted(fetchData)
               :max="2"
               :step="0.1"
               style="width: 320px"
-              @update:model-value="(v) => formData['ai.temperature'] = Number(v)"
+              @update:model-value="(v: number | number[] | undefined) => formData['ai.temperature'] = Number(Array.isArray(v) ? v[0] : (v ?? 0.3))"
             />
             <p class="mt-1 text-xs text-content-tertiary">
               越低越严谨（0），越高越创意（2）。建议技术文章使用 0.2-0.5
@@ -238,7 +238,7 @@ onMounted(fetchData)
                 :model-value="Number(formData['ai.connect_timeout_seconds'] || 10)"
                 :min="1"
                 :max="60"
-                @update:model-value="(v) => formData['ai.connect_timeout_seconds'] = Number(v)"
+                @update:model-value="(v: number | number[] | undefined) => formData['ai.connect_timeout_seconds'] = Number(Array.isArray(v) ? v[0] : (v ?? 10))"
               />
             </div>
             <div>
@@ -247,7 +247,7 @@ onMounted(fetchData)
                 :model-value="Number(formData['ai.read_timeout_seconds'] || 90)"
                 :min="1"
                 :max="300"
-                @update:model-value="(v) => formData['ai.read_timeout_seconds'] = Number(v)"
+                @update:model-value="(v: number | number[] | undefined) => formData['ai.read_timeout_seconds'] = Number(Array.isArray(v) ? v[0] : (v ?? 90))"
               />
             </div>
           </div>

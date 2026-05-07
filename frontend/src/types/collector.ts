@@ -2,6 +2,12 @@ import type { PageQuery } from './api'
 
 // ============== Task ==============
 
+export interface CollectTaskAiSearchMetadata {
+  originalKeyword?: string
+  optimizedKeyword?: string
+  searchVariants?: string[]
+}
+
 export interface CollectTask {
   id: string
   taskType: string
@@ -31,6 +37,7 @@ export interface CollectTask {
   aiTags: string[] | null
   aiCategory: string | null
   aiFullContent: string | null
+  aiSearchMetadata: CollectTaskAiSearchMetadata | null
   articleId: string | null
   dailyLogId: string | null
   createdAt: string
@@ -81,7 +88,7 @@ export interface CreateCollectTaskCommand {
   taskType: 'single' | 'deep' | 'keyword'
   sourceUrl?: string
   keyword?: string
-  searchEngine?: 'sogou' | 'bing' | 'duckduckgo' | 'google'
+  searchEngine?: 'sogou' | 'bing' | 'baidu' | 'google'
   crawlMode?: 'single' | 'deep'
   maxDepth?: number
   maxPages?: number

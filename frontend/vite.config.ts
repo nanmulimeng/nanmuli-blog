@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig, splitVendorChunkPlugin } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'node:path'
 import AutoImport from 'unplugin-auto-import/vite'
@@ -11,6 +11,7 @@ import { FileSystemIconLoader } from 'unplugin-icons/loaders'
 export default defineConfig({
   plugins: [
     vue(),
+    splitVendorChunkPlugin(),
     AutoImport({
       resolvers: [ElementPlusResolver()],
       imports: ['vue', 'vue-router', 'pinia'],
@@ -52,9 +53,19 @@ export default defineConfig({
     assetsDir: 'assets',
     rollupOptions: {
       output: {
-        manualChunks: {
-          'element-plus': ['element-plus'],
-          'md-editor': ['md-editor-v3'],
+        manualChunks(id) {
+          if (!id.includes('node_modules')) {
+            return
+          }
+          if (id.includes('md-editor-v3') || id.includes('markdown-it') || id.includes('highlight.js')) {
+            return 'markdown-vendor'
+          }
+          if (id.includes('element-plus') || id.includes('@element-plus')) {
+            return 'element-vendor'
+          }
+          if (id.includes('vue-router') || id.includes('pinia')) {
+            return 'app-vendor'
+          }
         },
       },
     },
