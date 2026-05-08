@@ -1,7 +1,6 @@
 """异步任务执行器（爬取 + AI 整理）"""
 
 import asyncio
-import datetime
 import json
 import logging
 import os
@@ -152,7 +151,7 @@ class TaskExecutor:
 
             # ========== Phase 2: AI 整理 ==========
             await repo.update_task_status(task_id, TaskStatus.PROCESSING)
-            ai_success = await self._organize_with_ai(task_id, task, results)
+            ai_success = await self._organize_with_ai(task_id, task)
             if not ai_success:
                 logger.warning("Task %d AI organization failed, task still marked complete with raw content.", task_id)
 
@@ -248,9 +247,11 @@ class TaskExecutor:
         return all_results[:max_pages]
 
     async def _execute_digest_crawl(self, task: dict, config) -> list:
-        """日报板块爬取（含跨日去重）"""
+        """日报板块爬取（含跨日去重，复用浏览器实例）"""
         from crawler.search import crawl_by_keyword
         from crawler.dedup import DedupEngine, dedup_results
+        from crawler.config import get_browser_config, RunParams
+        from crawl4ai import AsyncWebCrawler
 
         sections = get_digest_sections()
         if not sections:
@@ -264,40 +265,48 @@ class TaskExecutor:
         engine = settings.digest_search_engine
         completed_count = 0
 
-        for i, section in enumerate(sections):
-            config_copy = copy_config(config)
+        # 复用同一浏览器实例处理所有板块
+        params = RunParams(config)
+        browser_config = get_browser_config(
+            text_mode=params.text_mode, light_mode=params.light_mode,
+            proxy=settings.proxy_url,
+        )
+        async with AsyncWebCrawler(config=browser_config) as shared_crawler:
+            for i, section in enumerate(sections):
+                config_copy = copy_config(config)
 
-            try:
-                results = await crawl_by_keyword(
-                    keyword=section["keyword"],
-                    engine=engine,
-                    max_results=section.get("max_items", 5) * 2,
-                    time_range=section.get("time_range", "week"),
-                    config=config_copy
-                )
+                try:
+                    results = await crawl_by_keyword(
+                        keyword=section["keyword"],
+                        engine=engine,
+                        max_results=section.get("max_items", 5) * 2,
+                        time_range=section.get("time_range", "week"),
+                        config=config_copy,
+                        crawler=shared_crawler,
+                    )
 
-                # 板块内去重
-                results = dedup_results(results, history_engine=history_engine)
+                    # 板块内去重
+                    results = dedup_results(results, history_engine=history_engine)
 
-                new = 0
-                for r in results:
-                    url = getattr(r, "url", None)
-                    if url and url not in seen_urls:
-                        seen_urls.add(url)
-                        all_results.append(r)
-                        new += 1
+                    new = 0
+                    for r in results:
+                        url = getattr(r, "url", None)
+                        if url and url not in seen_urls:
+                            seen_urls.add(url)
+                            all_results.append(r)
+                            new += 1
 
-                completed_count += new
-                logger.info("Digest section '%s' added %d new URLs (total=%d)",
-                            section["name"], new, len(all_results))
+                    completed_count += new
+                    logger.info("Digest section '%s' added %d new URLs (total=%d)",
+                                section["name"], new, len(all_results))
 
-                await repo.update_task_progress(task["id"], completed_count)
+                    await repo.update_task_progress(task["id"], completed_count)
 
-                if i < len(sections) - 1:
-                    await asyncio.sleep(2)
+                    if i < len(sections) - 1:
+                        await asyncio.sleep(2)
 
-            except Exception as e:
-                logger.warning("Digest section '%s' failed: %s", section["name"], e)
+                except Exception as e:
+                    logger.warning("Digest section '%s' failed: %s", section["name"], e)
 
         return all_results
 
@@ -329,41 +338,32 @@ class TaskExecutor:
             logger.warning("Failed to load digest history for dedup: %s", e)
         return engine
 
-    async def _organize_with_ai(self, task_id: int, task: dict, crawl_results: list) -> bool:
+    async def _organize_with_ai(self, task_id: int, task: dict) -> bool:
         """AI 内容整理（含重试）"""
         from ai import content_organizer as organizer
         from ai.organizer import (
-            PageContent, DigestPageContent,
             OrganizerError, RateLimitError, TruncatedError, UnrecoverableError, InvalidOutputError,
         )
+        from standalone.organizer_helper import organize_content_and_save, organize_digest_and_save
 
         if not organizer.is_available:
             logger.info("AI not configured, skipping organization for task %d", task_id)
             await repo.save_ai_error(task_id, "AI not configured")
             return False
 
-        template = task.get("ai_template", "tech_summary")
         task_type = task["task_type"]
         max_retries = settings.ai_max_retries
+
+        # 页面已由 repo.save_pages 持久化，从 DB 读回
+        pages = await repo.get_pages_by_task(task_id)
 
         for attempt in range(max_retries + 1):
             try:
                 if task_type == "digest":
-                    result = await self._organize_digest(organizer, crawl_results, task)
-                    await self._save_digest_result(task_id, task, result)
+                    result = await organize_digest_and_save(task_id, task, pages, organizer)
                 else:
-                    result = await self._organize_content(organizer, crawl_results, task, template)
-                    await repo.save_ai_results(
-                        task_id,
-                        ai_title=result.title,
-                        ai_summary=result.summary,
-                        ai_key_points=result.key_points,
-                        ai_tags=result.tags,
-                        ai_category=getattr(result, "category", ""),
-                        ai_full_content=result.full_content,
-                        ai_duration=result.duration_ms,
-                        ai_tokens_used=result.tokens_used,
-                    )
+                    result = await organize_content_and_save(task_id, task, pages, organizer)
+
                 logger.info("Task %d AI organized: title='%s', duration=%dms, tokens=%d",
                             task_id, result.title, result.duration_ms, result.tokens_used)
                 return True
@@ -394,109 +394,6 @@ class TaskExecutor:
 
         await repo.save_ai_error(task_id, "AI organization failed after retries")
         return False
-
-    async def _organize_content(self, organizer, crawl_results, task, template):
-        """整理单页/多页内容"""
-        from ai.organizer import PageContent
-
-        successful = [r for r in crawl_results if getattr(r, "success", False)]
-
-        if len(successful) == 1:
-            r = successful[0]
-            markdown = getattr(r, "markdown", None)
-            if not markdown:
-                raise ValueError("No markdown content to organize")
-
-            # 构建关键词上下文
-            keyword_context = None
-            metadata_json = task.get("ai_search_metadata")
-            if metadata_json:
-                try:
-                    meta = json.loads(metadata_json)
-                    parts = []
-                    if meta.get("originalKeyword"):
-                        parts.append(f"原始关键词：{meta['originalKeyword']}")
-                    if meta.get("optimizedKeyword") and meta["optimizedKeyword"] != meta.get("originalKeyword"):
-                        parts.append(f"优化关键词：{meta['optimizedKeyword']}")
-                    if meta.get("searchVariants"):
-                        parts.append(f"实际搜索词变体：{' | '.join(meta['searchVariants'])}")
-                    keyword_context = "\n".join(parts) if parts else None
-                except Exception:
-                    pass
-
-            return await organizer.organize(markdown, template, keyword_context)
-
-        pages = [
-            PageContent(
-                url=getattr(r, "url", ""),
-                title=getattr(r, "title", ""),
-                markdown=getattr(r, "markdown", ""),
-                word_count=getattr(r, "word_count", 0),
-                depth=getattr(r, "depth", 0),
-            )
-            for r in successful
-        ]
-
-        if not pages:
-            raise ValueError("No successful pages to organize")
-
-        return await organizer.organize_multiple(pages, template)
-
-    async def _organize_digest(self, organizer, crawl_results, task):
-        """整理日报内容"""
-        from ai.organizer import DigestPageContent
-
-        pages = []
-        for r in crawl_results:
-            if not getattr(r, "success", False):
-                continue
-            pages.append(DigestPageContent(
-                url=getattr(r, "url", ""),
-                title=getattr(r, "title", ""),
-                markdown=getattr(r, "markdown", ""),
-                category=infer_category(getattr(r, "url", ""), getattr(r, "title", "")),
-                source_name=extract_source_name(getattr(r, "url", "")),
-            ))
-
-        if not pages:
-            raise ValueError("No successful pages for digest")
-
-        date = task.get("keyword") or datetime.date.today().isoformat()
-        return await organizer.generate_digest(pages, date)
-
-    async def _save_digest_result(self, task_id: int, task: dict, result):
-        """将 DigestContent 持久化为结构化数据"""
-        digest_date = task.get("keyword") or datetime.date.today().isoformat()
-        sections_data = []
-        for sec in result.sections:
-            items_data = [
-                {
-                    "title": item.title,
-                    "one_liner": item.one_liner,
-                    "source_url": item.source_url,
-                    "source_name": item.source_name,
-                }
-                for item in sec.items
-            ]
-            sections_data.append({
-                "category": sec.category,
-                "category_name": sec.category_name,
-                "emoji": sec.emoji,
-                "items": items_data,
-            })
-
-        await repo.save_digest_results(
-            task_id,
-            ai_title=result.title,
-            ai_summary=result.summary,
-            ai_tags=result.tags,
-            ai_full_content=result.full_content,
-            ai_duration=result.duration_ms,
-            ai_tokens_used=result.tokens_used,
-            digest_date=digest_date,
-            highlight=result.highlight,
-            sections=sections_data,
-        )
 
     def is_running(self, task_id: int) -> bool:
         return task_id in self._running

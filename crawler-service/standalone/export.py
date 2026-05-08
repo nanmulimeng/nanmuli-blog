@@ -60,34 +60,34 @@ async def export_task_as_markdown(task_id: int) -> PlainTextResponse:
 
     # 日报结构化 sections
     if is_digest and sections:
-            if task.get("digest_highlight"):
-                lines.append(f"## 今日亮点")
-                lines.append("")
-                lines.append(task["digest_highlight"])
-                lines.append("")
-                lines.append("---")
-                lines.append("")
-
-            for sec in sections:
-                emoji = sec.get("emoji", "")
-                cat_name = sec.get("category_name", sec.get("category", ""))
-                lines.append(f"## {emoji} {cat_name}")
-                lines.append("")
-                for item in sec.get("items", []):
-                    title = item.get("title", "")
-                    one_liner = item.get("one_liner", "")
-                    source_url = item.get("source_url", "")
-                    source_name = item.get("source_name", "")
-                    if title:
-                        link = f"[{title}]({source_url})" if source_url else title
-                        lines.append(f"- **{link}**")
-                        if one_liner:
-                            lines.append(f"  {one_liner}")
-                        if source_name:
-                            lines.append(f"  — {source_name}")
-                lines.append("")
+        if task.get("digest_highlight"):
+            lines.append("## 今日亮点")
+            lines.append("")
+            lines.append(task["digest_highlight"])
+            lines.append("")
             lines.append("---")
             lines.append("")
+
+        for sec in sections:
+            emoji = sec.get("emoji", "")
+            cat_name = sec.get("category_name", sec.get("category", ""))
+            lines.append(f"## {emoji} {cat_name}")
+            lines.append("")
+            for item in sec.get("items", []):
+                title = item.get("title", "")
+                one_liner = item.get("one_liner", "")
+                source_url = item.get("source_url", "")
+                source_name = item.get("source_name", "")
+                if title:
+                    link = f"[{title}]({source_url})" if source_url else title
+                    lines.append(f"- **{link}**")
+                    if one_liner:
+                        lines.append(f"  {one_liner}")
+                    if source_name:
+                        lines.append(f"  — {source_name}")
+            lines.append("")
+        lines.append("---")
+        lines.append("")
 
     for page in success_pages:
         lines.append(f"## {page.get('page_title') or page['url']}")

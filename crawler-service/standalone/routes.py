@@ -234,106 +234,21 @@ async def re_organize_task(task_id: int):
         task_type = task["task_type"]
 
         if task_type == "digest":
-            result = await _re_organize_digest(task_id, task, pages, organizer)
+            from standalone.organizer_helper import organize_digest_and_save
+            result = await organize_digest_and_save(task_id, task, pages, organizer)
         else:
-            result = await _re_organize_content(task_id, task, pages, organizer)
+            from standalone.organizer_helper import organize_content_and_save
+            result = await organize_content_and_save(task_id, task, pages, organizer)
 
         return {"message": "AI 整理完成", "title": result.title}
 
+    except ValueError as e:
+        await repo.update_task_status(task_id, original_status)
+        raise HTTPException(400, str(e))
     except Exception as e:
         logger.error("Re-organize failed for task %d: %s", task_id, e)
         await repo.update_task_status(task_id, original_status)
         raise HTTPException(500, f"AI 整理失败: {str(e)}")
-
-
-async def _re_organize_digest(task_id, task, pages, organizer):
-    """重新整理日报任务"""
-    import datetime
-    from standalone.task_executor import infer_category, extract_source_name
-    from ai.organizer import DigestPageContent
-
-    digest_pages = [
-        DigestPageContent(
-            url=p.get("url", ""),
-            title=p.get("page_title", ""),
-            markdown=p.get("raw_markdown", ""),
-            category=infer_category(p.get("url", ""), p.get("page_title", "")),
-            source_name=extract_source_name(p.get("url", "")),
-        )
-        for p in pages if p.get("crawl_status") == 2 and p.get("raw_markdown")
-    ]
-
-    if not digest_pages:
-        raise HTTPException(400, "没有成功的页面可整理")
-
-    date = task.get("keyword") or datetime.date.today().isoformat()
-    result = await organizer.generate_digest(digest_pages, date)
-
-    # 结构化持久化
-    sections_data = []
-    for sec in result.sections:
-        sections_data.append({
-            "category": sec.category,
-            "category_name": sec.category_name,
-            "emoji": sec.emoji,
-            "items": [
-                {"title": item.title, "one_liner": item.one_liner,
-                 "source_url": item.source_url, "source_name": item.source_name}
-                for item in sec.items
-            ],
-        })
-
-    await repo.save_digest_results(
-        task_id,
-        ai_title=result.title,
-        ai_summary=result.summary,
-        ai_tags=result.tags,
-        ai_full_content=result.full_content,
-        ai_duration=result.duration_ms,
-        ai_tokens_used=result.tokens_used,
-        digest_date=date,
-        highlight=result.highlight,
-        sections=sections_data,
-    )
-    return result
-
-
-async def _re_organize_content(task_id, task, pages, organizer):
-    """重新整理非日报任务"""
-    from ai.organizer import PageContent
-
-    page_contents = [
-        PageContent(
-            url=p.get("url", ""),
-            title=p.get("page_title", ""),
-            markdown=p.get("raw_markdown", ""),
-            word_count=p.get("word_count", 0),
-        )
-        for p in pages if p.get("crawl_status") == 2 and p.get("raw_markdown")
-    ]
-
-    if not page_contents:
-        raise HTTPException(400, "没有成功的页面可整理")
-
-    template = task.get("ai_template", "tech_summary")
-
-    if len(page_contents) == 1:
-        result = await organizer.organize(page_contents[0].markdown, template)
-    else:
-        result = await organizer.organize_multiple(page_contents, template)
-
-    await repo.save_ai_results(
-        task_id,
-        ai_title=result.title,
-        ai_summary=result.summary,
-        ai_key_points=result.key_points,
-        ai_tags=result.tags,
-        ai_category=result.category,
-        ai_full_content=result.full_content,
-        ai_duration=result.duration_ms,
-        ai_tokens_used=result.tokens_used,
-    )
-    return result
 
 
 @router.get("/tasks/{task_id}/export")
