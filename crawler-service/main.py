@@ -29,13 +29,10 @@ if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-from dotenv import load_dotenv
 from config import settings
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
-
-load_dotenv()
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level.upper(), logging.INFO),
@@ -62,7 +59,29 @@ async def lifespan(app: FastAPI):
         await init_db()
         logger.info(f"SQLite database initialized: {settings.db_path}")
 
+        from standalone.scheduler import start_scheduler, stop_scheduler
+        start_scheduler()
+
     yield
+
+    # Shutdown: close shared resources
+    if settings.standalone:
+        from standalone.scheduler import stop_scheduler
+        stop_scheduler()
+
+    # 关闭 AI httpx 连接池
+    try:
+        from ai import content_organizer as organizer
+        await organizer.close()
+    except Exception:
+        pass
+
+    # 取消运行中的任务
+    try:
+        from standalone.task_executor import executor
+        await executor.shutdown()
+    except Exception:
+        pass
 
     logger.info("Web Collector Crawler Service shutting down...")
 

@@ -1,24 +1,30 @@
-"""AI configuration from environment variables."""
+"""AI configuration — delegates to the unified Settings singleton."""
 
-import os
-from pydantic_settings import BaseSettings
+from config import settings
 
 
-class AiSettings(BaseSettings):
-    ai_enabled: bool = False
-    ai_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-    ai_api_key: str = ""
-    ai_model: str = "qwen-plus"
-    ai_temperature: float = 0.3
-    ai_connect_timeout: int = 10
-    ai_read_timeout: int = 90
-    ai_max_retries: int = 2
-    ai_rate_limit_backoff_ms: int = 10000
+class AiSettings:
+    """Facade that exposes AI-related fields from the unified Settings.
 
-    # Content budget (chars)
-    ai_single_page_max_chars: int = 80_000
-    ai_multi_page_per_max_chars: int = 20_000
-    ai_multi_page_total_budget: int = 150_000
+    Maintains backward compatibility with code that expects AiSettings instances
+    (e.g., ContentOrganizer constructor, tests).
+    """
+
+    def __init__(self, *, ai_enabled=None, ai_api_key=None, ai_model=None, **_kwargs):
+        self._overrides = {}
+        if ai_enabled is not None:
+            self._overrides["ai_enabled"] = ai_enabled
+        if ai_api_key is not None:
+            self._overrides["ai_api_key"] = ai_api_key
+        if ai_model is not None:
+            self._overrides["ai_model"] = ai_model
+
+    def __getattr__(self, name: str):
+        if name.startswith("_"):
+            raise AttributeError(name)
+        if name in self._overrides:
+            return self._overrides[name]
+        return getattr(settings, name)
 
     @property
     def is_configured(self) -> bool:
@@ -28,8 +34,6 @@ class AiSettings(BaseSettings):
             and bool(self.ai_base_url)
             and bool(self.ai_model)
         )
-
-    model_config = {"env_file": ".env", "extra": "ignore"}
 
 
 ai_settings = AiSettings()

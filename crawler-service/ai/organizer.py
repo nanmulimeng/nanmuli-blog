@@ -6,13 +6,11 @@ Migrated from Java OpenAiCompatibleOrganizer with identical prompts and logic.
 import json
 import logging
 import re
+import time
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional
-
 import httpx
 
-from .config import ai_settings
+from .config import AiSettings, ai_settings
 
 logger = logging.getLogger(__name__)
 
@@ -49,62 +47,65 @@ DIGEST_CATEGORY_MAP = {
     "tech_article": ("技术文章", "📖"),
     "dev_tool": ("开发工具", "🔧"),
     "creative": ("创意发现", "💡"),
-    "paper": "学术论文", "📄"),
+    "paper": ("学术论文", "📄"),
 }
 
 # ============== Prompts (identical to Java) ==============
 
-SYSTEM_PROMPT = """你是一位资深技术内容编辑，擅长从网页原始内容中提取、整理并重组为高质量技术文章。
+SYSTEM_PROMPT = """你是一位资深技术内容编辑，擅长从网页原始内容中提取核心信息并重组为高质量中文技术文章。
 ## 输出规则
 1. 严格输出 JSON，不要包裹在 markdown 代码块中
-2. fullContent 使用 Markdown 格式，代码块请使用 ```language 标记，正文建议 1000-5000 字
-3. 保留原文中有价值的代码示例，不要丢弃关键信息
-4. 英文内容翻译为中文，保留专有名词原文，例如 React、Kubernetes
-5. tags 必须是具体技术关键词，建议 3-7 个，避免过泛标签
+2. fullContent 使用 Markdown 格式，代码块使用 ```language 标记，正文 1000-5000 字
+3. 保留原文中有价值的代码示例和技术细节，不要丢弃关键信息
+4. 英文内容翻译为中文，保留专有名词原文（如 React、Kubernetes、gRPC）
+5. tags 必须是具体技术关键词，3-7 个，避免\"技术\"\"编程\"等过泛标签
 6. category 必须是以下之一：后端开发、前端开发、移动开发、数据库、DevOps、云计算、AI与机器学习、安全、区块链、其他
-7. 如果输入不是有效技术内容，例如登录页、错误页、空白页，请返回一个明确的无效结果，而不是胡乱总结
-8. 忽略导航、Cookie 提示、评论区、分享按钮、广告等与正文无关的内容"""
+7. 如果输入不是有效技术内容（登录页、错误页、空白页、广告页），将 summary 设为"该页面不包含有效技术内容"，其他字段留空
+8. 忽略导航菜单、Cookie 提示、评论区、分享按钮、广告、侧边栏等与正文无关的内容
+9. keyPoints 应提炼可操作的技术要点，而非泛泛描述"""
 
 OUTPUT_SCHEMA = """
-## 输出格式
+## 输出格式（严格 JSON）
 {
-  "title": "吸引人的中文标题（15-30字）",
-  "summary": "200-300字核心摘要",
-  "keyPoints": ["要点1", "要点2"],
-  "tags": ["标签1", "标签2"],
+  "title": "中文标题，15-30字，突出核心主题",
+  "summary": "200-400字核心摘要，涵盖背景、方法、结论",
+  "keyPoints": ["技术要点1（具体可操作）", "技术要点2", "技术要点3", "..."],
+  "tags": ["具体技术关键词1", "关键词2"],
   "category": "后端开发|前端开发|移动开发|数据库|DevOps|云计算|AI与机器学习|安全|区块链|其他",
-  "fullContent": "完整 Markdown 格式整理文章"
+  "fullContent": "完整 Markdown 格式技术文章（保留代码示例和关键配置）"
 }"""
 
 FEW_SHOT_EXAMPLE = """
 ## 输出示例
 {
-  "title": "Spring Boot 3 优雅停机配置详解",
-  "summary": "本文讲解 Spring Boot 3 的优雅停机机制，包括 server.shutdown=graceful 配置、SmartLifecycle 资源释放，以及在 Docker 和 Kubernetes 环境中的协同策略。通过合理配置，可以让应用在关闭时安全释放资源并尽可能完成正在处理的请求。",
+  "title": "Spring Boot 3 优雅停机配置详解与实践",
+  "summary": "Spring Boot 3 引入了内置的优雅停机机制，通过 server.shutdown=graceful 配置即可让 Web 服务器在关闭时拒绝新请求并等待正在处理的请求完成。结合 SmartLifecycle 接口可实现线程池、数据库连接等资源的有序释放。在 Kubernetes 环境中，还需配合 terminationGracePeriodSeconds 和 preStop 钩子确保流量完全排空后才终止 Pod。",
   "keyPoints": [
-    "通过 server.shutdown=graceful 开启内置优雅停机",
-    "使用 SmartLifecycle 处理线程池和连接等资源释放",
-    "在 Kubernetes 中需要配合 terminationGracePeriodSeconds"
+    "通过 server.shutdown=graceful 开启优雅停机，默认等待 30s",
+    "实现 SmartLifecycle 接口自定义资源释放顺序（先关线程池再关连接）",
+    "Kubernetes 需配合 terminationGracePeriodSeconds 和 preStop hook",
+    "Spring Boot 3.2+ 支持 Adaptive	为不同 Web 服务器自动配置最优停机策略"
   ],
-  "tags": ["Spring Boot 3", "优雅停机", "Kubernetes", "微服务"],
+  "tags": ["Spring Boot 3", "优雅停机", "Kubernetes", "微服务部署"],
   "category": "后端开发",
-  "fullContent": "## Spring Boot 3 优雅停机\\n\\n### 开启优雅停机\\n\\n在 application.yml 中配置：\\n\\n```yaml\\nserver:\\n  shutdown: graceful\\nspring:\\n  lifecycle:\\n    timeout-per-shutdown-phase: 30s\\n```\\n\\n启用后，应用关闭时 Web 服务器会拒绝新的请求，并等待正在处理的请求完成。\\n\\n### 使用 SmartLifecycle 释放资源\\n\\n对于需要自定义清理逻辑的组件，可以实现 SmartLifecycle 接口。\\n\\n### Kubernetes 中的配合\\n\\n需要在 Pod 配置中预留足够的终止窗口，避免流量仍然打到即将下线的实例。"
+  "fullContent": "## Spring Boot 3 优雅停机\\n\\n### 开启优雅停机\\n\\n在 application.yml 中配置：\\n\\n```yaml\\nserver:\\n  shutdown: graceful\\nspring:\\n  lifecycle:\\n    timeout-per-shutdown-phase: 30s\\n```\\n\\n启用后，应用关闭时 Web 服务器会拒绝新的请求，并等待正在处理的请求完成。\\n\\n### 自定义资源释放\\n\\n实现 SmartLifecycle 接口，按顺序释放资源。"
 }"""
 
 DIGEST_SYSTEM_PROMPT = """你是一位资深技术资讯编辑，负责生成每日技术日报。
 ## 任务
-根据提供的多个来源内容，生成一份结构化、可读性强的中文技术日报。
+根据提供的多个来源内容，生成一份结构清晰、信息密度高的中文技术日报。
 ## 输出规则
 1. 严格输出 JSON，不要包裹在 markdown 代码块中
 2. fullContent 使用 Markdown 格式，包含标题、列表和链接
-3. 每个条目必须压缩为一句话摘要，突出核心信息
-4. 对重复报道进行合并，优先保留信息更完整的来源
-5. 使用中文表达，保留必要的技术专有名词原文
-6. tags 使用具体技术关键词，建议 5-10 个
+3. 每个条目用一句话提炼核心信息（是谁做了什么、有什么影响、对开发者意味着什么）
+4. 对同一事件的多次报道合并为一条，优先保留信息最完整的来源
+5. 使用中文表达，保留技术专有名词原文（如 React 19、Claude 4、Rust 2024）
+6. tags 使用具体技术关键词，5-10 个
+7. highlight 应选取对开发者影响最大的事件，100字内说明影响
 ## 输出格式
 {
-  "title": "日报标题（含日期）",
-  "summary": "200-300 字今日摘要",
+  "title": "技术日报 | YYYY-MM-DD",
+  "summary": "200-400 字今日概要，涵盖最重要的 3-5 件事",
   "sections": [
     {
       "category": "分类代码",
@@ -112,43 +113,67 @@ DIGEST_SYSTEM_PROMPT = """你是一位资深技术资讯编辑，负责生成每
       "emoji": "emoji",
       "items": [
         {
-          "title": "文章标题",
-          "oneLiner": "一句话摘要",
+          "title": "事件标题",
+          "oneLiner": "一句话核心信息（含影响/意义）",
           "sourceUrl": "原文链接",
           "sourceName": "来源域名"
         }
       ]
     }
   ],
-  "highlight": "今日最值得关注的一条亮点（100 字内）",
+  "highlight": "今日最值得关注的一条（含对开发者的影响）",
   "tags": ["标签1", "标签2"],
   "fullContent": "完整 Markdown 日报正文"
 }
 
 ## 分类代码对照
-- hot_trend -> 热点动态 -> 🔥
-- open_source -> 开源项目 -> 🌟
-- tech_article -> 技术文章 -> 📖
-- dev_tool -> 开发工具 -> 🔧
-- creative -> 创意发现 -> 💡
-- paper -> 技术论文 -> 📄"""
+- hot_trend -> 热点动态 -> 🔥（行业新闻、版本发布、重大事件）
+- open_source -> 开源项目 -> 🌟（GitHub trending、新项目、重要更新）
+- tech_article -> 技术文章 -> 📖（深度教程、原理分析、最佳实践）
+- dev_tool -> 开发工具 -> 🔧（IDE、CLI、CI/CD、新工具发布）
+- creative -> 创意发现 -> 💡（有趣项目、创意应用、跨界结合）
+- paper -> 技术论文 -> 📄（arXiv、学术研究、技术白皮书）
+
+## 输出示例
+{
+  "title": "技术日报 | 2026-05-08",
+  "summary": "今日技术圈最值得关注：React 19 正式发布带来 Server Components 稳定版；Bun 1.2 性能再创新高，原生支持 S3 API；一篇深度解析 Linux 内核调度的文章引发广泛讨论。",
+  "sections": [
+    {
+      "category": "hot_trend",
+      "categoryName": "热点动态",
+      "emoji": "🔥",
+      "items": [
+        {
+          "title": "React 19 正式发布",
+          "oneLiner": "Server Components 稳定版上线，use() hook 简化异步数据获取，对现有项目升级影响较大",
+          "sourceUrl": "https://react.dev/blog/react-19",
+          "sourceName": "react.dev"
+        }
+      ]
+    }
+  ],
+  "highlight": "React 19 正式发布，Server Components 进入稳定阶段，前端开发者需要评估现有项目的迁移成本",
+  "tags": ["React 19", "Bun", "Linux内核", "性能优化"],
+  "fullContent": "# 技术日报 | 2026-05-08\\n\\n## 热点动态\\n\\n### React 19 正式发布\\nServer Components 稳定版上线..."
+}"""
 
 TEMPLATE_PROMPTS = {
     "tech_summary": {
-        "single": "请对以下网页内容进行深度阅读和结构化整理。\n重点：提炼核心技术要点，梳理逻辑脉络，补充必要背景，输出一篇结构清晰的技术摘要。",
-        "multi": "以下是从多个来源收集的技术内容，请进行综合分析和结构化整理。\n重点：提炼共识，去重合并重复信息，保留互补细节，并形成一篇可直接沉淀的技术总结。",
+        "single": "请对以下网页内容进行深度阅读和结构化整理。\n重点：提炼核心技术要点，梳理逻辑脉络，补充必要的背景说明，输出一篇结构清晰、可直接用于技术博客的文章。",
+        "multi": "以下是从多个来源收集的技术内容，请综合分析后输出一篇结构化技术摘要。\n重点：提炼各来源的共识观点，合并重复信息，保留互补细节（如不同方案的代码示例），标注信息来源差异。",
     },
     "tutorial": {
-        "single": "请将以下内容整理为循序渐进的 step-by-step 教程。\n重点：拆解学习路径，明确每一步的操作、代码和预期结果，并提示常见坑点。",
-        "multi": "以下是从多个来源收集的教程相关内容，请整合为一篇循序渐进的教程。\n重点：统一步骤顺序，补足缺失环节，去除重复说明，保留关键代码与注意事项。",
+        "single": "请将以下内容整理为循序渐进的实战教程。\n重点：拆解为可操作的步骤，每步包含：目标说明、代码/配置、预期结果、常见错误及解决方案。",
+        "multi": "以下是从多个来源收集的教程相关内容，请整合为一篇完整的 step-by-step 教程。\n重点：统一技术栈版本，补足各来源缺失的环节，去除重复说明，在关键步骤标注注意事项。",
     },
     "comparison": {
-        "single": "请对以下内容进行分析，提取技术方案对比信息。\n重点：总结方案差异、适用场景、优缺点，并尽量形成可读的对比结构。",
-        "multi": "以下是从多个来源收集的内容，请进行横向技术方案对比。\n重点：总结差异、适用场景和推荐建议，尽量用结构化方式呈现。",
+        "single": "请对以下内容进行技术方案对比分析。\n重点：提取方案的核心差异、适用场景、性能指标，用表格或结构化列表呈现，最后给出选型建议。",
+        "multi": "以下是从多个来源收集的内容，请进行横向技术方案对比。\n重点：从性能、生态、学习曲线、社区活跃度等维度对比，标注各方案的优劣势和推荐场景，给出结论性建议。",
     },
     "knowledge_report": {
-        "single": "请对以下网页内容进行深度阅读和结构化整理。\n根据内容所属技术领域，自动选择最合适的分类和标签。",
-        "multi": "以下是从多个来源收集的内容，请生成一份综合性的知识报告。\n重点：包含背景概览、核心原理、现状分析、趋势判断和主要参考来源。",
+        "single": "请对以下网页内容进行深度阅读，生成一份技术知识报告。\n重点：包含技术背景、核心原理、关键实现细节、当前生态现状，输出可直接沉淀到知识库的内容。",
+        "multi": "以下是从多个来源收集的内容，请生成一份综合性技术知识报告。\n重点：包含背景概览、核心原理、实现方案对比、社区实践、趋势判断，标注关键参考来源。",
     },
 }
 
@@ -223,6 +248,28 @@ class ContentOrganizer:
 
     def __init__(self, settings: AiSettings = None):
         self._settings = settings or ai_settings
+        self._client: httpx.AsyncClient | None = None
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(
+                timeout=httpx.Timeout(
+                    connect=self._settings.ai_connect_timeout,
+                    read=self._settings.ai_read_timeout,
+                    write=30.0,
+                    pool=10.0,
+                ),
+                headers={
+                    "Authorization": f"Bearer {self._settings.ai_api_key}",
+                    "Content-Type": "application/json",
+                },
+            )
+        return self._client
+
+    async def close(self):
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
+            self._client = None
 
     @property
     def is_available(self) -> bool:
@@ -234,7 +281,6 @@ class ContentOrganizer:
         self, raw_markdown: str, template: str = "tech_summary",
         keyword_context: str = None
     ) -> OrganizedContent:
-        import time
         start = time.monotonic()
         user_prompt = self._build_single_page_prompt(raw_markdown, template, keyword_context)
         response = await self._call_ai(SYSTEM_PROMPT, user_prompt)
@@ -251,7 +297,6 @@ class ContentOrganizer:
         self, pages: list[PageContent], template: str = "tech_summary",
         keyword_context: str = None
     ) -> OrganizedContent:
-        import time
         start = time.monotonic()
         user_prompt = self._build_multi_page_prompt(pages, template, keyword_context)
         response = await self._call_ai(SYSTEM_PROMPT, user_prompt)
@@ -269,13 +314,19 @@ class ContentOrganizer:
             return keyword
         try:
             system_prompt = (
-                "你是一名搜索关键词优化专家。\n"
-                "任务：将用户输入的技术主题优化为更适合搜索引擎查询的关键词。\n"
+                "你是一名技术搜索关键词优化专家。\n"
+                "任务：将用户输入的技术主题优化为搜索引擎返回更精准结果的查询词。\n"
                 "规则：\n"
-                "1. 补充必要的技术限定词，减少歧义\n"
-                "2. 将口语化表达改写为专业术语\n"
-                "3. 保持中文表达，长度尽量控制在 30 字内\n"
-                "4. 不要输出解释、引号或代码块，只输出关键词本身"
+                "1. 补充技术限定词：添加版本号、产品全称、技术领域等消除歧义\n"
+                "   - \"react hooks\" → \"React Hooks 使用教程\"\n"
+                "   - \"k8s\" → \"Kubernetes 部署实践\"\n"
+                "   - \"微服务\" → \"Spring Cloud 微服务架构\"\n"
+                "2. 口语化 → 专业化：将日常用语转为搜索引擎友好的技术术语\n"
+                "   - \"怎么学python\" → \"Python 入门学习路线\"\n"
+                "   - \"数据库慢\" → \"MySQL 慢查询优化\"\n"
+                "3. 中文关键词保持中文，英文关键词可添加中文限定词\n"
+                "4. 长度控制在 5-30 字\n"
+                "5. 只输出优化后的关键词，不要输出解释、引号、代码块或标点"
             )
             user_prompt = f"用户关键词：{keyword}\n优化结果："
             response = await self._call_ai(system_prompt, user_prompt)
@@ -302,17 +353,26 @@ class ContentOrganizer:
             return [keyword]
         try:
             system_prompt = (
-                "你是一名搜索关键词扩展专家。\n"
+                "你是一名技术搜索关键词扩展专家。\n"
                 "场景：用户在技术博客系统中使用网页采集器，希望获取高质量技术资料。\n"
-                "任务：基于输入关键词生成 2-3 个不同的搜索变体。\n"
+                "任务：基于输入关键词生成 3 个搜索角度不同的变体。\n\n"
+                "扩展策略（每个变体使用不同策略）：\n"
+                "- 同义替换：用等价的技术术语替换（docker → 容器化, k8s → Kubernetes）\n"
+                "- 角度变换：从不同视角切入（教程、最佳实践、性能优化、架构设计）\n"
+                "- 技术栈限定：补充关联技术栈（redis → Redis 集群 | Redis 持久化 | Redis 缓存策略）\n\n"
                 "规则：\n"
-                "1. 优先保持技术语境，不要偏向泛化搜索\n"
-                "2. 对多义词补足技术限定词，例如产品名、厂商名、技术领域\n"
-                "3. 不要生成只有\"介绍\"\"功能\"之类的宽泛查询\n"
-                "4. 严格输出 JSON 数组，不要包裹在 markdown 中\n"
-                "5. 每个变体不超过 30 个字，变体之间要有明显差异"
+                "1. 每个变体必须是能独立搜索的完整关键词\n"
+                "2. 变体之间搜索结果重叠度应尽量低\n"
+                "3. 不要生成\"XX介绍\"\"什么是XX\"等宽泛查询\n"
+                "4. 每个变体 5-30 字\n"
+                "5. 严格输出 JSON 数组格式，不要包裹在 markdown 中\n\n"
+                "示例：\n"
+                "输入：docker\n"
+                "输出：[\"容器化部署最佳实践\", \"Docker Compose 微服务编排\", \"Docker 多阶段构建优化\"]\n\n"
+                "输入：Spring Boot\n"
+                "输出：[\"Spring Boot 3 自动配置原理\", \"Spring Boot 生产级监控\", \"Spring Boot 响应式编程\"]"
             )
-            user_prompt = f"用户关键词：{keyword}\n输出："
+            user_prompt = f"输入：{keyword}\n输出："
             response = await self._call_ai(system_prompt, user_prompt)
             content = response["content"].strip() if response["content"] else "[]"
             content = re.sub(r"^```(?:json)?\s*", "", content)
@@ -341,7 +401,6 @@ class ContentOrganizer:
     async def generate_digest(
         self, pages: list[DigestPageContent], date: str
     ) -> DigestContent:
-        import time
         start = time.monotonic()
         user_prompt = self._build_digest_prompt(pages, date)
         response = await self._call_ai(DIGEST_SYSTEM_PROMPT, user_prompt)
@@ -463,22 +522,11 @@ class ContentOrganizer:
             ],
         }
 
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(
-                connect=self._settings.ai_connect_timeout,
-                read=self._settings.ai_read_timeout,
-                write=30.0,
-                pool=10.0,
-            )
-        ) as client:
-            response = await client.post(
-                f"{self._settings.ai_base_url.rstrip('/')}/chat/completions",
-                json=request_body,
-                headers={
-                    "Authorization": f"Bearer {self._settings.ai_api_key}",
-                    "Content-Type": "application/json",
-                },
-            )
+        client = await self._get_client()
+        response = await client.post(
+            f"{self._settings.ai_base_url.rstrip('/')}/chat/completions",
+            json=request_body,
+        )
 
         if response.status_code == 429:
             raise RateLimitError("Rate limited by AI API")
@@ -579,8 +627,16 @@ class ContentOrganizer:
         if not c.tags:
             raise InvalidOutputError("Digest missing tags")
 
+        valid_categories = set(DIGEST_CATEGORY_MAP.keys())
         has_valid = False
         for sec in c.sections:
+            # 校验并修正 category 代码
+            if sec.category and sec.category not in valid_categories:
+                logger.warning("Unknown digest category '%s', mapping to 'tech_article'", sec.category)
+                sec.category = "tech_article"
+                cat_info = DIGEST_CATEGORY_MAP["tech_article"]
+                sec.category_name = cat_info[0]
+                sec.emoji = cat_info[1]
             if sec.category and sec.category_name and sec.items:
                 for item in sec.items:
                     if item.title and item.one_liner and item.source_url and item.source_name:
@@ -638,9 +694,21 @@ def _extract_json(response: str) -> str:
         except json.JSONDecodeError:
             pass
 
-    start = response.find("{")
-    if start < 0:
+    # 查找第一个 JSON 起始符（对象或数组）
+    obj_start = response.find("{")
+    arr_start = response.find("[")
+    if obj_start < 0 and arr_start < 0:
         raise ValueError("No JSON found in AI response")
+
+    if obj_start < 0:
+        start = arr_start
+    elif arr_start < 0:
+        start = obj_start
+    else:
+        start = min(obj_start, arr_start)
+
+    open_ch = response[start]
+    close_ch = "}" if open_ch == "{" else "]"
 
     depth = 0
     in_string = False
@@ -658,9 +726,9 @@ def _extract_json(response: str) -> str:
             continue
         if in_string:
             continue
-        if c == "{":
+        if c == open_ch:
             depth += 1
-        elif c == "}":
+        elif c == close_ch:
             depth -= 1
             if depth == 0:
                 return response[start:i + 1]
@@ -704,9 +772,9 @@ def _normalize_category(value) -> str:
     raw = _normalize(value)
     if not raw:
         return raw
-    return CATEGORY_ALIASES.get(raw.lower(), raw)
+    mapped = CATEGORY_ALIASES.get(raw.lower(), raw)
+    if mapped not in ALLOWED_CATEGORIES:
+        return "其他"
+    return mapped
 
 
-# ============== Module Singleton ==============
-
-organizer = ContentOrganizer()

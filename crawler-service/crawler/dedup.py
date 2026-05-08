@@ -56,10 +56,9 @@ class ContentFingerprint:
         # 64位向量
         vector = [0] * 64
 
-        for feature in features:
+        for feature, weight in freq.items():
             # 稳定哈希：md5 取前16个hex字符转int（64位）
             h = int(hashlib.md5(feature.encode('utf-8')).hexdigest()[:16], 16)
-            weight = freq[feature]  # 词频越高权重越大
 
             for i in range(64):
                 bit = (h >> i) & 1
@@ -106,8 +105,8 @@ def hamming_distance(hash1: int, hash2: int) -> int:
 class DedupEngine:
     """去重引擎"""
 
-    # 汉明距离阈值：≤3视为高度相似（可能是转载/改写）
-    SIMHASH_THRESHOLD = 3
+    # 汉明距离阈值：≤5视为高度相似（可能是转载/改写）
+    SIMHASH_THRESHOLD = 5
     # 标题相似度阈值：≥0.8视为相似
     TITLE_SIMILARITY_THRESHOLD = 0.8
 
@@ -185,18 +184,9 @@ class DedupEngine:
 
     @staticmethod
     def _normalize_url(url: str) -> str:
-        """URL标准化：去协议、去www、去尾部斜杠、去追踪参数"""
-        url = url.lower().strip()
-        # 去协议
-        url = re.sub(r'^https?://', '', url)
-        # 去www
-        url = re.sub(r'^www\.', '', url)
-        # 去尾部斜杠
-        url = url.rstrip('/')
-        # 去常见追踪参数
-        url = re.sub(r'[?&](utm_[^&=]*|ref|source)=[^&]*', '', url)
-        url = re.sub(r'\?+$', '', url)
-        return url
+        """URL标准化：委托给共享的 normalize_url"""
+        from .utils import normalize_url
+        return normalize_url(url)
 
     @staticmethod
     def _title_similarity(title1: str, title2: str) -> float:
@@ -247,7 +237,8 @@ class DedupEngine:
 # 便捷函数：对搜索结果列表进行去重
 def dedup_results(
     results: list,
-    content_preview_length: int = 500,
+    content_preview_length: int = 800,
+    skip_header_chars: int = 200,
     history_engine: Optional[DedupEngine] = None
 ) -> list:
     """
@@ -256,27 +247,37 @@ def dedup_results(
     Args:
         results: CrawlResult字典列表或对象列表
         content_preview_length: 用于相似度计算的内容预览长度
+        skip_header_chars: 跳过正文头部导航区的字符数
         history_engine: 历史去重引擎（传入则可与历史记录去重，适合日报跨板块/跨日去重）
 
     Returns:
         去重后的结果列表
     """
-    engine = history_engine if history_engine else DedupEngine()
+    # 本地去重引擎（用于跟踪本次结果，避免污染传入的 history_engine）
+    local_engine = DedupEngine()
     unique_results = []
 
     for result in results:
-        # 兼容字典和对象
         url = result.get('url', '') if isinstance(result, dict) else getattr(result, 'url', '')
         title = result.get('title', '') if isinstance(result, dict) else getattr(result, 'title', '')
         content = result.get('markdown', '') if isinstance(result, dict) else getattr(result, 'markdown', '')
 
-        # 使用内容前N个字符作为指纹
-        content_preview = content[:content_preview_length] if content else ""
+        # 跳过头部导航区，取中间段作为指纹（减少站点模板导致的误杀）
+        content_preview = ""
+        if content and len(content) > skip_header_chars:
+            content_preview = content[skip_header_chars:skip_header_chars + content_preview_length]
+        elif content:
+            content_preview = content[:content_preview_length]
 
-        check = engine.is_duplicate(url, title, content_preview)
+        # 先与历史引擎比对（跨任务去重），再与本次已有结果比对
+        is_dup = False
+        if history_engine:
+            is_dup = history_engine.is_duplicate(url, title, content_preview)["is_duplicate"]
+        if not is_dup:
+            is_dup = local_engine.is_duplicate(url, title, content_preview)["is_duplicate"]
 
-        if not check["is_duplicate"]:
+        if not is_dup:
             unique_results.append(result)
-            engine.add(url, title, content_preview)
+            local_engine.add(url, title, content_preview)
 
     return unique_results

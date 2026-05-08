@@ -22,7 +22,7 @@ class ApiKeyMiddleware(BaseHTTPMiddleware):
         path = request.url.path
 
         # 不需要认证的路径
-        if (path.startswith("/crawl/") or
+        if (path.startswith("/crawl") or
             path == "/health" or
             path.startswith("/docs") or
             path.startswith("/redoc") or

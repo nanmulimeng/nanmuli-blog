@@ -22,7 +22,7 @@ DEFAULT_EXCLUDED_TAGS = ["nav", "footer", "aside", "script", "style", "noscript"
 
 class RunParams:
     """从 Pydantic/dict config 提取的运行参数"""
-    __slots__ = ('text_mode', 'light_mode', 'word_count_threshold', 'excluded_tags', 'wait_until', 'page_timeout')
+    __slots__ = ('text_mode', 'light_mode', 'word_count_threshold', 'excluded_tags', 'wait_until', 'page_timeout', 'remove_overlay_elements')
 
     def __init__(self, config: Optional[object] = None):
         if config is None:
@@ -32,6 +32,7 @@ class RunParams:
             self.excluded_tags = DEFAULT_EXCLUDED_TAGS.copy()
             self.wait_until = "networkidle"
             self.page_timeout = 60000
+            self.remove_overlay_elements = True
         else:
             self.text_mode = getattr(config, 'text_mode', True)
             self.light_mode = getattr(config, 'light_mode', False)
@@ -39,6 +40,7 @@ class RunParams:
             self.excluded_tags = getattr(config, 'excluded_tags', DEFAULT_EXCLUDED_TAGS.copy())
             self.wait_until = getattr(config, 'wait_until', "networkidle")
             self.page_timeout = getattr(config, 'page_timeout', 60000)
+            self.remove_overlay_elements = getattr(config, 'remove_overlay_elements', True)
 
 
 def get_browser_config(text_mode: bool = True, light_mode: bool = False, proxy: str = '') -> BrowserConfig:
@@ -87,7 +89,8 @@ def get_crawler_run_config(
     word_count_threshold: int = 3,
     excluded_tags: list[str] = None,
     wait_until: str = "networkidle",
-    page_timeout: int = 60000
+    page_timeout: int = 60000,
+    remove_overlay_elements: bool = True
 ) -> CrawlerRunConfig:
     """
     获取爬虫运行配置
@@ -97,6 +100,7 @@ def get_crawler_run_config(
         excluded_tags: 排除的 HTML 标签
         wait_until: 页面加载完成条件
         page_timeout: 页面加载超时时间（毫秒）
+        remove_overlay_elements: 是否移除弹窗/覆盖层元素
 
     Returns:
         CrawlerRunConfig 实例
@@ -108,7 +112,7 @@ def get_crawler_run_config(
         cache_mode=CacheMode.BYPASS,
         word_count_threshold=word_count_threshold,
         excluded_tags=excluded_tags,
-        remove_overlay_elements=True,
+        remove_overlay_elements=remove_overlay_elements,
         remove_forms=False,
         exclude_external_links=True,
         wait_until=wait_until,
@@ -185,8 +189,9 @@ def extract_markdown(crawl4ai_result) -> str:
         ratio = len(fit) / len(raw) if len(raw) > 0 else 1.0
         if ratio < _FIT_MIN_RATIO:
             logger.info(
-                f"[Markdown] fit/raw ratio={ratio:.1%} < {_FIT_MIN_RATIO}, "
-                f"falling back to raw_markdown (fit={len(fit)}, raw={len(raw)})"
+                "[Markdown] fit/raw ratio=%.1f%% < %s, "
+                "falling back to raw_markdown (fit=%s, raw=%s)",
+                ratio * 100, _FIT_MIN_RATIO, len(fit), len(raw)
             )
             return raw
         return fit

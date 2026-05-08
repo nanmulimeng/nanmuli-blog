@@ -6,7 +6,9 @@ Provides OpenAI-compatible API integration for:
 - Daily digest generation
 """
 
-from .config import AiSettings
+from .config import AiSettings, ai_settings
 from .organizer import ContentOrganizer
 
-__all__ = ["AiSettings", "ContentOrganizer"]
+content_organizer = ContentOrganizer()
+
+__all__ = ["AiSettings", "ContentOrganizer", "content_organizer"]

@@ -16,18 +16,20 @@ from bs4 import BeautifulSoup
 logger = logging.getLogger(__name__)
 
 
-def extract_metadata(html_content: str, base_url: str) -> Dict[str, Any]:
+def extract_metadata(html_content: str, base_url: str, soup: BeautifulSoup = None) -> Dict[str, Any]:
     """
     从 HTML 内容中提取元数据
 
     Args:
         html_content: HTML 字符串
         base_url: 页面 URL（用于解析相对链接）
+        soup: 可选的预解析 BeautifulSoup 对象，传入则跳过重复解析
 
     Returns:
         元数据字典
     """
-    soup = BeautifulSoup(html_content, 'lxml')
+    if soup is None:
+        soup = BeautifulSoup(html_content, 'lxml')
     metadata = {
         'url': base_url,
         'title': None,
@@ -92,7 +94,7 @@ def extract_metadata(html_content: str, base_url: str) -> Dict[str, Any]:
                     metadata['author'] = author
 
     except Exception as e:
-        logger.warning(f"Failed to extract metadata from {base_url}: {e}")
+        logger.warning("Failed to extract metadata from %s: %s", base_url, e)
 
     return metadata
 
@@ -180,7 +182,7 @@ def _extract_jsonld(soup: BeautifulSoup) -> Optional[Dict[str, Any]]:
                             return item
         return None
     except (json.JSONDecodeError, Exception) as e:
-        logger.debug(f"Failed to parse JSON-LD: {e}")
+        logger.debug("Failed to parse JSON-LD: %s", e)
         return None
 
 
@@ -221,6 +223,6 @@ def _normalize_datetime(time_str: str) -> Optional[str]:
         except ValueError:
             continue
 
-    # 如果所有格式都失败，返回原始字符串
-    logger.debug(f"Could not parse datetime: {time_str}")
-    return time_str
+    # 如果所有格式都失败，返回 None
+    logger.debug("Could not parse datetime: %s", time_str)
+    return None

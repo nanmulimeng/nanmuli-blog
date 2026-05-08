@@ -13,6 +13,7 @@ from crawl4ai import AsyncWebCrawler
 
 from .config import get_browser_config, get_crawler_run_config, RunParams, extract_markdown
 from .metadata import extract_metadata
+from .utils import count_words
 
 logger = logging.getLogger(__name__)
 
@@ -79,14 +80,15 @@ async def crawl_single_page(
     try:
         params = RunParams(config)
 
-        logger.info(f"[Single] Crawling: {url}")
+        logger.info("[Single] Crawling: %s", url)
 
         browser_config = get_browser_config(text_mode=params.text_mode, light_mode=params.light_mode)
         run_config = get_crawler_run_config(
             word_count_threshold=params.word_count_threshold,
             excluded_tags=params.excluded_tags,
             wait_until=params.wait_until,
-            page_timeout=params.page_timeout
+            page_timeout=params.page_timeout,
+            remove_overlay_elements=params.remove_overlay_elements
         )
 
         if crawler is None:
@@ -96,7 +98,7 @@ async def crawl_single_page(
             return await _run_crawl(crawler, url, run_config, start_time)
 
     except Exception as e:
-        logger.error(f"[Single] Exception: {url}, {str(e)}", exc_info=True)
+        logger.error("[Single] Exception: %s, %s", url, str(e), exc_info=True)
 
         return CrawlResult(
             success=False,
@@ -112,7 +114,7 @@ async def _run_crawl(crawler, url: str, run_config, start_time: float) -> CrawlR
 
     if result.success:
         markdown = extract_markdown(result)
-        word_count = _count_words(markdown) if markdown else 0
+        word_count = count_words(markdown) if markdown else 0
 
         metadata = extract_metadata(
             html_content=result.html,
@@ -126,7 +128,7 @@ async def _run_crawl(crawler, url: str, run_config, start_time: float) -> CrawlR
             })
 
         crawl_time_ms = int((time.time() - start_time) * 1000)
-        logger.info(f"[Single] Success: {url}, words: {word_count}, time: {crawl_time_ms}ms")
+        logger.info("[Single] Success: %s, words: %s, time: %sms", url, word_count, crawl_time_ms)
 
         return CrawlResult(
             success=True,
@@ -139,7 +141,7 @@ async def _run_crawl(crawler, url: str, run_config, start_time: float) -> CrawlR
         )
     else:
         error_msg = f"Crawl4AI returned unsuccessful result: {getattr(result, 'error_message', 'Unknown error')}"
-        logger.warning(f"[Single] Failed: {url}, {error_msg}")
+        logger.warning("[Single] Failed: %s, %s", url, error_msg)
 
         return CrawlResult(
             success=False,
@@ -148,16 +150,3 @@ async def _run_crawl(crawler, url: str, run_config, start_time: float) -> CrawlR
             crawl_time_ms=int((time.time() - start_time) * 1000)
         )
 
-
-def _count_words(text: str) -> int:
-    """
-    统计文本字数：中文字符 + 英文单词。
-    比纯字符数更能反映实际内容量。
-    """
-    if not text:
-        return 0
-    # 中文字符计数
-    cn_chars = len(re.findall(r'[一-鿿]', text))
-    # 英文单词计数（字母序列）
-    en_words = len(re.findall(r'[a-zA-Z]+', text))
-    return cn_chars + en_words

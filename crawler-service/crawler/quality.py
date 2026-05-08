@@ -9,8 +9,12 @@
 """
 
 import re
+import datetime
 from typing import Dict, List, Optional
 from urllib.parse import urlparse
+
+from .utils import count_words
+from .filters import is_excluded_domain
 
 
 
@@ -84,7 +88,6 @@ class SourceAuthority:
         if domain in cls.HIGH_QUALITY_COMMUNITIES:
             return {"score": 80, "level": "high", "reason": f"高质量技术社区: {domain}"}
 
-        from .filters import is_excluded_domain
         if is_excluded_domain(url):
             return {"score": 5, "level": "spam", "reason": f"低质量/营销来源: {domain}"}
 
@@ -171,7 +174,7 @@ class ContentQuality:
         penalties = {}
 
         # 1. 字数评分 (0-25分)
-        word_count = cls._count_words(content)
+        word_count = count_words(content)
         if word_count >= 2000:
             dimensions['length'] = 25
         elif word_count >= 1000:
@@ -272,7 +275,6 @@ class ContentQuality:
             {"bonus": int, "age_years": int|None, "source": str}
             bonus: 近年内容 +5~10，过时内容 0，无法判断 +3（中性）
         """
-        import datetime
         current_year = datetime.datetime.now().year
 
         # 策略1: URL 路径中的年份（如 /2024/01/xxx.html）
@@ -308,15 +310,6 @@ class ContentQuality:
 
         # 无法判断时给中性分，不惩罚也不奖励
         return {"bonus": 3, "age_years": None, "source": "unknown"}
-
-    @staticmethod
-    def _count_words(text: str) -> int:
-        """统计字数：中文字符 + 英文单词（英文单词信息密度较低，加权1.5x）"""
-        if not text:
-            return 0
-        cn_chars = len(re.findall(r'[一-鿿]', text))
-        en_words = len(re.findall(r'[a-zA-Z]+', text))
-        return int(cn_chars + en_words * 1.5)
 
 
 # ============ 便捷函数 ============

@@ -4,7 +4,7 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
 from crawler.single import crawl_single_page
 from crawler.deep import crawl_deep_pages
@@ -18,6 +18,15 @@ router = APIRouter()
 # ============== Pydantic Models ==============
 
 class CrawlConfig(BaseModel):
+    model_config = ConfigDict(json_schema_extra={
+        "example": {
+            "word_count_threshold": 10,
+            "excluded_tags": ["nav", "footer", "aside"],
+            "text_mode": True,
+            "light_mode": True
+        }
+    })
+
     word_count_threshold: int = Field(default=15, ge=0)
     excluded_tags: list[str] = Field(default=["nav", "footer", "aside", "script", "style", "noscript", "iframe"])
     remove_overlay_elements: bool = Field(default=True)
@@ -25,16 +34,6 @@ class CrawlConfig(BaseModel):
     page_timeout: int = Field(default=60000, ge=5000, le=120000)
     text_mode: bool = Field(default=True)
     light_mode: bool = Field(default=False)
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "word_count_threshold": 10,
-                "excluded_tags": ["nav", "footer", "aside"],
-                "text_mode": True,
-                "light_mode": True
-            }
-        }
 
 
 class SingleCrawlRequest(BaseModel):
@@ -160,3 +159,113 @@ async def crawl_search(request: SearchCrawlRequest):
     except Exception as e:
         logger.error(f"[Search Crawl] Failed: '{request.keyword}', error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Search crawl failed: {str(e)}")
+
+
+# ============== AI Organization Endpoint ==============
+
+class AiOrganizeRequest(BaseModel):
+    """AI 整理请求（单页或多页）"""
+    pages: list[dict] = Field(..., description="页面列表，每个包含 url/title/markdown/word_count")
+    template: str = Field(default="tech_summary", pattern="^(tech_summary|tutorial|comparison|knowledge_report|daily_digest)$")
+    keyword_context: str | None = Field(default=None, description="搜索关键词上下文")
+
+
+class AiOrganizeResponse(BaseModel):
+    success: bool
+    title: str = ""
+    summary: str = ""
+    key_points: list[str] = []
+    tags: list[str] = []
+    category: str = ""
+    full_content: str = ""
+    duration_ms: int = 0
+    tokens_used: int = 0
+    error_message: str | None = None
+
+
+@router.post("/organize", response_model=AiOrganizeResponse)
+async def organize_content(request: AiOrganizeRequest):
+    """AI 内容整理（供外部系统调用，如 Java 后端）"""
+    import asyncio
+    from ai import content_organizer as organizer
+    from ai.organizer import PageContent, RateLimitError, OrganizerError
+
+    if not organizer.is_available:
+        raise HTTPException(status_code=503, detail="AI service not configured")
+
+    try:
+        pages = [
+            PageContent(
+                url=p.get("url", ""),
+                title=p.get("title", ""),
+                markdown=p.get("markdown", ""),
+                word_count=p.get("word_count", 0),
+            )
+            for p in request.pages if p.get("markdown")
+        ]
+
+        if not pages:
+            raise HTTPException(status_code=400, detail="No valid pages to organize")
+
+        max_retries = 2
+        result = None
+
+        for attempt in range(max_retries + 1):
+            try:
+                if len(pages) == 1:
+                    result = await organizer.organize(
+                        pages[0].markdown, request.template, request.keyword_context
+                    )
+                else:
+                    result = await organizer.organize_multiple(
+                        pages, request.template, request.keyword_context
+                    )
+                break
+            except RateLimitError:
+                if attempt < max_retries:
+                    logger.warning("[AiOrganize] Rate limited, retry %d/%d", attempt + 1, max_retries)
+                    await asyncio.sleep(10.0)
+                else:
+                    raise
+            except OrganizerError:
+                raise
+
+        return AiOrganizeResponse(
+            success=True,
+            title=result.title,
+            summary=result.summary,
+            key_points=result.key_points,
+            tags=result.tags,
+            category=result.category,
+            full_content=result.full_content,
+            duration_ms=result.duration_ms,
+            tokens_used=result.tokens_used,
+        )
+
+    except Exception as e:
+        logger.error("[AiOrganize] Failed: %s", e, exc_info=True)
+        return AiOrganizeResponse(success=False, error_message=str(e))
+
+
+class AiKeywordRequest(BaseModel):
+    keyword: str
+    action: str = Field(default="optimize", pattern="^(optimize|expand)$")
+
+
+@router.post("/keyword")
+async def process_keyword(request: AiKeywordRequest):
+    """AI 关键词优化或扩展（供外部系统调用）"""
+    from ai import content_organizer as organizer
+
+    if not organizer.is_available:
+        raise HTTPException(status_code=503, detail="AI service not configured")
+
+    try:
+        if request.action == "optimize":
+            result = await organizer.optimize_keyword(request.keyword)
+            return {"success": True, "original": request.keyword, "optimized": result}
+        else:
+            result = await organizer.expand_keywords(request.keyword)
+            return {"success": True, "original": request.keyword, "variants": result}
+    except Exception as e:
+        return {"success": False, "original": request.keyword, "error": str(e)}

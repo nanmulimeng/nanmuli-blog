@@ -16,7 +16,7 @@ EXCLUDED_DOMAINS = {
     # 社交媒体
     'youtube.com', 'facebook.com', 'twitter.com', 'x.com',
     'instagram.com', 'linkedin.com', 'pinterest.com',
-    'weibo.com', 'xiaohongshu.com', 'reddit.com', 'tumblr.com',
+    'weibo.com', 'xiaohongshu.com', 'tumblr.com',
     # 视频网站
     'bilibili.com', 'youku.com', 'iqiyi.com',
     'tv.sohu.com', 'le.com', 'pptv.com',
