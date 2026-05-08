@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 
 from .utils import count_words
 from .filters import is_excluded_domain
+from config import settings
 
 
 
@@ -96,13 +97,6 @@ class SourceAuthority:
             if domain.endswith(suffix):
                 return {"score": 60, "level": "medium", "reason": f"技术博客/项目页: {domain}"}
 
-        # 路径检测（内容农场路径）
-        path = urlparse(url).path
-        if '/a/' in path and 'sohu.com' in domain:
-            return {"score": 20, "level": "low", "reason": "搜狐号内容农场路径"}
-        if '/dy/' in path and '163.com' in domain:
-            return {"score": 20, "level": "low", "reason": "网易号内容农场路径"}
-
         # 默认：未知来源
         return {"score": 50, "level": "medium", "reason": f"未知来源: {domain}"}
 
@@ -121,31 +115,17 @@ class SourceAuthority:
 class ContentQuality:
     """内容质量评分体系"""
 
-    # 标题党关键词
-    CLICKBAIT_KEYWORDS = [
-        '震惊', '绝了', '逆天', '炸裂', '颠覆', '史诗', '神级',
-        '99%的人不知道', '看完我沉默了', '后悔没早点',
-        '太可怕了', '万万没想到', '不可思议', '惊人',
-        '史上最强', '全网首发', '独家揭秘', '内幕',
-        '震惊中外', '轰动', '爆款', '疯传',
-        'shocking', 'unbelievable', 'mind-blowing', 'epic',
-        'you won\'t believe', 'this changes everything',
-    ]
+    @classmethod
+    def _clickbait_keywords(cls) -> list[str]:
+        return [kw.strip() for kw in settings.quality_clickbait_keywords.split(",") if kw.strip()]
 
-    # 广告/营销关键词
-    AD_KEYWORDS = [
-        '限时优惠', '点击购买', '立即下单', '免费试用',
-        '优惠券', '折扣码', '推广链接', 'affiliate',
-        '赞助内容', '广告合作', '扫码领取', '关注公众号',
-        '限量', '秒杀', '抢购', '不容错过', '错过等一年',
-    ]
+    @classmethod
+    def _ad_keywords(cls) -> list[str]:
+        return [kw.strip() for kw in settings.quality_ad_keywords.split(",") if kw.strip()]
 
-    # 付费墙指示词
-    PAYWALL_INDICATORS = [
-        'subscribe to read', 'membership required', 'premium content',
-        '登录后阅读', '订阅后查看', '会员专属', '付费阅读',
-        'sign up to continue', 'create an account',
-    ]
+    @classmethod
+    def _paywall_indicators(cls) -> list[str]:
+        return [kw.strip() for kw in settings.quality_paywall_indicators.split(",") if kw.strip()]
 
     @classmethod
     def score(cls, title: str, content: str, url: str) -> Dict:
@@ -224,12 +204,12 @@ class ContentQuality:
             dimensions['code_density'] = 5  # 几乎无代码
 
         # 4. 广告占比评分 (0-25分，反向：25=无广告)
-        ad_count = sum(1 for kw in cls.AD_KEYWORDS if kw in content)
+        ad_count = sum(1 for kw in cls._ad_keywords() if kw in content)
         ad_ratio = min(ad_count / 5, 1.0)  # 5个以上广告词视为满广告
         dimensions['ad_ratio'] = 25 * (1 - ad_ratio)
 
         # 5. 标题党惩罚
-        clickbait_count = sum(1 for kw in cls.CLICKBAIT_KEYWORDS if kw in title.lower())
+        clickbait_count = sum(1 for kw in cls._clickbait_keywords() if kw in title.lower())
         clickbait_penalty = min(clickbait_count * 15, 50)
         penalties['clickbait_penalty'] = clickbait_penalty
 
@@ -238,7 +218,7 @@ class ContentQuality:
         penalties['ad_penalty'] = ad_penalty
 
         # 7. 付费墙检测
-        paywall_flag = any(ind in content.lower() for ind in cls.PAYWALL_INDICATORS)
+        paywall_flag = any(ind in content.lower() for ind in cls._paywall_indicators())
         penalties['paywall_flag'] = paywall_flag
 
         # 8. 时效性检测（P2: 信息不滞后）

@@ -90,7 +90,7 @@ def create_app() -> "FastAPI":
     from fastapi import FastAPI
     from api.crawl import router as crawl_router
     from api.health import router as health_router
-    from api.errors import register_error_handlers
+    from api.errors import register_error_handlers, register_request_id_middleware
 
     app = FastAPI(
         title="Web Collector Crawler Service",
@@ -99,7 +99,8 @@ def create_app() -> "FastAPI":
         lifespan=lifespan,
     )
 
-    # 始终注册：爬取 API + 健康检查 + 错误处理
+    # 始终注册：RequestID + 爬取 API + 健康检查 + 错误处理
+    register_request_id_middleware(app)
     app.include_router(crawl_router)
     app.include_router(health_router)
     register_error_handlers(app)

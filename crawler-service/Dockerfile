@@ -2,24 +2,29 @@
 # 基于微软 Playwright 官方镜像，已预装 Chromium
 # 支持双模式部署：纯 API 模式 / 独立模式
 
+# Builder: install Python dependencies
+FROM mcr.microsoft.com/playwright/python:v1.59.0-jammy AS builder
+
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+
+# Runtime: minimal layer
 FROM mcr.microsoft.com/playwright/python:v1.59.0-jammy
 
 WORKDIR /app
 
-# 复制依赖文件
-COPY requirements.txt .
+# Copy installed packages
+COPY --from=builder /install /usr/local
 
-# 安装 Python 依赖
-RUN pip install --no-cache-dir -r requirements.txt
-
-# 复制应用代码
-COPY main.py .
-COPY config.py .
+# Copy application code
+COPY main.py config.py ./
 COPY api/ ./api/
+COPY ai/ ./ai/
 COPY crawler/ ./crawler/
 COPY standalone/ ./standalone/
 
-# 创建数据目录和非 root 用户
+# Create data directory and non-root user
 RUN mkdir -p /app/data /app/exports && \
     useradd -m crawler && chown -R crawler:crawler /app
 USER crawler

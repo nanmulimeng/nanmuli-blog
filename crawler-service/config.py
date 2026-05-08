@@ -50,6 +50,11 @@ class Settings(BaseSettings):
     digest_search_engine: str = "bing"  # 日报专用搜索引擎
     digest_sections: str = '[{"name":"news","keyword":"tech news","time_range":"day","max_items":5},{"name":"articles","keyword":"technology blog","time_range":"week","max_items":3},{"name":"opensource","keyword":"GitHub trending","time_range":"week","max_items":3}]'
 
+    # 质量评估关键词（逗号分隔，可通过 .env 覆盖）
+    quality_clickbait_keywords: str = "震惊,绝了,逆天,炸裂,颠覆,史诗,神级,99%的人不知道,看完我沉默了,后悔没早点,太可怕了,万万没想到,不可思议,惊人,史上最强,全网首发,独家揭秘,内幕,震惊中外,轰动,爆款,疯传,shocking,unbelievable,mind-blowing,epic,you won't believe,this changes everything"
+    quality_ad_keywords: str = "限时优惠,点击购买,立即下单,免费试用,优惠券,折扣码,推广链接,affiliate,赞助内容,广告合作,扫码领取,关注公众号,限量,秒杀,抢购,不容错过,错过等一年"
+    quality_paywall_indicators: str = "subscribe to read,membership required,premium content,登录后阅读,订阅后查看,会员专属,付费阅读,sign up to continue,create an account"
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 

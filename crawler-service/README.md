@@ -1,268 +1,136 @@
 # Web Collector - Python Crawler Service
 
-基于 **Crawl4AI** 的异步网页内容采集服务，为 Nanmuli Blog 的 Web Collector 模块提供后端支持。
+基于 **Crawl4AI** 的异步网页内容采集服务，支持双模式部署。
 
 ## 功能特性
 
-- **单页爬取** (`/crawl/single`) - 爬取单个 URL 并返回 Markdown
-- **深度爬取** (`/crawl/deep`) - BFS 遍历同域名多页面
-- **关键词搜索** (`/crawl/search`) - 搜索引擎关键词查找并爬取结果
-- **元数据提取** - 自动提取标题、描述、发布时间、作者等
-- **针对 2G 服务器优化** - text_mode + light_mode 减少内存占用
+### 爬取引擎
+- **单页爬取** — 爬取单个 URL，提取 Markdown + 元数据
+- **深度爬取** — BFS 遍历同域名多页面，支持深度和数量限制
+- **关键词搜索** — 4 搜索引擎（Bing/Sogou/Baidu/Google）自动轮换 + 降级 + 反爬检测
+
+### 内容处理
+- **质量评估** — 来源可信度（5 级）+ 内容质量（5 维度）+ 标题党检测
+- **三级去重** — URL 精确 + SimHash 内容指纹 + 标题相似度
+- **元数据提取** — OpenGraph / Twitter Card / JSON-LD / 发布时间
+- **域名过滤** — 60+ 黑名单域名 + 负向关键词
+
+### AI 内容整理（需配置 AI API）
+- **5 种模板** — tech_summary / tutorial / comparison / knowledge_report / daily_digest
+- **关键词优化/扩展** — AI 优化搜索关键词并生成变体
+- **日报生成** — 定时调度（默认工作日 8:00）+ 多板块 + 跨日去重
+
+### 独立模式（STANDALONE=true）
+- SQLite 任务管理（创建/查询/重试/删除/导出）
+- API Key 认证 + SSRF 防护
+- APScheduler 定时日报调度
+- 5 态任务状态机（PENDING → CRAWLING → PROCESSING → COMPLETED / FAILED）
 
 ## 技术栈
 
 | 组件 | 版本 | 说明 |
 |------|------|------|
 | Python | 3.10+ | 运行时 |
-| Crawl4AI | >=0.8.0 | 异步网页爬取框架 |
+| Crawl4AI | ~=0.8.6 | 无头 Chromium 异步爬虫 |
 | FastAPI | >=0.109.0 | Web 框架 |
-| Uvicorn | >=0.27.0 | ASGI 服务器 |
-| BeautifulSoup4 | >=4.12.0 | HTML 解析 |
+| httpx | >=0.26.0 | 异步 HTTP 客户端 |
+| Pydantic Settings | >=2.1.0 | 配置管理 |
+| APScheduler | >=3.10.0 | 定时调度（独立模式） |
 
-## 安装部署
+## 双模式部署
 
-### 方式一：Docker 部署（推荐）
+### 纯 API 模式（默认）
 
-#### 1. 使用 Docker Compose（与主项目一起部署）
-
-```bash
-# 在项目根目录执行
-docker-compose up -d crawler
-
-# 查看日志
-docker-compose logs -f crawler
-```
-
-#### 2. 单独构建爬虫服务镜像
-
-```bash
-cd crawler-service
-
-# 构建镜像
-docker build -t nanmuli-crawler:latest .
-
-# 运行容器
-docker run -d \
-  --name nanmuli-crawler \
-  -p 8500:8500 \
-  -e PORT=8500 \
-  -e MAX_PAGES_DEFAULT=10 \
-  -e LOG_LEVEL=INFO \
-  --restart unless-stopped \
-  nanmuli-crawler:latest
-```
-
-### 方式二：本地部署
-
-#### 1. 创建虚拟环境
-
-```bash
-cd crawler-service
-python -m venv .venv
-
-# Windows
-.venv\Scripts\activate
-
-# macOS/Linux
-source .venv/bin/activate
-```
-
-#### 2. 安装依赖
-
-```bash
-pip install -r requirements.txt
-```
-
-#### 3. 安装 Playwright 浏览器（Crawl4AI 依赖）
-
-```bash
-crawl4ai-setup
-# 或手动安装
-playwright install chromium
-```
-
-验证安装：
-```bash
-crawl4ai-doctor
-```
-
-#### 4. 配置环境变量
-
-```bash
-cp .env.example .env
-# 编辑 .env 文件根据需要调整配置
-```
-
-#### 5. 启动服务
-
-开发模式（热重载）：
-```bash
-uvicorn main:app --host 0.0.0.0 --port 8500 --reload
-```
-
-生产模式：
-```bash
-uvicorn main:app --host 0.0.0.0 --port 8500 --workers 1
-```
-
-> **注意**：由于 Playwright 浏览器实例限制，建议使用单进程模式（`--workers 1`）
-
-## API 文档
-
-启动后访问自动生成的 API 文档：
-- Swagger UI: http://localhost:8500/docs
-- ReDoc: http://localhost:8500/redoc
-
-### 端点列表
+作为微服务被 Java 后端调用，仅暴露爬取端点：
 
 | 方法 | 端点 | 描述 |
 |------|------|------|
-| GET | `/health` | 健康检查 |
+| GET | `/health` | 健康检查（含组件状态） |
 | POST | `/crawl/single` | 单页爬取 |
 | POST | `/crawl/deep` | BFS 深度爬取 |
 | POST | `/crawl/search` | 关键词搜索爬取 |
+| POST | `/organize` | AI 内容整理 |
+| POST | `/keyword` | 关键词搜索 + AI 整理（一站式） |
 
-### 请求示例
+### 独立模式（STANDALONE=true）
 
-#### 单页爬取
+完整任务管理系统，额外暴露 `/api/v1/*` 端点：
 
-```bash
-curl -X POST "http://localhost:8500/crawl/single" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "url": "https://docs.crawl4ai.com",
-    "config": {
-      "text_mode": true,
-      "light_mode": true,
-      "page_timeout": 30000
-    }
-  }'
-```
+| 方法 | 端点 | 描述 |
+|------|------|------|
+| POST | `/api/v1/tasks` | 创建任务（异步爬取 + AI 整理） |
+| GET | `/api/v1/tasks` | 任务列表（分页） |
+| GET | `/api/v1/tasks/{id}` | 任务详情 |
+| DELETE | `/api/v1/tasks/{id}` | 删除任务 |
+| POST | `/api/v1/tasks/{id}/retry` | 重试失败任务 |
+| POST | `/api/v1/tasks/{id}/organize` | 重新 AI 整理 |
+| GET | `/api/v1/tasks/{id}/export` | 导出为 Markdown |
+| GET | `/api/v1/digests` | 日报列表 |
+| GET | `/api/v1/digests/latest` | 最新日报 |
+| POST | `/api/v1/digests/trigger` | 手动触发日报 |
+| GET | `/api/v1/stats` | 统计信息 |
 
-#### 深度爬取
+## 安装部署
 
-```bash
-curl -X POST "http://localhost:8500/crawl/deep" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "url": "https://docs.crawl4ai.com",
-    "max_depth": 2,
-    "max_pages": 10,
-    "config": {
-      "text_mode": true,
-      "light_mode": true
-    }
-  }'
-```
-
-#### 关键词搜索
+### Docker（推荐）
 
 ```bash
-curl -X POST "http://localhost:8500/crawl/search" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "keyword": "Spring AI RAG 实战",
-    "engine": "bing",
-    "max_results": 10
-  }'
+cd crawler-service
+docker build -t nanmuli-crawler:latest .
+
+# 纯 API 模式
+docker run -d -p 8500:8500 nanmuli-crawler:latest
+
+# 独立模式
+docker run -d -p 8500:8500 \
+  -e STANDALONE=true \
+  -e AI_ENABLED=true \
+  -e AI_API_KEY=sk-xxx \
+  -e DIGEST_ENABLED=true \
+  nanmuli-crawler:latest
 ```
 
-### 响应格式
-
-#### 单页爬取响应
-
-```json
-{
-  "success": true,
-  "url": "https://docs.crawl4ai.com",
-  "title": "Crawl4AI Documentation",
-  "markdown": "# Crawl4AI Documentation\n\n...",
-  "metadata": {
-    "url": "https://docs.crawl4ai.com",
-    "title": "Crawl4AI Documentation",
-    "description": "...",
-    "published_at": "2024-01-15T08:00:00",
-    "language": "en"
-  },
-  "word_count": 15234,
-  "crawl_time_ms": 5400
-}
-```
-
-#### 多页爬取响应
-
-```json
-{
-  "success": true,
-  "pages": [
-    {
-      "success": true,
-      "url": "https://docs.crawl4ai.com",
-      "title": "Crawl4AI Documentation",
-      "markdown": "...",
-      "word_count": 15234,
-      "crawl_time_ms": 5400
-    }
-  ],
-  "total_pages": 5,
-  "total_crawl_time_ms": 25000,
-  "keyword": "Spring AI"
-}
-```
-
-## 性能优化（2G 服务器）
-
-服务默认配置针对低内存服务器优化：
-
-- `text_mode=True` - 不加载图片，节省内存和带宽
-- `light_mode=True` - 轻量模式，减少浏览器资源占用
-- `max_pages <= 20` - 限制单次爬取页面数
-- `workers=1` - 单进程避免浏览器实例冲突
-
-如需更高性能，可调整 `.env` 中的配置或传入自定义 `config` 参数。
-
-## 故障排查
-
-### Crawl4AI 安装失败
+### 本地部署
 
 ```bash
-# 确保系统依赖已安装（Ubuntu/Debian）
-sudo apt-get install -y libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2
-
-# 重新安装
-pip install --force-reinstall crawl4ai
-playwright install chromium
+cd crawler-service
+python -m venv .venv && source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+crawl4ai-setup
+cp .env.example .env  # 编辑配置
+uvicorn main:app --host 0.0.0.0 --port 8500 --reload
 ```
 
-### 内存不足
+## 配置说明
 
-如出现内存错误，请确保：
-1. `text_mode=True` 和 `light_mode=True`
-2. 减少 `max_pages` 和 `max_depth`
-3. 确保没有其他 Playwright 实例在运行
+所有配置通过 `.env` 文件或环境变量，完整列表见 `.env.example`。
 
-### 搜索引擎返回空结果
+关键配置：
 
-搜索引擎可能有反爬机制，建议：
-1. 减少请求频率（每次搜索间增加延迟）
-2. 尝试切换搜索引擎（`engine: "duckduckgo"`）
-3. 检查关键词是否有效
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `STANDALONE` | false | 启用独立模式 |
+| `AI_ENABLED` | false | 启用 AI 内容整理 |
+| `AI_BASE_URL` | DashScope | OpenAI 兼容 API 地址 |
+| `DIGEST_ENABLED` | false | 启用定时日报 |
+| `DIGEST_CRON` | `0 8 * * 1-5` | 工作日早 8 点 |
+| `PROXY_URL` | 空 | HTTP/SOCKS5 代理 |
 
 ## 与 Java 后端集成
 
-Java 后端通过 REST API 调用此服务，配置示例：
-
 ```yaml
-# application-dev.yml
+# application-prod.yml
 crawler:
   service:
-    base-url: http://localhost:8500
-    timeout: 60000  # 60秒超时
+    base-url: ${CRAWLER_SERVICE_URL:http://localhost:8500}
+    api-key: ${CRAWLER_API_KEY:}
+    connect-timeout: ${CRAWLER_CONNECT_TIMEOUT:10000}
+    read-timeout: ${CRAWLER_READ_TIMEOUT:30000}
 ```
 
 ## 版本历史
 
 | 版本 | 日期 | 变更 |
 |------|------|------|
-| 1.0.0 | 2026-04-07 | 初始版本，支持 single/deep/search 三种模式 |
+| 2.0.0 | 2026-05-08 | 独立模式 + AI 整理 + 日报 + 质量评估 + 三级去重 + 连接池化 |
+| 1.0.0 | 2026-04-07 | 初始版本，single/deep/search 三种模式 |

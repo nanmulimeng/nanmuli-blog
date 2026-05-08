@@ -40,6 +40,7 @@ SEARCH_ENGINES = {
         "link_selector": ".vrTitle a, h3 a",
         "snippet_selector": ".str-text, .star-w",
         "fallback_selectors": [".results .rb", ".result"],
+        "selector_version": "2026-05",
     },
     "bing": {
         "result_selector": "li.b_algo",
@@ -47,6 +48,7 @@ SEARCH_ENGINES = {
         "link_selector": "h2 a",
         "snippet_selector": "p",
         "fallback_selectors": ["#b_results li", "ol#b_results > li"],
+        "selector_version": "2026-05",
     },
     "baidu": {
         "result_selector": ".result",
@@ -54,6 +56,7 @@ SEARCH_ENGINES = {
         "link_selector": "h3 a",
         "snippet_selector": ".content-right, .c-abstract",
         "fallback_selectors": [".c-container"],
+        "selector_version": "2026-05",
     },
     "google": {
         "result_selector": "div.g",
@@ -61,6 +64,7 @@ SEARCH_ENGINES = {
         "link_selector": "a",
         "snippet_selector": ".VwiC3b, .s3v94d",
         "fallback_selectors": ["div[data-sokoban-container]", "div.tF2Cxc"],
+        "selector_version": "2026-05",
     },
 }
 
@@ -217,7 +221,13 @@ def _baidu_time_filter(time_range: str) -> str:
     return "&gpc=" + base64.b64encode(raw.encode()).decode()
 
 
-async def _fetch_search_html(search_url: str, engine: str, crawler: Optional[AsyncWebCrawler] = None) -> Optional[str]:
+async def _fetch_search_html(
+    search_url: str,
+    engine: str,
+    crawler: Optional[AsyncWebCrawler] = None,
+    fallback_headers: Optional[dict] = None,
+) -> Optional[str]:
+    """获取搜索页 HTML，浏览器失败时降级为 httpx 直接获取"""
     try:
         run_config = get_search_run_config(page_timeout=20000)
         if crawler is not None:
@@ -233,10 +243,25 @@ async def _fetch_search_html(search_url: str, engine: str, crawler: Optional[Asy
             engine,
             getattr(result, "error_message", "unknown error"),
         )
-        return None
     except Exception as exc:
         logger.warning("[Search] %s browser fetch exception: %s", engine, exc)
-        return None
+
+    # 降级：httpx 直接获取 HTML
+    if fallback_headers:
+        try:
+            client_kwargs = {"follow_redirects": True, "timeout": 15}
+            if settings.proxy_url:
+                client_kwargs["proxy"] = settings.proxy_url
+            async with httpx.AsyncClient(**client_kwargs) as client:
+                resp = await client.get(search_url, headers=fallback_headers)
+                resp.raise_for_status()
+                if resp.text and len(resp.text) > 500:
+                    logger.info("[Search] %s fallback to httpx succeeded (%d bytes)", engine, len(resp.text))
+                    return resp.text
+        except Exception as exc:
+            logger.debug("[Search] %s httpx fallback also failed: %s", engine, exc)
+
+    return None
 
 
 async def _decode_baidu_redirect(href: str, search_url: str, headers: dict, client: httpx.AsyncClient) -> Optional[str]:
@@ -286,6 +311,13 @@ async def _parse_search_results(
             page_text = soup.get_text() if soup else ""
             if _is_anti_bot_page(page_text, html):
                 raise RuntimeError(f"Engine '{engine}' blocked by anti-bot/captcha")
+        # 选择器失效检测：0 结果且无反爬 → 选择器可能过时
+        sel_ver = config.get("selector_version", "unknown")
+        logger.warning(
+            "[Search] Engine '%s' returned 0 parseable results (selector_version=%s, "
+            "primary='%s', keyword='%s') — selector may be stale",
+            engine, sel_ver, config["result_selector"], keyword,
+        )
         return 0, 0
 
     page_new = 0
@@ -406,12 +438,19 @@ async def _get_search_results(keyword: str, engine: str, max_results: int, time_
     if time_range != "all":
         logger.info("[Search] Applying time filter '%s' for engine '%s'", time_range, engine)
 
-    # Google 共享浏览器实例，避免每页新建 Chromium 进程
-    google_crawler = None
-    if engine == "google":
+    # 共享 httpx client（非 google 引擎）和浏览器实例（google）
+    client_kwargs = {"follow_redirects": True, "timeout": 30}
+    if settings.proxy_url:
+        client_kwargs["proxy"] = settings.proxy_url
+    is_google = engine == "google"
+
+    if is_google:
         browser_config = get_browser_config(text_mode=True, light_mode=True, proxy=settings.proxy_url)
         google_crawler = AsyncWebCrawler(config=browser_config)
         await google_crawler.__aenter__()
+        shared_client = None
+    else:
+        shared_client = httpx.AsyncClient(**client_kwargs)
 
     try:
         while len(urls) < max_results and page < 5:
@@ -433,7 +472,7 @@ async def _get_search_results(keyword: str, engine: str, max_results: int, time_
                 if engine == "google":
                     html = None
                     for attempt in range(SEARCH_PAGE_RETRIES):
-                        html = await _fetch_search_html(search_url, engine="google", crawler=google_crawler)
+                        html = await _fetch_search_html(search_url, engine="google", crawler=google_crawler, fallback_headers=headers)
                         if html is not None:
                             break
                         if attempt < SEARCH_PAGE_RETRIES - 1:
@@ -453,60 +492,53 @@ async def _get_search_results(keyword: str, engine: str, max_results: int, time_
                         client=None,
                     )
                 elif engine == "sogou":
-                    client_kwargs = {"follow_redirects": True, "timeout": 30}
-                    if settings.proxy_url:
-                        client_kwargs["proxy"] = settings.proxy_url
-                    async with httpx.AsyncClient(**client_kwargs) as client:
+                    if page == 0:
                         try:
-                            await client.get("https://www.sogou.com/", headers={"User-Agent": headers["User-Agent"]}, timeout=10)
+                            await shared_client.get("https://www.sogou.com/", headers={"User-Agent": headers["User-Agent"]}, timeout=10)
                             await asyncio.sleep(0.5)
                         except Exception:
                             pass
-                        response = await client.get(search_url, headers=headers)
-                        response.raise_for_status()
-                        raw_count, page_new = await _parse_search_results(
-                            html=response.text,
-                            engine=engine,
-                            config=config,
-                            keyword=keyword,
-                            max_results=max_results,
-                            seen_domains=seen_domains,
-                            urls=urls,
-                            search_url=search_url,
-                            headers=headers,
-                            client=client,
-                        )
+                    response = await shared_client.get(search_url, headers=headers)
+                    response.raise_for_status()
+                    raw_count, page_new = await _parse_search_results(
+                        html=response.text,
+                        engine=engine,
+                        config=config,
+                        keyword=keyword,
+                        max_results=max_results,
+                        seen_domains=seen_domains,
+                        urls=urls,
+                        search_url=search_url,
+                        headers=headers,
+                        client=shared_client,
+                    )
                 else:
-                    client_kwargs = {"follow_redirects": True, "timeout": 30}
-                    if settings.proxy_url:
-                        client_kwargs["proxy"] = settings.proxy_url
-                    async with httpx.AsyncClient(**client_kwargs) as client:
-                        last_exc = None
-                        for attempt in range(SEARCH_PAGE_RETRIES):
-                            try:
-                                response = await client.get(search_url, headers=headers)
-                                if response.status_code >= 500:
-                                    response.raise_for_status()
-                                raw_count, page_new = await _parse_search_results(
-                                    html=response.text,
-                                    engine=engine,
-                                    config=config,
-                                    keyword=keyword,
-                                    max_results=max_results,
-                                    seen_domains=seen_domains,
-                                    urls=urls,
-                                    search_url=search_url,
-                                    headers=headers,
-                                    client=client,
-                                )
-                                last_exc = None
-                                break
-                            except Exception as exc:
-                                last_exc = exc
-                                if attempt < SEARCH_PAGE_RETRIES - 1:
-                                    await asyncio.sleep(random.uniform(0.5, 1.5))
-                                else:
-                                    raise last_exc
+                    last_exc = None
+                    for attempt in range(SEARCH_PAGE_RETRIES):
+                        try:
+                            response = await shared_client.get(search_url, headers=headers)
+                            if response.status_code >= 500:
+                                response.raise_for_status()
+                            raw_count, page_new = await _parse_search_results(
+                                html=response.text,
+                                engine=engine,
+                                config=config,
+                                keyword=keyword,
+                                max_results=max_results,
+                                seen_domains=seen_domains,
+                                urls=urls,
+                                search_url=search_url,
+                                headers=headers,
+                                client=shared_client,
+                            )
+                            last_exc = None
+                            break
+                        except Exception as exc:
+                            last_exc = exc
+                            if attempt < SEARCH_PAGE_RETRIES - 1:
+                                await asyncio.sleep(random.uniform(0.5, 1.5))
+                            else:
+                                raise last_exc
 
                 total_raw += raw_count
                 if page_new == 0:
@@ -523,7 +555,10 @@ async def _get_search_results(keyword: str, engine: str, max_results: int, time_
                 logger.warning("[Search] Page %s failed for '%s': %s", page + 1, keyword, exc)
                 break
     finally:
-        if google_crawler is not None:
+        if shared_client is not None:
+            if hasattr(shared_client, "aclose"):
+                await shared_client.aclose()
+        if is_google and google_crawler is not None:
             await google_crawler.__aexit__(None, None, None)
 
     logger.info("[Search] Filtered %s URLs from %s raw results (pages=%s) for keyword='%s'", len(urls), total_raw, page, keyword)
@@ -537,13 +572,14 @@ async def _crawl_urls_with_shared_browser(
     config: Optional[object],
     browser_config,
     is_fallback: bool = False,
+    external_crawler: Optional[AsyncWebCrawler] = None,
 ) -> List[CrawlResult]:
     sem = asyncio.Semaphore(settings.max_concurrent_crawls)
 
     async def _crawl_one(rank: int, url: str) -> CrawlResult:
         async with sem:
             try:
-                result = await crawl_single_page(url=url, config=config, crawler=crawler)
+                result = await crawl_single_page(url=url, config=config, crawler=active_crawler)
                 if result.success and result.word_count < MIN_WORD_COUNT:
                     result.success = False
                     result.error_message = f"Content too short ({result.word_count} words, min 50)"
@@ -569,9 +605,14 @@ async def _crawl_urls_with_shared_browser(
                     metadata=meta,
                 )
 
-    async with AsyncWebCrawler(config=browser_config) as crawler:
+    if external_crawler is not None:
+        active_crawler = external_crawler
         tasks = [_crawl_one(rank, url) for rank, url in enumerate(urls, 1)]
         return list(await asyncio.gather(*tasks))
+    else:
+        async with AsyncWebCrawler(config=browser_config) as active_crawler:
+            tasks = [_crawl_one(rank, url) for rank, url in enumerate(urls, 1)]
+            return list(await asyncio.gather(*tasks))
 
 
 async def crawl_by_keyword(
@@ -580,6 +621,7 @@ async def crawl_by_keyword(
     max_results: int = 10,
     time_range: str = "week",
     config: Optional[object] = None,
+    crawler: Optional[AsyncWebCrawler] = None,
 ) -> List[CrawlResult]:
     valid_time_ranges = {"day", "week", "month", "year", "all"}
     if time_range not in valid_time_ranges:
@@ -649,6 +691,7 @@ async def crawl_by_keyword(
         url_source_map=url_source_map,
         config=config,
         browser_config=browser_config,
+        external_crawler=crawler,
     )
 
     try:
