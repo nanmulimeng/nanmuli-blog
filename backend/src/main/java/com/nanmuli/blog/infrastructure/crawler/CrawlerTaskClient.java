@@ -5,16 +5,23 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.*;
 
+import org.apache.hc.client5.http.config.RequestConfig;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
+import org.apache.hc.core5.util.Timeout;
+
 /**
  * Python 爬虫服务任务 API 客户端
  *
  * 封装 /api/v1/tasks/* 端点调用，替代原来逐个调用 /crawl/* 的编排模式。
+ * 使用连接池复用 TCP 连接，避免高并发场景下端口耗尽。
  */
 @Slf4j
 @Component
@@ -27,15 +34,29 @@ public class CrawlerTaskClient {
 
     public CrawlerTaskClient(
             @Value("${crawler.service.base-url:http://localhost:8500}") String baseUrl,
-            @Value("${crawler.service.api-key:}") String apiKey) {
+            @Value("${crawler.service.api-key:}") String apiKey,
+            @Value("${crawler.service.connect-timeout:10000}") int connectTimeout,
+            @Value("${crawler.service.read-timeout:30000}") int readTimeout) {
         this.baseUrl = baseUrl;
         this.apiKey = apiKey;
         this.objectMapper = new ObjectMapper();
-        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(10000);
-        factory.setReadTimeout(30000);
+
+        PoolingHttpClientConnectionManager cm = new PoolingHttpClientConnectionManager();
+        cm.setMaxTotal(20);
+        cm.setDefaultMaxPerRoute(10);
+
+        CloseableHttpClient httpClient = HttpClients.custom()
+                .setConnectionManager(cm)
+                .setDefaultRequestConfig(RequestConfig.custom()
+                        .setConnectTimeout(Timeout.ofMilliseconds(connectTimeout))
+                        .setResponseTimeout(Timeout.ofMilliseconds(readTimeout))
+                        .build())
+                .build();
+
+        HttpComponentsClientHttpRequestFactory factory = new HttpComponentsClientHttpRequestFactory(httpClient);
         this.restTemplate = new RestTemplate(factory);
-        log.info("[CrawlerTaskClient] initialized: baseUrl={}", baseUrl);
+        log.info("[CrawlerTaskClient] initialized: baseUrl={}, connectTimeout={}ms, readTimeout={}ms",
+                baseUrl, connectTimeout, readTimeout);
     }
 
     /**

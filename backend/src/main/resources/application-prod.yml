@@ -60,6 +60,8 @@ crawler:
   service:
     base-url: ${CRAWLER_SERVICE_URL:http://localhost:8500}
     api-key: ${CRAWLER_API_KEY:}
+    connect-timeout: ${CRAWLER_CONNECT_TIMEOUT:10000}
+    read-timeout: ${CRAWLER_READ_TIMEOUT:30000}
 
 logging:
   level:

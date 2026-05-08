@@ -35,11 +35,13 @@ sa-token:
         max-idle: 8
         min-idle: 0
 
-# Web Collector - Crawl4AI 服务配置
+# Web Collector - Python 爬虫服务配置
 crawler:
   service:
     base-url: http://localhost:8500
-    api-key: ${CRAWLER_API_KEY:}  # Python 服务间认证 key
+    api-key: ${CRAWLER_API_KEY:}
+    connect-timeout: ${CRAWLER_CONNECT_TIMEOUT:10000}
+    read-timeout: ${CRAWLER_READ_TIMEOUT:30000}
 
 logging:
   level:
