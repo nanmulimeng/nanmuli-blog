@@ -59,6 +59,11 @@ export function getDigestByDate(date: string): Promise<DigestDetail> {
   return get<DigestDetail>(`/admin/collector/digest/${date}`)
 }
 
+// 按任务 ID 查询日报
+export function getDigestByTaskId(taskId: number): Promise<DigestDetail> {
+  return get<DigestDetail>(`/admin/collector/digest/task/${taskId}`)
+}
+
 // 手动触发日报生成
 export function triggerDigest(force = false): Promise<{ message: string }> {
   return post<{ message: string }>('/admin/collector/digest/trigger', undefined, { params: { force } })

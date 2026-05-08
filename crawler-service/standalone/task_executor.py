@@ -289,12 +289,14 @@ class TaskExecutor:
         return all_results
 
     async def _build_digest_history_engine(self):
-        """从上一次成功日报中加载 URL/标题指纹，用于跨日去重"""
+        """从最近几次成功日报中加载 URL/标题指纹，用于跨日去重"""
         from crawler.dedup import DedupEngine
 
         engine = DedupEngine()
         try:
-            records, _ = await repo.list_tasks(task_type="digest", page=1, size=1)
+            # 加载最近 3 条完成的日报，避免跨日重复
+            records, _ = await repo.list_tasks(task_type="digest", page=1, size=5)
+            loaded = 0
             for r in records:
                 if r.get("status") != TaskStatus.COMPLETED:
                     continue
@@ -305,7 +307,11 @@ class TaskExecutor:
                     if url:
                         engine.add_reference(url, title=title)
                 logger.info("Loaded %d history URLs from digest task %d", len(pages), r["id"])
-                break  # 只取最近一次
+                loaded += 1
+                if loaded >= 3:
+                    break
+            if loaded:
+                logger.info("Digest history engine: %d reference records loaded", loaded)
         except Exception as e:
             logger.warning("Failed to load digest history for dedup: %s", e)
         return engine

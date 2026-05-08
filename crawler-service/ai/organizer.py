@@ -628,22 +628,19 @@ class ContentOrganizer:
             raise InvalidOutputError("Digest missing tags")
 
         valid_categories = set(DIGEST_CATEGORY_MAP.keys())
-        has_valid = False
         for sec in c.sections:
-            # 校验并修正 category 代码
             if sec.category and sec.category not in valid_categories:
                 logger.warning("Unknown digest category '%s', mapping to 'tech_article'", sec.category)
                 sec.category = "tech_article"
                 cat_info = DIGEST_CATEGORY_MAP["tech_article"]
                 sec.category_name = cat_info[0]
                 sec.emoji = cat_info[1]
-            if sec.category and sec.category_name and sec.items:
-                for item in sec.items:
-                    if item.title and item.one_liner and item.source_url and item.source_name:
-                        has_valid = True
-                        break
-            if has_valid:
-                break
+
+        has_valid = any(
+            item.title and item.one_liner and item.source_url and item.source_name
+            for sec in c.sections
+            for item in sec.items
+        )
         if not has_valid:
             raise InvalidOutputError("Digest missing valid items")
 

@@ -170,6 +170,48 @@ class TestGetDigestByDate:
         assert resp.json()["digest_date"] == "2026-05-07"
 
 
+# ============== GET /digests/task/{task_id} ==============
+
+class TestGetDigestByTaskId:
+    @pytest.mark.asyncio
+    async def test_not_found_task(self, app, patched_repo):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            resp = await ac.get("/digests/task/99999")
+        assert resp.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_non_digest_task_rejected(self, app, patched_repo):
+        repo = patched_repo
+
+        task_id = await repo.create_task(
+            task_type="single", source_url="https://example.com"
+        )
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            resp = await ac.get(f"/digests/task/{task_id}")
+        assert resp.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_digest_task_found(self, app, patched_repo):
+        repo = patched_repo
+
+        task_id = await repo.create_task(
+            task_type="digest", keyword="2026-05-09", ai_template="daily_digest"
+        )
+        await repo.save_digest_results(
+            task_id, "日报 5/9", "摘要", ["t"], "内容", 100, 50,
+            "2026-05-09", "亮点", [],
+        )
+        await repo.complete_task(task_id)
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            resp = await ac.get(f"/digests/task/{task_id}")
+
+        assert resp.status_code == 200
+        assert resp.json()["id"] == task_id
+        assert resp.json()["digest_date"] == "2026-05-09"
+
+
 # ============== GET /digests/config/sections ==============
 
 class TestDigestSectionsConfig:

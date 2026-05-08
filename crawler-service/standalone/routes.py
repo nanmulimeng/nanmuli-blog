@@ -389,6 +389,17 @@ async def trigger_digest(force: bool = Query(False)):
     return {"message": "日报生成已触发"}
 
 
+@router.get("/digests/task/{task_id}")
+async def get_digest_by_task_id(task_id: int):
+    """按任务 ID 查询日报详情"""
+    task = await repo.get_task(task_id)
+    if not task:
+        raise HTTPException(404, "任务不存在")
+    if task["task_type"] != "digest":
+        raise HTTPException(400, "该任务不是日报类型")
+    return await _build_digest_detail(task_id)
+
+
 @router.get("/digests/{date}")
 async def get_digest_by_date(date: str):
     """按日期查询日报详情"""

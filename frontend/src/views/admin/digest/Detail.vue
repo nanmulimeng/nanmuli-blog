@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getDigestByDate, getLatestDigest, getDigestList } from '@/api/collector'
+import { getDigestByDate, getLatestDigest, getDigestByTaskId } from '@/api/collector'
 import type { DigestDetail } from '@/types/collector'
 import { CollectTaskStatusMap } from '@/types/collector'
 import { ArrowLeft, Refresh, Calendar } from '@element-plus/icons-vue'
@@ -47,20 +47,12 @@ async function fetchDigest(): Promise<void> {
     if (routeMode.value === 'latest') {
       digest.value = await getLatestDigest()
     } else if (routeMode.value === 'task') {
-      // 通过 task ID 查找：获取列表后匹配
       const taskId = parseInt(routeValue.value, 10)
       if (isNaN(taskId)) {
         digest.value = null
         return
       }
-      // 尝试从日报列表中找到匹配的任务，然后按日期查询详情
-      const list = await getDigestList(1, 50)
-      const match = list.records.find(r => r.id === taskId)
-      if (match?.digest_date) {
-        digest.value = await getDigestByDate(match.digest_date)
-      } else {
-        digest.value = null
-      }
+      digest.value = await getDigestByTaskId(taskId)
     } else {
       digest.value = await getDigestByDate(routeValue.value)
     }
