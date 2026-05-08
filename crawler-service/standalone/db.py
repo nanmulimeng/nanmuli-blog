@@ -38,6 +38,8 @@ CREATE TABLE IF NOT EXISTS crawl_task (
     ai_error_message TEXT,
     ai_search_metadata TEXT,
 
+    time_range      TEXT DEFAULT 'week',
+
     created_at      TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -109,6 +111,7 @@ _MIGRATIONS = [
     ("digest_date", "ALTER TABLE crawl_task ADD COLUMN digest_date TEXT"),
     ("digest_highlight", "ALTER TABLE crawl_task ADD COLUMN digest_highlight TEXT"),
     ("idx_digest_date", "CREATE INDEX IF NOT EXISTS idx_digest_date ON crawl_task(digest_date)"),
+    ("time_range", "ALTER TABLE crawl_task ADD COLUMN time_range TEXT DEFAULT 'week'"),
 ]
 
 
@@ -140,6 +143,18 @@ async def init_db():
                     logger.warning("Migration skipped (%s): %s", col_name, e)
 
         await db.commit()
+
+        # 恢复孤儿任务：将上次崩溃时 CRAWLING(1)/PROCESSING(2) 的任务重置为 FAILED
+        cursor = await db.execute("""
+            UPDATE crawl_task
+            SET status = 4, error_message = '服务重启：任务被中断'
+            WHERE status IN (1, 2)
+        """)
+        reset_count = cursor.rowcount
+        await db.commit()
+
+    if reset_count > 0:
+        logger.warning("Recovered %d orphaned tasks (set to FAILED)", reset_count)
 
     logger.info("Database initialized: %s", settings.db_path)
 

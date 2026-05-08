@@ -31,23 +31,21 @@ async def create_task(
     task_type: str, source_url: str = None, keyword: str = None,
     search_engine: str = "bing", max_depth: int = 1,
     max_pages: int = 10, config_json: str = None,
-    ai_template: str = "tech_summary"
+    ai_template: str = "tech_summary", time_range: str = "week"
 ) -> int:
     """创建任务，返回 task_id"""
     async with get_db() as db:
 
-        await db.execute(
+        cursor = await db.execute(
             """INSERT INTO crawl_task
                (task_type, source_url, keyword, search_engine, max_depth, max_pages,
-                crawl_config, ai_template)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                crawl_config, ai_template, time_range)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (task_type, source_url, keyword, search_engine, max_depth, max_pages,
-             config_json, ai_template)
+             config_json, ai_template, time_range)
         )
         await db.commit()
-        cursor = await db.execute("SELECT last_insert_rowid()")
-        row = await cursor.fetchone()
-        return row[0]
+        return cursor.lastrowid
 
 
 async def get_task(task_id: int) -> Optional[dict]:
@@ -176,31 +174,40 @@ async def fail_task(task_id: int, error_message: str):
 
 async def delete_task(task_id: int):
     async with get_db() as db:
-        # CASCADE 会自动删除 digest_section/digest_item，但显式删除更安全
-        await db.execute("DELETE FROM crawl_page WHERE task_id = ?", (task_id,))
-        await db.execute("DELETE FROM crawl_task WHERE id = ?", (task_id,))
-        await db.commit()
+        await db.execute("BEGIN")
+        try:
+            await db.execute("DELETE FROM crawl_page WHERE task_id = ?", (task_id,))
+            await db.execute("DELETE FROM crawl_task WHERE id = ?", (task_id,))
+            await db.commit()
+        except Exception:
+            await db.execute("ROLLBACK")
+            raise
 
 
 async def reset_task_for_retry(task_id: int):
     """重置失败任务为待处理状态"""
     async with get_db() as db:
-        await db.execute("DELETE FROM crawl_page WHERE task_id = ?", (task_id,))
-        await db.execute("DELETE FROM digest_section WHERE task_id = ?", (task_id,))
-        await db.execute(
-            """UPDATE crawl_task SET status = ?, error_message = NULL,
-               crawl_duration = NULL, total_word_count = NULL,
-               completed_pages = 0,
-               ai_title = NULL, ai_summary = NULL, ai_key_points = NULL,
-               ai_tags = NULL, ai_category = NULL, ai_full_content = NULL,
-               ai_duration = NULL, ai_tokens_used = NULL, ai_error_message = NULL,
-               ai_search_metadata = NULL,
-               digest_date = NULL, digest_highlight = NULL,
-               updated_at = datetime('now')
-               WHERE id = ?""",
-            (TaskStatus.PENDING, task_id)
-        )
-        await db.commit()
+        await db.execute("BEGIN")
+        try:
+            await db.execute("DELETE FROM crawl_page WHERE task_id = ?", (task_id,))
+            await db.execute("DELETE FROM digest_section WHERE task_id = ?", (task_id,))
+            await db.execute(
+                """UPDATE crawl_task SET status = ?, error_message = NULL,
+                   crawl_duration = NULL, total_word_count = NULL,
+                   completed_pages = 0,
+                   ai_title = NULL, ai_summary = NULL, ai_key_points = NULL,
+                   ai_tags = NULL, ai_category = NULL, ai_full_content = NULL,
+                   ai_duration = NULL, ai_tokens_used = NULL, ai_error_message = NULL,
+                   ai_search_metadata = NULL,
+                   digest_date = NULL, digest_highlight = NULL,
+                   updated_at = datetime('now')
+                   WHERE id = ?""",
+                (TaskStatus.PENDING, task_id)
+            )
+            await db.commit()
+        except Exception:
+            await db.execute("ROLLBACK")
+            raise
 
 
 # ============== AI Results ==============
@@ -260,51 +267,56 @@ async def save_digest_results(
 ):
     """保存日报结构化结果（AI 通用字段 + sections/items）"""
     async with get_db() as db:
-        # 1. 更新 crawl_task 通用字段
-        await db.execute(
-            """UPDATE crawl_task SET
-               ai_title = ?, ai_summary = ?, ai_tags = ?,
-               ai_full_content = ?, ai_duration = ?, ai_tokens_used = ?,
-               digest_date = ?, digest_highlight = ?,
-               updated_at = datetime('now')
-               WHERE id = ?""",
-            (ai_title, ai_summary,
-             json.dumps(ai_tags, ensure_ascii=False) if ai_tags else None,
-             ai_full_content, ai_duration, ai_tokens_used,
-             digest_date, highlight,
-             task_id)
-        )
-
-        # 2. 清除旧的 sections/items（重试场景）
-        await db.execute("DELETE FROM digest_section WHERE task_id = ?", (task_id,))
-
-        # 3. 插入 sections 和 items
-        for sec_idx, sec in enumerate(sections):
-            cursor = await db.execute(
-                """INSERT INTO digest_section (task_id, category, category_name, emoji, sort_order)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (task_id, sec.get("category", ""),
-                 sec.get("category_name", ""), sec.get("emoji", ""), sec_idx)
+        await db.execute("BEGIN")
+        try:
+            # 1. 更新 crawl_task 通用字段
+            await db.execute(
+                """UPDATE crawl_task SET
+                   ai_title = ?, ai_summary = ?, ai_tags = ?,
+                   ai_full_content = ?, ai_duration = ?, ai_tokens_used = ?,
+                   digest_date = ?, digest_highlight = ?,
+                   updated_at = datetime('now')
+                   WHERE id = ?""",
+                (ai_title, ai_summary,
+                 json.dumps(ai_tags, ensure_ascii=False) if ai_tags else None,
+                 ai_full_content, ai_duration, ai_tokens_used,
+                 digest_date, highlight,
+                 task_id)
             )
-            section_id = cursor.lastrowid
 
-            items = sec.get("items", [])
-            item_rows = [
-                (section_id,
-                 item.get("title", ""), item.get("one_liner", ""),
-                 item.get("source_url", ""), item.get("source_name", ""),
-                 item.get("page_id"), item_idx)
-                for item_idx, item in enumerate(items)
-            ]
-            if item_rows:
-                await db.executemany(
-                    """INSERT INTO digest_item
-                       (section_id, title, one_liner, source_url, source_name, page_id, sort_order)
-                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                    item_rows
+            # 2. 清除旧的 sections/items（重试场景）
+            await db.execute("DELETE FROM digest_section WHERE task_id = ?", (task_id,))
+
+            # 3. 插入 sections 和 items
+            for sec_idx, sec in enumerate(sections):
+                cursor = await db.execute(
+                    """INSERT INTO digest_section (task_id, category, category_name, emoji, sort_order)
+                       VALUES (?, ?, ?, ?, ?)""",
+                    (task_id, sec.get("category", ""),
+                     sec.get("category_name", ""), sec.get("emoji", ""), sec_idx)
                 )
+                section_id = cursor.lastrowid
 
-        await db.commit()
+                items = sec.get("items", [])
+                item_rows = [
+                    (section_id,
+                     item.get("title", ""), item.get("one_liner", ""),
+                     item.get("source_url", ""), item.get("source_name", ""),
+                     item.get("page_id"), item_idx)
+                    for item_idx, item in enumerate(items)
+                ]
+                if item_rows:
+                    await db.executemany(
+                        """INSERT INTO digest_item
+                           (section_id, title, one_liner, source_url, source_name, page_id, sort_order)
+                           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                        item_rows
+                    )
+
+            await db.commit()
+        except Exception:
+            await db.execute("ROLLBACK")
+            raise
 
 
 async def get_digest_sections(task_id: int) -> list[dict]:

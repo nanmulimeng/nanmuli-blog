@@ -5,6 +5,7 @@ import datetime
 import json
 import logging
 import os
+import uuid
 from typing import Dict
 
 from config import settings
@@ -19,24 +20,33 @@ class TaskExecutor:
 
     def __init__(self, max_concurrent: int = 3):
         self._running: Dict[int, asyncio.Task] = {}
+        self._execution_ids: Dict[int, str] = {}  # task_id -> execution_id
         self._semaphore = asyncio.Semaphore(max_concurrent)
 
     async def submit(self, task_id: int):
         if task_id in self._running:
             raise ValueError(f"Task {task_id} is already running")
 
-        async_task = asyncio.create_task(self._execute_with_semaphore(task_id))
+        execution_id = uuid.uuid4().hex
+        async_task = asyncio.create_task(self._execute_with_semaphore(task_id, execution_id))
         self._running[task_id] = async_task
-        # 清理在 _execute 末尾主动完成，done_callback 作为安全兜底
-        async_task.add_done_callback(lambda t: self._running.pop(task_id, None))
+        self._execution_ids[task_id] = execution_id
 
-    async def _execute_with_semaphore(self, task_id: int):
+        def _on_done(t, tid=task_id, eid=execution_id):
+            if self._execution_ids.get(tid) == eid:
+                self._running.pop(tid, None)
+                self._execution_ids.pop(tid, None)
+
+        async_task.add_done_callback(_on_done)
+
+    async def _execute_with_semaphore(self, task_id: int, execution_id: str):
         async with self._semaphore:
             try:
                 await self._execute(task_id)
             finally:
-                # 主动清理，避免 retry 时 done_callback 延迟导致竞态
-                self._running.pop(task_id, None)
+                if self._execution_ids.get(task_id) == execution_id:
+                    self._running.pop(task_id, None)
+                    self._execution_ids.pop(task_id, None)
 
     async def shutdown(self):
         """取消所有运行中的任务，将其标记为 FAILED"""
@@ -47,6 +57,7 @@ class TaskExecutor:
                 task.cancel()
         if task_ids:
             await asyncio.gather(*[self._running.pop(tid, asyncio.sleep(0)) for tid in task_ids], return_exceptions=True)
+            self._execution_ids.clear()
             for tid in task_ids:
                 try:
                     await repo.fail_task(tid, "Service shutting down")
@@ -155,10 +166,12 @@ class TaskExecutor:
     async def _execute_keyword_crawl(self, task: dict, config) -> list:
         """关键词搜索爬取（含 AI 关键词优化/扩展）"""
         from ai import content_organizer as organizer
+        from crawler.search import crawl_by_keyword
 
         keyword = task["keyword"]
         engine = task.get("search_engine", "sogou")
         max_pages = task.get("max_pages", 10)
+        time_range = task.get("time_range", "week")
 
         keywords = [keyword]
         optimized_keyword = None
@@ -204,7 +217,7 @@ class TaskExecutor:
                 results = await crawl_by_keyword(
                     keyword=kw, engine=engine,
                     max_results=max(8, max_pages),
-                    time_range="week", config=config
+                    time_range=time_range, config=config
                 )
                 for r in results:
                     url = getattr(r, "url", None)
@@ -358,7 +371,7 @@ class TaskExecutor:
             except (TruncatedError, UnrecoverableError, InvalidOutputError) as e:
                 logger.warning("Task %d AI unrecoverable error: %s, skipping retry", task_id, e)
                 await repo.save_ai_error(task_id, str(e))
-                break
+                return False
 
             except RateLimitError as e:
                 backoff = 10.0

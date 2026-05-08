@@ -1,7 +1,9 @@
 """独立模式管理 API 路由"""
 
+import ipaddress
 import json
 import logging
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field, HttpUrl
@@ -19,6 +21,30 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["standalone"])
 
 
+def _is_private_url(url: str) -> bool:
+    """检查 URL 是否指向内网/私有地址（SSRF 防护）"""
+    try:
+        parsed = urlparse(str(url))
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+        # 去除 IPv6 方括号
+        if hostname.startswith("[") and hostname.endswith("]"):
+            hostname = hostname[1:-1]
+        # 常见内网域名
+        if hostname in ("localhost", "localhost.localdomain") or hostname.endswith(".local"):
+            return True
+        # IP 地址检查
+        try:
+            ip = ipaddress.ip_address(hostname)
+            return ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
+        except ValueError:
+            pass  # 非 IP 的域名，放行
+        return False
+    except Exception:
+        return False
+
+
 # ============== Request Models ==============
 
 class CreateTaskRequest(BaseModel):
@@ -29,6 +55,7 @@ class CreateTaskRequest(BaseModel):
     max_depth: int = Field(default=1, ge=1, le=settings.max_depth_limit)
     max_pages: int = Field(default=10, ge=1, le=settings.max_pages_limit)
     ai_template: str = Field(default="tech_summary", pattern="^(tech_summary|tutorial|comparison|knowledge_report|daily_digest)$")
+    time_range: str = Field(default="week", pattern="^(day|week|month|year|all)$")
     config: Opt[CrawlConfig] = None
 
 
@@ -78,6 +105,10 @@ async def create_task(request: CreateTaskRequest):
     if request.task_type == "keyword" and not request.keyword:
         raise HTTPException(400, "keyword is required for keyword task type")
 
+    # SSRF 防护：禁止爬取内网地址
+    if request.url and _is_private_url(str(request.url)):
+        raise HTTPException(400, "不允许爬取内网/私有地址")
+
     source_url = str(request.url) if request.url else None
     config_json = request.config.model_dump_json() if request.config else None
 
@@ -90,6 +121,7 @@ async def create_task(request: CreateTaskRequest):
         max_pages=request.max_pages,
         config_json=config_json,
         ai_template=request.ai_template,
+        time_range=request.time_range,
     )
 
     await executor.submit(task_id)
@@ -195,6 +227,9 @@ async def re_organize_task(task_id: int):
     if not pages:
         raise HTTPException(400, "没有可整理的页面内容")
 
+    original_status = task["status"]
+    await repo.update_task_status(task_id, TaskStatus.PROCESSING)
+
     try:
         task_type = task["task_type"]
 
@@ -207,6 +242,7 @@ async def re_organize_task(task_id: int):
 
     except Exception as e:
         logger.error("Re-organize failed for task %d: %s", task_id, e)
+        await repo.update_task_status(task_id, original_status)
         raise HTTPException(500, f"AI 整理失败: {str(e)}")
 
 
