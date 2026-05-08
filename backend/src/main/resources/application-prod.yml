@@ -63,31 +63,6 @@ blog:
   file:
     upload-path: /opt/nanmuli-blog/uploads
     access-url: /uploads/
-  ai:
-    enabled: false
-    model: qwen3.6-plus
-
-spring:
-  ai:
-    dashscope:
-      api-key: ${AI_DASHSCOPE_KEY:}
-      base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
-      chat:
-        completions-path: /chat/completions
-        options:
-          model: qwen3.6-plus
-          temperature: 0.3
-  autoconfigure:
-    exclude:
-      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeAgentAutoConfiguration
-      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeChatAutoConfiguration
-      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeAudioSpeechAutoConfiguration
-      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeAudioTranscriptionAutoConfiguration
-      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeImageAutoConfiguration
-      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeVideoAutoConfiguration
-      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeRerankAutoConfiguration
-      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeEmbeddingAutoConfiguration
-      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeAsyncToolCallingManagerAutoConfiguration
 
 # 爬虫服务配置
 crawler:

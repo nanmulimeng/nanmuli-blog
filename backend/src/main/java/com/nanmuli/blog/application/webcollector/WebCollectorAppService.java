@@ -61,6 +61,10 @@ public class WebCollectorAppService {
             throw new BusinessException("请求参数错误：URL 或关键词不能为空");
         }
 
+        if ("digest".equals(command.getTaskType())) {
+            throw new BusinessException("日报任务请通过 /api/admin/collector/digest/trigger 端点触发");
+        }
+
         // Level 1 去重：检查 URL 是否在 30 天内已被爬取（仅 single/deep 模式）
         if (("single".equals(command.getTaskType()) || "deep".equals(command.getTaskType()))
                 && command.getSourceUrl() != null) {
@@ -87,7 +91,6 @@ public class WebCollectorAppService {
         task.setTotalPages(switch (command.getTaskType()) {
             case "deep" -> command.getMaxPages() != null ? command.getMaxPages() : 10;
             case "keyword" -> command.getMaxPages() != null ? command.getMaxPages() : 10;
-            case "digest" -> 4; // 4个板块（news/articles/papers/opensource）
             default -> 1;
         });
         task.setCompletedPages(0);

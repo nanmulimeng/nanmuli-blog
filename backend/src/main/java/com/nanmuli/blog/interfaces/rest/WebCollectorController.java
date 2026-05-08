@@ -8,15 +8,18 @@ import com.nanmuli.blog.application.webcollector.dto.CollectPageDTO;
 import com.nanmuli.blog.application.webcollector.dto.CollectTaskDTO;
 import com.nanmuli.blog.application.webcollector.dto.CollectTaskListDTO;
 import com.nanmuli.blog.application.webcollector.query.CollectTaskPageQuery;
+import com.nanmuli.blog.shared.exception.BusinessException;
 import com.nanmuli.blog.shared.result.PageResult;
 import com.nanmuli.blog.shared.result.Result;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.client.RestTemplate;
 
 import java.util.HashMap;
 import java.util.List;
@@ -29,10 +32,22 @@ import java.util.Map;
 @Tag(name = "内容采集管理")
 @RestController
 @RequestMapping("/api/admin/collector")
-@RequiredArgsConstructor
 public class WebCollectorController {
 
     private final WebCollectorAppService collectorAppService;
+
+    @Value("${crawler.service.base-url:http://localhost:8500}")
+    private String crawlerBaseUrl;
+
+    private final RestTemplate digestRestTemplate;
+
+    public WebCollectorController(WebCollectorAppService collectorAppService) {
+        this.collectorAppService = collectorAppService;
+        var factory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(java.time.Duration.ofSeconds(5));
+        factory.setReadTimeout(java.time.Duration.ofSeconds(30));
+        this.digestRestTemplate = new RestTemplate(factory);
+    }
 
     /**
      * 提交采集任务
@@ -151,5 +166,88 @@ public class WebCollectorController {
 
     private Long getCurrentUserId() {
         return cn.dev33.satoken.stp.StpUtil.getLoginIdAsLong();
+    }
+
+    // ============== Digest Proxy ==============
+
+    /**
+     * 日报列表（代理 Python /api/v1/digests）
+     */
+    @Operation(summary = "日报列表")
+    @GetMapping("/digest")
+    public Result<Object> listDigests(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        String url = crawlerBaseUrl + "/api/v1/digests?page=" + page + "&size=" + size;
+        return Result.success(proxyGet(url));
+    }
+
+    /**
+     * 最近一期日报
+     */
+    @Operation(summary = "最近一期日报")
+    @GetMapping("/digest/latest")
+    public Result<Object> getLatestDigest() {
+        String url = crawlerBaseUrl + "/api/v1/digests/latest";
+        return Result.success(proxyGet(url));
+    }
+
+    /**
+     * 按日期查询日报
+     */
+    @Operation(summary = "按日期查询日报")
+    @GetMapping("/digest/{date}")
+    public Result<Object> getDigestByDate(@PathVariable String date) {
+        String url = crawlerBaseUrl + "/api/v1/digests/" + date;
+        return Result.success(proxyGet(url));
+    }
+
+    /**
+     * 手动触发日报生成
+     */
+    @Operation(summary = "手动触发日报生成")
+    @PostMapping("/digest/trigger")
+    public Result<Object> triggerDigest(@RequestParam(defaultValue = "false") boolean force) {
+        String url = crawlerBaseUrl + "/api/v1/digests/trigger?force=" + force;
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<Void> entity = new HttpEntity<>(headers);
+            ResponseEntity<Object> response = digestRestTemplate.postForEntity(url, entity, Object.class);
+            return Result.success(response.getBody());
+        } catch (Exception e) {
+            log.warn("[DigestProxy] Trigger failed: {}", e.getMessage());
+            throw new BusinessException(503, "Python 爬虫服务不可用: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 获取调度器状态
+     */
+    @Operation(summary = "获取日报调度器状态")
+    @GetMapping("/digest/scheduler/status")
+    public Result<Object> getDigestSchedulerStatus() {
+        String url = crawlerBaseUrl + "/api/v1/digests/scheduler/status";
+        return Result.success(proxyGet(url));
+    }
+
+    /**
+     * 获取日报板块配置
+     */
+    @Operation(summary = "获取日报板块配置")
+    @GetMapping("/digest/config/sections")
+    public Result<Object> getDigestSectionConfig() {
+        String url = crawlerBaseUrl + "/api/v1/digests/config/sections";
+        return Result.success(proxyGet(url));
+    }
+
+    private Object proxyGet(String url) {
+        try {
+            ResponseEntity<Object> response = digestRestTemplate.getForEntity(url, Object.class);
+            return response.getBody();
+        } catch (Exception e) {
+            log.warn("[DigestProxy] Proxy GET failed: {} - {}", url, e.getMessage());
+            throw new BusinessException(503, "Python 爬虫服务不可用: " + e.getMessage());
+        }
     }
 }

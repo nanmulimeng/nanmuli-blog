@@ -1,10 +1,8 @@
 package com.nanmuli.blog.application.webcollector;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.nanmuli.blog.domain.webcollector.AiContentOrganizer;
 import com.nanmuli.blog.domain.webcollector.WebCollectPageRepository;
 import com.nanmuli.blog.domain.webcollector.WebCollectTaskRepository;
-import com.nanmuli.blog.infrastructure.config.DailyDigestProperties;
 import com.nanmuli.blog.infrastructure.crawler.CrawlerService;
 import org.junit.jupiter.api.Test;
 
@@ -18,17 +16,15 @@ import static org.mockito.Mockito.mock;
 
 class WebCollectorAsyncExecutorTest {
 
+    private final WebCollectorAsyncExecutor executor = new WebCollectorAsyncExecutor(
+            mock(WebCollectTaskRepository.class),
+            mock(WebCollectPageRepository.class),
+            mock(CrawlerService.class),
+            new ObjectMapper()
+    );
+
     @Test
     void buildKeywordAiContextShouldContainOriginalOptimizedAndVariants() throws Exception {
-        WebCollectorAsyncExecutor executor = new WebCollectorAsyncExecutor(
-                mock(WebCollectTaskRepository.class),
-                mock(WebCollectPageRepository.class),
-                mock(CrawlerService.class),
-                new ObjectMapper(),
-                mock(AiContentOrganizer.class),
-                mock(DailyDigestProperties.class)
-        );
-
         Method method = WebCollectorAsyncExecutor.class.getDeclaredMethod(
                 "buildKeywordAiContext", String.class, String.class, List.class);
         method.setAccessible(true);
@@ -47,15 +43,6 @@ class WebCollectorAsyncExecutorTest {
 
     @Test
     void buildKeywordAiContextShouldFallbackToOriginalKeywordWhenVariantsMissing() throws Exception {
-        WebCollectorAsyncExecutor executor = new WebCollectorAsyncExecutor(
-                mock(WebCollectTaskRepository.class),
-                mock(WebCollectPageRepository.class),
-                mock(CrawlerService.class),
-                new ObjectMapper(),
-                mock(AiContentOrganizer.class),
-                mock(DailyDigestProperties.class)
-        );
-
         Method method = WebCollectorAsyncExecutor.class.getDeclaredMethod(
                 "buildKeywordAiContext", String.class, String.class, List.class);
         method.setAccessible(true);
@@ -68,13 +55,11 @@ class WebCollectorAsyncExecutorTest {
     @Test
     void buildKeywordAiMetadataShouldProduceStructuredJson() throws Exception {
         ObjectMapper objectMapper = new ObjectMapper();
-        WebCollectorAsyncExecutor executor = new WebCollectorAsyncExecutor(
+        WebCollectorAsyncExecutor exec = new WebCollectorAsyncExecutor(
                 mock(WebCollectTaskRepository.class),
                 mock(WebCollectPageRepository.class),
                 mock(CrawlerService.class),
-                objectMapper,
-                mock(AiContentOrganizer.class),
-                mock(DailyDigestProperties.class)
+                objectMapper
         );
 
         Method method = WebCollectorAsyncExecutor.class.getDeclaredMethod(
@@ -82,7 +67,7 @@ class WebCollectorAsyncExecutorTest {
         method.setAccessible(true);
 
         String metadataJson = (String) method.invoke(
-                executor,
+                exec,
                 "docker",
                 "docker 容器",
                 List.of("docker 容器", "docker tutorial", "docker tutorial")

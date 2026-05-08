@@ -47,9 +47,10 @@ public class CreateCollectTaskCommand {
         if ("single".equals(taskType) || "deep".equals(taskType)) {
             return sourceUrl != null && !sourceUrl.isBlank();
         }
-        if ("keyword".equals(taskType) || "digest".equals(taskType)) {
+        if ("keyword".equals(taskType)) {
             return keyword != null && !keyword.isBlank();
         }
+        // digest 类型通过 /digest/trigger 端点触发，不走 createTask
         return true;
     }
 }
