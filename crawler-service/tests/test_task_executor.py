@@ -122,6 +122,15 @@ def mock_db():
     repo.save_digest_results = AsyncMock()
     repo.update_task_progress = AsyncMock()
 
+    async def _get_pages_by_task(tid):
+        return [
+            {"url": "https://example.com", "page_title": "Test Page",
+             "raw_markdown": "# Test\n\nContent here.", "crawl_status": 2,
+             "word_count": 100}
+        ]
+
+    repo.get_pages_by_task = _get_pages_by_task
+
     repo._tasks = tasks
     repo._ai_results = ai_results
 
@@ -180,6 +189,7 @@ class TestSingleTask:
         tid = mock_db.add_task(task_type="single")
 
         with patch("standalone.task_executor.repo", mock_db), \
+             patch("standalone.organizer_helper.repo", mock_db), \
              patch("crawler.single.crawl_single_page", new_callable=AsyncMock, return_value=make_crawl_result()), \
              patch("crawler.config.get_browser_config", return_value=MagicMock()), \
              patch("crawl4ai.AsyncWebCrawler", return_value=_mock_crawler()), \
@@ -209,6 +219,7 @@ class TestSingleTask:
         tid = mock_db.add_task(task_type="single")
 
         with patch("standalone.task_executor.repo", mock_db), \
+             patch("standalone.organizer_helper.repo", mock_db), \
              patch("crawler.single.crawl_single_page", new_callable=AsyncMock, return_value=make_crawl_result()), \
              patch("crawler.config.get_browser_config", return_value=MagicMock()), \
              patch("crawl4ai.AsyncWebCrawler", return_value=_mock_crawler()), \
@@ -254,6 +265,7 @@ class TestStateTransitions:
         mock_db.update_task_status = track_status
 
         with patch("standalone.task_executor.repo", mock_db), \
+             patch("standalone.organizer_helper.repo", mock_db), \
              patch("crawler.single.crawl_single_page", new_callable=AsyncMock, return_value=make_crawl_result()), \
              patch("crawler.config.get_browser_config", return_value=MagicMock()), \
              patch("crawl4ai.AsyncWebCrawler", return_value=_mock_crawler()), \
