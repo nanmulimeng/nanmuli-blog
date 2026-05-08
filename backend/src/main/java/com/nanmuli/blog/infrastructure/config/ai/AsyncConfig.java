@@ -34,15 +34,6 @@ public class AsyncConfig implements AsyncConfigurer {
     @Value("${async.executor.task.queue-capacity:100}")
     private int taskQueueCapacity;
 
-    @Value("${async.executor.crawler.core-pool-size:1}")
-    private int crawlerCorePoolSize;
-    @Value("${async.executor.crawler.max-pool-size:2}")
-    private int crawlerMaxPoolSize;
-    @Value("${async.executor.crawler.queue-capacity:20}")
-    private int crawlerQueueCapacity;
-    @Value("${async.executor.crawler.thread-name-prefix:crawler-}")
-    private String crawlerThreadPrefix;
-
     @Bean(name = "aiTaskExecutor")
     public Executor aiTaskExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
@@ -68,21 +59,6 @@ public class AsyncConfig implements AsyncConfigurer {
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
         executor.initialize();
         log.info("通用任务执行器初始化完成: core={}, max={}, queue={}", taskCorePoolSize, taskMaxPoolSize, taskQueueCapacity);
-        return executor;
-    }
-
-    @Bean(name = "crawlerTaskExecutor")
-    public Executor crawlerTaskExecutor() {
-        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(crawlerCorePoolSize);
-        executor.setMaxPoolSize(crawlerMaxPoolSize);
-        executor.setQueueCapacity(crawlerQueueCapacity);
-        executor.setThreadNamePrefix(crawlerThreadPrefix);
-        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
-        executor.setWaitForTasksToCompleteOnShutdown(true);
-        executor.setAwaitTerminationSeconds(120);
-        executor.initialize();
-        log.info("爬虫任务执行器初始化完成: core={}, max={}, queue={}", crawlerCorePoolSize, crawlerMaxPoolSize, crawlerQueueCapacity);
         return executor;
     }
 

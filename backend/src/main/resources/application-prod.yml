@@ -39,15 +39,6 @@ sa-token:
         max-idle: 8
         min-idle: 0
 
-# 异步任务执行器（Web Collector 用）
-async:
-  executor:
-    crawler:
-      core-pool-size: 2
-      max-pool-size: 5
-      queue-capacity: 50
-      thread-name-prefix: crawler-
-
 # 生产环境禁用API文档
 knife4j:
   enable: false
@@ -68,7 +59,7 @@ blog:
 crawler:
   service:
     base-url: ${CRAWLER_SERVICE_URL:http://localhost:8500}
-    timeout: 180000  # 180秒超时（多关键词搜索+爬取需要更长时间）
+    api-key: ${CRAWLER_API_KEY:}
 
 logging:
   level:

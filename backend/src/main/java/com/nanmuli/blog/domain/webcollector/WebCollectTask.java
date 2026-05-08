@@ -28,6 +28,7 @@ public class WebCollectTask extends BaseAggregateRoot<Long> {
     private String triggerType; // manual / scheduled
 
     // 关联
+    private Integer pythonTaskId; // Python crawler-service 任务ID
     private Long articleId;
     private Long dailyLogId;
     private Long userId;

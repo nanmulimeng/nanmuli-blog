@@ -57,6 +57,3 @@ blog:
   file:
     upload-path: ./uploads
     access-url: /uploads/
-  ai:
-    organizer:
-      max-retries: 2
