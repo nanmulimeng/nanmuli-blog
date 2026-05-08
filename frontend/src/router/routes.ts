@@ -140,6 +140,30 @@ const adminRoutes: RouteRecordRaw[] = [
     meta: { layout: AdminLayout, title: '采集详情', requiresAuth: true },
   },
   {
+    path: '/admin/digest',
+    name: 'AdminDigestList',
+    component: () => import('@/views/admin/digest/List.vue'),
+    meta: { layout: AdminLayout, title: '技术日报', requiresAuth: true },
+  },
+  {
+    path: '/admin/digest/latest',
+    name: 'AdminDigestLatest',
+    component: () => import('@/views/admin/digest/Detail.vue'),
+    meta: { layout: AdminLayout, title: '最新日报', requiresAuth: true },
+  },
+  {
+    path: '/admin/digest/task/:id',
+    name: 'AdminDigestTaskDetail',
+    component: () => import('@/views/admin/digest/Detail.vue'),
+    meta: { layout: AdminLayout, title: '日报详情', requiresAuth: true },
+  },
+  {
+    path: '/admin/digest/:date',
+    name: 'AdminDigestDate',
+    component: () => import('@/views/admin/digest/Detail.vue'),
+    meta: { layout: AdminLayout, title: '日报详情', requiresAuth: true },
+  },
+  {
     path: '/admin/config',
     name: 'AdminConfig',
     component: () => import('@/views/admin/config/Index.vue'),

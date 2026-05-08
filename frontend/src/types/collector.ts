@@ -65,6 +65,73 @@ export interface CollectTaskListDTO {
   createdAt: string
 }
 
+// ============== Digest ==============
+
+export interface DigestItem {
+  title: string
+  one_liner: string
+  source_url: string
+  source_name: string
+}
+
+export interface DigestSection {
+  category: string
+  category_name: string
+  emoji: string
+  items: DigestItem[]
+}
+
+export interface DigestListItem {
+  id: number
+  digest_date: string | null
+  status: number
+  status_label: string
+  ai_title: string | null
+  ai_summary: string | null
+  ai_tags: string[] | null
+  highlight: string | null
+  error_message: string | null
+  created_at: string
+}
+
+export interface DigestDetail {
+  id: number
+  digest_date: string | null
+  status: number
+  status_label: string
+  ai_title: string | null
+  ai_summary: string | null
+  ai_tags: string[] | null
+  highlight: string | null
+  ai_full_content: string | null
+  ai_duration: number | null
+  ai_tokens_used: number | null
+  error_message: string | null
+  sections: DigestSection[]
+  created_at: string
+}
+
+export interface DigestSchedulerStatus {
+  running: boolean
+  cron: string | null
+  enabled: boolean
+  next_run: string | null
+}
+
+export interface DigestListResult {
+  total: number
+  page: number
+  size: number
+  records: DigestListItem[]
+}
+
+export interface DigestSectionConfig {
+  name: string
+  keyword: string
+  max_items: number
+  time_range?: string
+}
+
 export interface CollectPage {
   id: string
   taskId: string
@@ -85,7 +152,7 @@ export interface CollectPage {
 // ============== Request Models ==============
 
 export interface CreateCollectTaskCommand {
-  taskType: 'single' | 'deep' | 'keyword'
+  taskType: 'single' | 'deep' | 'keyword' | 'digest'
   sourceUrl?: string
   keyword?: string
   searchEngine?: 'sogou' | 'bing' | 'baidu' | 'google'
@@ -124,10 +191,11 @@ export const CollectTaskStatusMap: Record<number, { label: string; type: 'info' 
   4: { label: '失败', type: 'danger', display: '失败' },
 }
 
-export const CollectTaskTypeMap: Record<string, { label: string; type: 'primary' | 'success' | 'warning' }> = {
+export const CollectTaskTypeMap: Record<string, { label: string; type: 'primary' | 'success' | 'warning' | 'danger' }> = {
   single: { label: '单页爬取', type: 'primary' },
   deep: { label: '深度爬取', type: 'success' },
   keyword: { label: '关键词搜索', type: 'warning' },
+  digest: { label: '技术日报', type: 'danger' },
 }
 
 export const AiTemplateMap: Record<string, string> = {
@@ -136,7 +204,6 @@ export const AiTemplateMap: Record<string, string> = {
   comparison: '对比分析',
   knowledge_report: '知识报告',
   daily_digest: '每日技术日报',
-  custom: '自定义',
 }
 
 export const CrawlerHealthStatus = {

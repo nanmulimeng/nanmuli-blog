@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { createCollectTask } from '@/api/collector'
+import { useRouter } from 'vue-router'
+import { createCollectTask, triggerDigest } from '@/api/collector'
 import { AiTemplateMap } from '@/types/collector'
 import type { CreateCollectTaskCommand } from '@/types/collector'
 import { ElMessage } from 'element-plus'
+
+const router = useRouter()
 
 const emit = defineEmits<{
   (e: 'success'): void
@@ -24,11 +27,13 @@ const taskTypes = [
   { value: 'single', label: '单页爬取', desc: '爬取单个网页的内容' },
   { value: 'deep', label: '深度爬取', desc: 'BFS 深度爬取同域链接' },
   { value: 'keyword', label: '关键词搜索', desc: '通过搜索引擎搜索并爬取结果' },
+  { value: 'digest', label: '技术日报', desc: '自动生成今日技术日报（多板块爬取 + AI 整理）' },
 ]
 
 const needUrl = computed(() => form.value.taskType === 'single' || form.value.taskType === 'deep')
 const needKeyword = computed(() => form.value.taskType === 'keyword')
 const needDepth = computed(() => form.value.taskType === 'deep')
+const isDigest = computed(() => form.value.taskType === 'digest')
 
 const rules = computed(() => ({
   taskType: [{ required: true, message: '请选择任务类型', trigger: 'change' }],
@@ -57,6 +62,17 @@ async function handleSubmit(): Promise<void> {
 
   loading.value = true
   try {
+    if (isDigest.value) {
+      // 日报：直接调 Python standalone 的 trigger 端点
+      await triggerDigest()
+      ElMessage.success('日报生成已触发，请稍后查看')
+      visible.value = false
+      resetForm()
+      emit('success')
+      router.push('/admin/digest')
+      return
+    }
+
     const payload: CreateCollectTaskCommand = { ...form.value }
     if (!needUrl.value) delete payload.sourceUrl
     if (!needKeyword.value) delete payload.keyword
@@ -122,6 +138,12 @@ function handleClose(): void {
         />
       </el-form-item>
 
+      <div v-if="isDigest" class="mb-4 rounded-lg bg-primary/5 border border-primary/20 p-3">
+        <div class="text-sm text-content-secondary">
+          日报将自动爬取多个技术板块（热点动态、开源项目、技术文章、开发工具等），并通过 AI 整理为结构化日报。生成后可在「技术日报」页面查看。
+        </div>
+      </div>
+
       <div v-if="needKeyword" class="mb-4">
         <el-form-item label="搜索引擎">
           <el-select v-model="form.searchEngine" class="w-full">
@@ -142,7 +164,7 @@ function handleClose(): void {
         </el-form-item>
       </div>
 
-      <el-form-item label="AI 整理模板">
+      <el-form-item v-if="!isDigest" label="AI 整理模板">
         <el-select v-model="form.aiTemplate" class="w-full">
           <el-option
             v-for="(label, key) in AiTemplateMap"
@@ -157,7 +179,7 @@ function handleClose(): void {
     <template #footer>
       <el-button @click="visible = false">取消</el-button>
       <el-button type="primary" :loading="loading" @click="handleSubmit">
-        开始采集
+        {{ isDigest ? '生成日报' : '开始采集' }}
       </el-button>
     </template>
   </el-dialog>

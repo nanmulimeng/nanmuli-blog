@@ -1,5 +1,5 @@
 import { get, post, del } from '@/utils/request'
-import type { CollectTask, CollectTaskListDTO, CollectPage, CreateCollectTaskCommand, ConvertToArticleCommand, ConvertToDailyLogCommand, CollectTaskQuery } from '@/types/collector'
+import type { CollectTask, CollectTaskListDTO, CollectPage, CreateCollectTaskCommand, ConvertToArticleCommand, ConvertToDailyLogCommand, CollectTaskQuery, DigestListResult, DigestDetail, DigestSchedulerStatus, DigestSectionConfig } from '@/types/collector'
 import type { PageResult } from '@/types/api'
 
 // 创建采集任务
@@ -40,5 +40,37 @@ export function convertToArticle(taskId: string, data: ConvertToArticleCommand):
 // 转为技术日志
 export function convertToDailyLog(taskId: string, data: ConvertToDailyLogCommand): Promise<string> {
   return post<string>(`/admin/collector/task/${taskId}/to-daily-log`, data)
+}
+
+// ============== Digest API ==============
+
+// 日报列表
+export function getDigestList(page = 1, size = 10): Promise<DigestListResult> {
+  return get<DigestListResult>('/admin/collector/digest', { params: { page, size } })
+}
+
+// 最近一期日报
+export function getLatestDigest(): Promise<DigestDetail> {
+  return get<DigestDetail>('/admin/collector/digest/latest')
+}
+
+// 按日期查询日报
+export function getDigestByDate(date: string): Promise<DigestDetail> {
+  return get<DigestDetail>(`/admin/collector/digest/${date}`)
+}
+
+// 手动触发日报生成
+export function triggerDigest(force = false): Promise<{ message: string }> {
+  return post<{ message: string }>('/admin/collector/digest/trigger', undefined, { params: { force } })
+}
+
+// 获取调度器状态
+export function getDigestSchedulerStatus(): Promise<DigestSchedulerStatus> {
+  return get<DigestSchedulerStatus>('/admin/collector/digest/scheduler/status')
+}
+
+// 获取日报板块配置
+export function getDigestSectionConfig(): Promise<{ sections: DigestSectionConfig[] }> {
+  return get<{ sections: DigestSectionConfig[] }>('/admin/collector/digest/config/sections')
 }
 
