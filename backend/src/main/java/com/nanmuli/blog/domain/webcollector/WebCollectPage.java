@@ -43,30 +43,4 @@ public class WebCollectPage extends BaseAggregateRoot<Long> {
 
     // 时效性
     private LocalDateTime publishedAt;
-
-    // 领域方法
-    public boolean isCrawlCompleted() {
-        return crawlStatus != null && (crawlStatus == 2 || crawlStatus == 3);
-    }
-
-    public boolean isCrawlSuccess() {
-        return crawlStatus != null && crawlStatus == 2;
-    }
-
-    public void markCrawling() {
-        this.crawlStatus = 1;
-    }
-
-    public void markCompleted(String markdown, String metadata, int wordCount, int duration) {
-        this.rawMarkdown = markdown;
-        this.pageMetadata = metadata;
-        this.wordCount = wordCount;
-        this.crawlDuration = duration;
-        this.crawlStatus = 2;
-    }
-
-    public void markFailed(String error) {
-        this.errorMessage = error;
-        this.crawlStatus = 3;
-    }
 }

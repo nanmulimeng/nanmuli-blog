@@ -73,37 +73,7 @@ public class WebCollectTaskRepositoryImpl implements WebCollectTaskRepository {
     }
 
     @Override
-    public IPage<WebCollectTask> findPageByStatus(IPage<WebCollectTask> page, Long userId, Integer status) {
-        LambdaQueryWrapper<WebCollectTask> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(WebCollectTask::getUserId, userId)
-               .eq(WebCollectTask::getStatus, status)
-               .eq(WebCollectTask::getIsDeleted, false)
-               .orderByDesc(WebCollectTask::getCreatedAt);
-        return taskMapper.selectPage(page, wrapper);
-    }
-
-    @Override
-    public List<WebCollectTask> findPendingTasks(int limit) {
-        return taskMapper.selectPendingTasks(limit);
-    }
-
-    @Override
-    public List<WebCollectTask> findBySourceId(Long sourceId) {
-        return taskMapper.selectBySourceId(sourceId);
-    }
-
-    @Override
     public void deleteById(Long id) {
         taskMapper.deleteById(id);
-    }
-
-    @Override
-    public long countByUserId(Long userId) {
-        return taskMapper.countByUserId(userId);
-    }
-
-    @Override
-    public long countByStatus(Integer status) {
-        return taskMapper.countByStatus(status);
     }
 }

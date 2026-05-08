@@ -28,7 +28,6 @@ public class WebCollectTask extends BaseAggregateRoot<Long> {
     private String triggerType; // manual / scheduled
 
     // 关联
-    private Long sourceId;
     private Long articleId;
     private Long dailyLogId;
     private Long userId;
@@ -73,26 +72,6 @@ public class WebCollectTask extends BaseAggregateRoot<Long> {
         this.status = status.getValue();
     }
 
-    public boolean isTerminal() {
-        return getStatusEnum().isTerminal();
-    }
-
-    public void initProgress(int totalPages) {
-        this.totalPages = totalPages;
-        this.completedPages = 0;
-        updateStatus(CollectTaskStatus.CRAWLING);
-    }
-
-    public void updateProgress(int completedPages) {
-        this.completedPages = completedPages;
-    }
-
-    public void markCrawlCompleted(int duration, int totalWordCount) {
-        this.crawlDuration = duration;
-        this.totalWordCount = totalWordCount;
-        updateStatus(CollectTaskStatus.PROCESSING);
-    }
-
     public void markAiCompleted(String title, String summary, String keyPoints,
                                  String tags, String category, String fullContent,
                                  int aiDuration, int tokensUsed) {
@@ -118,9 +97,5 @@ public class WebCollectTask extends BaseAggregateRoot<Long> {
 
     public void markDailyLogCreated(Long dailyLogId) {
         this.dailyLogId = dailyLogId;
-    }
-
-    public String getDisplayStatus() {
-        return getStatusEnum().getDisplayText();
     }
 }

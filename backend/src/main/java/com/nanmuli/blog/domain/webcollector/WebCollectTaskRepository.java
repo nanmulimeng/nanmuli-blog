@@ -20,15 +20,5 @@ public interface WebCollectTaskRepository {
 
     IPage<WebCollectTask> findPageFiltered(IPage<WebCollectTask> page, Long userId, Integer status, String taskType, String keyword);
 
-    IPage<WebCollectTask> findPageByStatus(IPage<WebCollectTask> page, Long userId, Integer status);
-
-    List<WebCollectTask> findPendingTasks(int limit);
-
-    List<WebCollectTask> findBySourceId(Long sourceId);
-
     void deleteById(Long id);
-
-    long countByUserId(Long userId);
-
-    long countByStatus(Integer status);
 }
