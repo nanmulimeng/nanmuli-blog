@@ -503,20 +503,25 @@ public class ArticleAppService {
         Map<Long, Category> parentMap = categoryRepository.findAllById(parentIds)
                 .stream().collect(Collectors.toMap(Category::getId, c -> c));
 
-        // 5. 内存组装DTO
+        // 5. 批量查询 UV 统计（避免 N+1）
+        Set<Long> articleIds = articles.stream().map(Article::getId).collect(Collectors.toSet());
+        Map<Long, Long> viewCountMap = articleViewRecordRepository.countUniqueVisitorsByArticleIds(articleIds);
+
+        // 6. 内存组装DTO
         return articles.stream()
-                .map(article -> toDTO(article, categoryMap, parentMap))
+                .map(article -> toDTO(article, categoryMap, parentMap, viewCountMap))
                 .toList();
     }
 
     private ArticleDTO toDTO(Article article) {
-        return toDTO(article, Map.of(), Map.of());
+        return toDTO(article, Map.of(), Map.of(), Map.of());
     }
 
-    private ArticleDTO toDTO(Article article, Map<Long, Category> categoryMap, Map<Long, Category> parentMap) {
+    private ArticleDTO toDTO(Article article, Map<Long, Category> categoryMap,
+                             Map<Long, Category> parentMap, Map<Long, Long> viewCountMap) {
         ArticleDTO dto = new ArticleDTO();
         BeanUtils.copyProperties(article, dto);
-        // XSS963262a4Ff1a5bf9680798988fdb884cHTML8f6c4e49
+        // XSS防护：转义标题中的HTML
         if (article.getTitle() != null) {
             dto.setTitle(HtmlUtils.htmlEscape(article.getTitle()));
         }
@@ -525,9 +530,14 @@ public class ArticleAppService {
         dto.setCreateTime(article.getCreatedAt());
         dto.setUpdateTime(article.getUpdatedAt());
 
-        // 从阅读记录表统计阅读用户数量（UV）
-        Long viewCount = articleViewRecordRepository.countUniqueVisitorsByArticleId(article.getId());
-        dto.setViewCount(viewCount != null ? viewCount.intValue() : 0);
+        // UV 统计：优先从批量查询 map 中获取，回退到单条查询
+        if (!viewCountMap.isEmpty() && viewCountMap.containsKey(article.getId())) {
+            Long count = viewCountMap.get(article.getId());
+            dto.setViewCount(count != null ? count.intValue() : 0);
+        } else {
+            Long viewCount = articleViewRecordRepository.countUniqueVisitorsByArticleId(article.getId());
+            dto.setViewCount(viewCount != null ? viewCount.intValue() : 0);
+        }
 
         // 填充分类信息和分类路径
         if (article.getCategoryId() != null) {

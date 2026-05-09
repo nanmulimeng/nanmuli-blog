@@ -7,6 +7,11 @@ import com.nanmuli.blog.domain.article.ArticleViewRecordRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Repository
@@ -40,6 +45,21 @@ public class ArticleViewRecordRepositoryImpl implements ArticleViewRecordReposit
         wrapper.eq(ArticleViewRecord::getArticleId, articleId)
                .eq(ArticleViewRecord::getIsDeleted, false);
         return articleViewRecordMapper.selectCount(wrapper);
+    }
+
+    @Override
+    public Map<Long, Long> countUniqueVisitorsByArticleIds(Collection<Long> articleIds) {
+        if (articleIds == null || articleIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        List<Map<String, Object>> rows = articleViewRecordMapper.countByArticleIds(articleIds);
+        Map<Long, Long> result = new HashMap<>();
+        for (Map<String, Object> row : rows) {
+            Long articleId = ((Number) row.get("article_id")).longValue();
+            Long count = ((Number) row.get("cnt")).longValue();
+            result.put(articleId, count);
+        }
+        return result;
     }
 
     @Override
