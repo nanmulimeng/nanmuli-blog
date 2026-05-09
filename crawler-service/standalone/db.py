@@ -1,12 +1,25 @@
-"""SQLite 数据库连接管理 + DDL"""
+"""SQLite 数据库连接管理 + DDL
+
+连接复用策略：
+  - 通过 get_db() 获取上下文管理器，支持嵌套调用复用同一连接
+  - 外层 async with get_db() as db: 建立真实连接
+  - 内层嵌套的 async with get_db() as db: 复用外层连接（引用计数）
+  - TaskExecutor._execute 等长流程使用 task_scoped_db() 在整个任务期间保持连接
+"""
 
 import os
+import asyncio
 import aiosqlite
 import logging
 from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from config import settings
 
 logger = logging.getLogger(__name__)
+
+# ContextVar 用于在同一次异步调用链中复用数据库连接
+_db_connection: ContextVar[aiosqlite.Connection | None] = ContextVar("_db_connection", default=None)
+_db_depth: ContextVar[int] = ContextVar("_db_depth", default=0)
 
 DDL = """
 CREATE TABLE IF NOT EXISTS crawl_task (
@@ -93,6 +106,34 @@ CREATE TABLE IF NOT EXISTS digest_item (
 );
 
 CREATE INDEX IF NOT EXISTS idx_item_section ON digest_item(section_id);
+
+CREATE TABLE IF NOT EXISTS optimization_record (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id         INTEGER NOT NULL REFERENCES crawl_task(id) ON DELETE CASCADE,
+    round_num       INTEGER NOT NULL,
+    angle_coverage  REAL,
+    source_diversity REAL,
+    depth_coverage  REAL,
+    temporal_coverage REAL,
+    perspective_balance REAL,
+    language_coverage REAL,
+    overall_score   REAL,
+    search_keyword  TEXT,
+    search_engine   TEXT,
+    time_range      TEXT,
+    strategy_type   TEXT,
+    strategy_detail TEXT,
+    weaknesses      TEXT,
+    suggestions     TEXT,
+    urls_before     INTEGER,
+    urls_after      INTEGER,
+    score_delta     REAL,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_opt_record_task ON optimization_record(task_id);
+CREATE INDEX IF NOT EXISTS idx_opt_record_delta ON optimization_record(score_delta DESC);
+CREATE INDEX IF NOT EXISTS idx_opt_record_engine ON optimization_record(search_engine, score_delta DESC);
 """
 
 # Incremental migration for existing databases
@@ -125,7 +166,7 @@ async def init_db():
         db.text_factory = lambda b: b.decode("utf-8", errors="replace")
         await db.execute("PRAGMA journal_mode=WAL")
         await db.execute("PRAGMA foreign_keys=ON")
-        await db.execute("PRAGMA busy_timeout=5000")
+        await db.execute(f"PRAGMA busy_timeout={settings.db_busy_timeout}")
         await db.execute("PRAGMA encoding = 'UTF-8'")
         await db.executescript(DDL)
         await db.commit()
@@ -161,10 +202,45 @@ async def init_db():
 
 @asynccontextmanager
 async def get_db():
-    """返回 aiosqlite 连接（预设 UTF-8 text_factory + row_factory）"""
-    async with aiosqlite.connect(settings.db_path) as db:
-        db.text_factory = lambda b: b.decode("utf-8", errors="replace")
-        db.row_factory = aiosqlite.Row
-        await db.execute("PRAGMA foreign_keys=ON")
-        await db.execute("PRAGMA busy_timeout=5000")
+    """返回 aiosqlite 连接（支持嵌套复用）。
+
+    外层 async with 建立真实连接，内层嵌套调用复用同一连接。
+    这样同一个任务流程中的多次 repository 调用共享一个连接，
+    减少频繁开关连接的开销，同时避免事务冲突。
+    """
+    existing = _db_connection.get()
+    depth = _db_depth.get()
+
+    if existing is not None and depth > 0:
+        # 嵌套调用：复用外层连接
+        _db_depth.set(depth + 1)
+        try:
+            yield existing
+        finally:
+            _db_depth.set(_db_depth.get() - 1)
+    else:
+        # 外层调用：创建新连接
+        async with aiosqlite.connect(settings.db_path) as db:
+            db.text_factory = lambda b: b.decode("utf-8", errors="replace")
+            db.row_factory = aiosqlite.Row
+            await db.execute("PRAGMA foreign_keys=ON")
+            await db.execute(f"PRAGMA busy_timeout={settings.db_busy_timeout}")
+            _db_connection.set(db)
+            _db_depth.set(1)
+            try:
+                yield db
+            finally:
+                _db_depth.set(0)
+                _db_connection.set(None)
+
+
+@asynccontextmanager
+async def task_scoped_db():
+    """任务级别的连接作用域：在整个任务执行期间复用同一连接。
+
+    用法：在 TaskExecutor._execute 入口处使用：
+        async with task_scoped_db():
+            ...  # 所有内部 repo.xxx() 调用共享连接
+    """
+    async with get_db() as db:
         yield db

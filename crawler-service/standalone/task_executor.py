@@ -10,8 +10,29 @@ from typing import Dict
 from config import settings
 from standalone.models import TaskStatus
 from standalone import repository as repo
+from standalone.db import task_scoped_db
 
 logger = logging.getLogger(__name__)
+
+
+async def _fire_callback(task_id: int, status: int):
+    """任务完成/失败后通知 Java 后端（fire-and-forget）"""
+    url = settings.callback_url
+    if not url:
+        return
+
+    payload = {"python_task_id": task_id, "status": status}
+    headers = {"Content-Type": "application/json"}
+    if settings.callback_api_key:
+        headers["X-Callback-Key"] = settings.callback_api_key
+
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=settings.callback_timeout) as client:
+            resp = await client.post(url, json=payload, headers=headers)
+            logger.info("Callback fired: task_id=%d status=%d -> %d", task_id, status, resp.status_code)
+    except Exception as e:
+        logger.warning("Callback failed (non-critical): task_id=%d error=%s", task_id, e)
 
 
 class TaskExecutor:
@@ -40,12 +61,14 @@ class TaskExecutor:
 
     async def _execute_with_semaphore(self, task_id: int, execution_id: str):
         async with self._semaphore:
-            try:
-                await self._execute(task_id)
-            finally:
-                if self._execution_ids.get(task_id) == execution_id:
-                    self._running.pop(task_id, None)
-                    self._execution_ids.pop(task_id, None)
+            # 任务级别的数据库连接复用：整个任务流程共享一个连接
+            async with task_scoped_db():
+                try:
+                    await self._execute(task_id)
+                finally:
+                    if self._execution_ids.get(task_id) == execution_id:
+                        self._running.pop(task_id, None)
+                        self._execution_ids.pop(task_id, None)
 
     async def shutdown(self):
         """取消所有运行中的任务，将其标记为 FAILED"""
@@ -135,6 +158,7 @@ class TaskExecutor:
             if success_count == 0:
                 error = next((r.error_message for r in results if r.error_message), "所有页面爬取失败")
                 await repo.fail_task(task_id, error)
+                await _fire_callback(task_id, TaskStatus.FAILED)
                 return
 
             # 更新爬取统计（不改变状态，进入 AI 阶段）
@@ -157,10 +181,12 @@ class TaskExecutor:
 
             await repo.complete_task(task_id)
             logger.info("Task %d completed.", task_id)
+            await _fire_callback(task_id, TaskStatus.COMPLETED)
 
         except Exception as e:
             logger.error("Task %d failed: %s", task_id, e, exc_info=True)
             await repo.fail_task(task_id, str(e))
+            await _fire_callback(task_id, TaskStatus.FAILED)
 
     async def _execute_keyword_crawl(self, task: dict, config) -> list:
         """关键词搜索爬取（含 AI 关键词优化/扩展）"""
@@ -192,7 +218,7 @@ class TaskExecutor:
                 for kw in expanded:
                     if kw.lower() not in {k.lower() for k in keywords}:
                         keywords.append(kw)
-                        if len(keywords) >= 4:
+                        if len(keywords) >= settings.keyword_max_variants:
                             break
                 logger.info("Keywords expanded to %d variants: %s", len(keywords), keywords)
             except Exception as e:
@@ -218,11 +244,8 @@ class TaskExecutor:
                     max_results=max(8, max_pages),
                     time_range=time_range, config=config
                 )
-                for r in results:
-                    url = getattr(r, "url", None)
-                    if url and url not in seen_urls:
-                        seen_urls.add(url)
-                        all_results.append(r)
+                from crawler.utils import dedup_results_into
+                dedup_results_into(results, seen_urls, all_results)
 
                 new = len(all_results) - before
                 logger.info("Keyword '%s' added %d new URLs (total=%d/%d)",
@@ -230,7 +253,7 @@ class TaskExecutor:
 
                 if len(keywords) > 1 and new == 0:
                     consecutive_no_new += 1
-                    if consecutive_no_new >= 2:
+                    if consecutive_no_new >= settings.keyword_max_consecutive_empty:
                         break
                 else:
                     consecutive_no_new = 0
@@ -239,12 +262,69 @@ class TaskExecutor:
                     break
 
                 if len(keywords) > 1:
-                    await asyncio.sleep(2)
+                    await asyncio.sleep(settings.keyword_inter_search_delay)
 
             except Exception as e:
                 logger.warning("Keyword search failed for '%s': %s", kw, e)
 
+        # === 自动优化循环 ===
+        if settings.optimization_enabled and settings.optimization_mode in ("keyword", "both"):
+            all_results = await self._run_optimization_loop(
+                task=task,
+                initial_results=all_results,
+                keyword=keywords[0],
+                engine=engine,
+                time_range=time_range,
+                config=config,
+            )
+
         return all_results[:max_pages]
+
+    async def _run_optimization_loop(
+        self, task: dict, initial_results: list,
+        keyword: str, engine: str, time_range: str, config,
+    ) -> list:
+        """执行自动优化反馈循环"""
+        from ai import content_organizer as organizer
+        from optimization.evaluator import CoverageEvaluator
+        from optimization.strategy import StrategyGenerator
+        from optimization.feedback import FeedbackLoop
+        from optimization.knowledge_base import KnowledgeBase
+        from optimization.bubble_breaker import BubbleBreaker
+        from crawler.search import crawl_by_keyword
+
+        evaluator = CoverageEvaluator(organizer if organizer.is_available else None)
+        strategy_gen = StrategyGenerator()
+        kb = KnowledgeBase()
+        breaker = BubbleBreaker(organizer if organizer.is_available else None)
+
+        loop = FeedbackLoop(
+            evaluator=evaluator,
+            strategy_gen=strategy_gen,
+            knowledge_base=kb,
+            bubble_breaker=breaker,
+        )
+
+        final_results, rounds = await loop.execute(
+            keyword=keyword,
+            initial_results=initial_results,
+            crawl_fn=crawl_by_keyword,
+            task_id=task["id"],
+            context={
+                "engine": engine,
+                "time_range": time_range,
+                "config": config,
+            },
+        )
+
+        if rounds:
+            last = rounds[-1]
+            logger.info(
+                "[Optimization] Completed: %d rounds, final score=%.2f, total URLs=%d",
+                len(rounds), last.evaluation.overall_score, last.urls_after,
+            )
+
+        return final_results
 
     async def _execute_digest_crawl(self, task: dict, config) -> list:
         """日报板块爬取（含跨日去重，复用浏览器实例）"""
@@ -253,7 +333,7 @@ class TaskExecutor:
         from crawler.config import get_browser_config, RunParams
         from crawl4ai import AsyncWebCrawler
 
-        sections = get_digest_sections()
+        sections = await get_digest_sections()
         if not sections:
             raise ValueError("日报功能未配置")
 
@@ -279,7 +359,7 @@ class TaskExecutor:
                     results = await crawl_by_keyword(
                         keyword=section["keyword"],
                         engine=engine,
-                        max_results=section.get("max_items", 5) * 2,
+                        max_results=section.get("max_items", 5) * settings.digest_section_result_multiplier,
                         time_range=section.get("time_range", "week"),
                         config=config_copy,
                         crawler=shared_crawler,
@@ -288,13 +368,8 @@ class TaskExecutor:
                     # 板块内去重
                     results = dedup_results(results, history_engine=history_engine)
 
-                    new = 0
-                    for r in results:
-                        url = getattr(r, "url", None)
-                        if url and url not in seen_urls:
-                            seen_urls.add(url)
-                            all_results.append(r)
-                            new += 1
+                    from crawler.utils import dedup_results_into
+                    new = dedup_results_into(results, seen_urls, all_results)
 
                     completed_count += new
                     logger.info("Digest section '%s' added %d new URLs (total=%d)",
@@ -303,12 +378,60 @@ class TaskExecutor:
                     await repo.update_task_progress(task["id"], completed_count)
 
                     if i < len(sections) - 1:
-                        await asyncio.sleep(2)
+                        await asyncio.sleep(settings.digest_inter_section_delay)
 
                 except Exception as e:
                     logger.warning("Digest section '%s' failed: %s", section["name"], e)
 
+        # === 日报自动优化（可选） ===
+        if settings.optimization_enabled and settings.optimization_mode in ("digest", "both"):
+            all_results = await self._run_digest_optimization(
+                task=task, all_results=all_results, seen_urls=seen_urls,
+                engine=engine, config=config, crawler=shared_crawler,
+            )
+
         return all_results
+
+    async def _run_digest_optimization(
+        self, task: dict, all_results: list, seen_urls: set,
+        engine: str, config, crawler,
+    ) -> list:
+        """对日报整体结果执行覆盖度评估和补充搜索"""
+        from ai import content_organizer as organizer
+        from optimization.evaluator import CoverageEvaluator
+        from optimization.strategy import StrategyGenerator
+        from optimization.feedback import FeedbackLoop
+        from optimization.knowledge_base import KnowledgeBase
+        from optimization.bubble_breaker import BubbleBreaker
+        from crawler.search import crawl_by_keyword
+
+        evaluator = CoverageEvaluator(organizer if organizer.is_available else None)
+        strategy_gen = StrategyGenerator()
+        kb = KnowledgeBase()
+        breaker = BubbleBreaker(organizer if organizer.is_available else None)
+        loop = FeedbackLoop(evaluator, strategy_gen, kb, bubble_breaker=breaker)
+
+        final_results, rounds = await loop.execute(
+            keyword=task.get("keyword", "digest"),
+            initial_results=all_results,
+            crawl_fn=crawl_by_keyword,
+            task_id=task["id"],
+            context={
+                "engine": engine,
+                "time_range": "week",
+                "config": config,
+                "crawler": crawler,
+            },
+        )
+
+        if rounds:
+            last = rounds[-1]
+            logger.info(
+                "[DigestOptimization] %d rounds, final score=%.2f",
+                len(rounds), last.evaluation.overall_score,
+            )
+
+        return final_results
 
     async def _build_digest_history_engine(self):
         """从最近几次成功日报中加载 URL/标题指纹，用于跨日去重"""
@@ -330,7 +453,7 @@ class TaskExecutor:
                         engine.add_reference(url, title=title)
                 logger.info("Loaded %d history URLs from digest task %d", len(pages), r["id"])
                 loaded += 1
-                if loaded >= 3:
+                if loaded >= settings.digest_history_load_count:
                     break
             if loaded:
                 logger.info("Digest history engine: %d reference records loaded", loaded)
@@ -418,7 +541,7 @@ class TaskExecutor:
             markdown = getattr(r, "markdown", "") or ""
 
             # 内容太短直接标记失败
-            if len(markdown) < 100:
+            if len(markdown) < settings.min_content_length:
                 r.success = False
                 r.error_message = f"Content too short ({len(markdown)} chars)"
                 filtered.append(r)
@@ -475,8 +598,30 @@ def infer_category(url: str, title: str) -> str:
     return "tech_article"
 
 
-def get_digest_sections() -> list[dict]:
-    """获取日报板块配置（优先环境变量 DIGEST_SECTIONS，回退到 config.py）"""
+async def get_digest_sections() -> list[dict]:
+    """获取日报板块配置（优先 Java 订阅源 API，回退到本地配置）"""
+    # 1. 尝试从 Java 后端拉取活跃订阅源
+    java_url = settings.java_api_url
+    if java_url:
+        try:
+            import httpx
+            headers = {"Content-Type": "application/json"}
+            if settings.callback_api_key:
+                headers["X-Callback-Key"] = settings.callback_api_key
+            async with httpx.AsyncClient(timeout=settings.sources_api_timeout) as client:
+                resp = await client.get(f"{java_url}/api/internal/collector/sources", headers=headers)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    sources = data.get("data", [])
+                    if sources:
+                        sections = _sources_to_sections(sources)
+                        if sections:
+                            logger.info("Loaded %d sections from Java sources API", len(sections))
+                            return sections
+        except Exception as e:
+            logger.warning("Failed to fetch sources from Java API: %s", e)
+
+    # 2. 回退到本地配置
     config_str = os.getenv("DIGEST_SECTIONS", "") or settings.digest_sections
     if config_str:
         try:
@@ -484,6 +629,32 @@ def get_digest_sections() -> list[dict]:
         except Exception as e:
             logger.warning("Failed to parse DIGEST_SECTIONS JSON: %s", e)
     return []
+
+
+def _sources_to_sections(sources: list[dict]) -> list[dict]:
+    """将 Java 订阅源转换为日报 section 格式（仅 keyword 类型）"""
+    sections = []
+    for src in sources:
+        if src.get("type") != "keyword":
+            continue
+        category = src.get("contentCategory") or "tech_article"
+        sections.append({
+            "name": category,
+            "keyword": src["value"],
+            "time_range": _freshness_to_time_range(src.get("freshnessHours", 24)),
+            "max_items": src.get("maxPages", 10),
+        })
+    return sections
+
+
+def _freshness_to_time_range(hours: int) -> str:
+    if hours <= 24:
+        return "day"
+    if hours <= 168:
+        return "week"
+    if hours <= 720:
+        return "month"
+    return "year"
 
 
 def copy_config(config):

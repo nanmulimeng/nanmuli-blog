@@ -10,6 +10,7 @@ from crawler.single import crawl_single_page
 from crawler.deep import crawl_deep_pages
 from crawler.search import crawl_by_keyword
 from config import settings
+from api.ssrf_guard import validate_url_ssrf
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -82,6 +83,9 @@ class MultiPageResult(BaseModel):
 @router.post("/crawl/single", response_model=CrawlResultResponse)
 async def crawl_single(request: SingleCrawlRequest):
     """单页爬取"""
+    # SSRF 防护：禁止爬取内网地址
+    validate_url_ssrf(str(request.url))
+
     logger.info(f"[Single Crawl] URL: {request.url}")
 
     try:
@@ -97,6 +101,9 @@ async def crawl_single(request: SingleCrawlRequest):
 @router.post("/crawl/deep", response_model=MultiPageResult)
 async def crawl_deep(request: DeepCrawlRequest):
     """BFS 深度爬取"""
+    # SSRF 防护：禁止爬取内网地址
+    validate_url_ssrf(str(request.url))
+
     logger.info(f"[Deep Crawl] URL: {request.url}, depth: {request.max_depth}, max_pages: {request.max_pages}")
 
     # 运行时校验限制值
@@ -193,21 +200,21 @@ async def organize_content(request: AiOrganizeRequest):
     if not organizer.is_available:
         raise HTTPException(status_code=503, detail="AI service not configured")
 
+    pages = [
+        PageContent(
+            url=p.get("url", ""),
+            title=p.get("title", ""),
+            markdown=p.get("markdown", ""),
+            word_count=p.get("word_count", 0),
+        )
+        for p in request.pages if p.get("markdown")
+    ]
+
+    if not pages:
+        raise HTTPException(status_code=400, detail="No valid pages to organize")
+
     try:
-        pages = [
-            PageContent(
-                url=p.get("url", ""),
-                title=p.get("title", ""),
-                markdown=p.get("markdown", ""),
-                word_count=p.get("word_count", 0),
-            )
-            for p in request.pages if p.get("markdown")
-        ]
-
-        if not pages:
-            raise HTTPException(status_code=400, detail="No valid pages to organize")
-
-        max_retries = 2
+        max_retries = settings.ai_max_retries
         result = None
 
         for attempt in range(max_retries + 1):
@@ -224,7 +231,7 @@ async def organize_content(request: AiOrganizeRequest):
             except RateLimitError:
                 if attempt < max_retries:
                     logger.warning("[AiOrganize] Rate limited, retry %d/%d", attempt + 1, max_retries)
-                    await asyncio.sleep(10.0)
+                    await asyncio.sleep(settings.ai_rate_limit_backoff_ms / 1000)
                 else:
                     raise
             except OrganizerError:
@@ -244,11 +251,11 @@ async def organize_content(request: AiOrganizeRequest):
 
     except Exception as e:
         logger.error("[AiOrganize] Failed: %s", e, exc_info=True)
-        return AiOrganizeResponse(success=False, error_message=str(e))
+        raise HTTPException(status_code=500, detail=f"AI organize failed: {str(e)}")
 
 
 class AiKeywordRequest(BaseModel):
-    keyword: str
+    keyword: str = Field(..., min_length=1, max_length=200)
     action: str = Field(default="optimize", pattern="^(optimize|expand)$")
 
 
@@ -268,4 +275,5 @@ async def process_keyword(request: AiKeywordRequest):
             result = await organizer.expand_keywords(request.keyword)
             return {"success": True, "original": request.keyword, "variants": result}
     except Exception as e:
-        return {"success": False, "original": request.keyword, "error": str(e)}
+        logger.error("[AiKeyword] Failed: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"AI keyword processing failed: {str(e)}")

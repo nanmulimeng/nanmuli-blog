@@ -219,9 +219,10 @@ class TestTaskExecutorHelpers:
         assert infer_category("https://news.com/x", "") == "hot_trend"
         assert infer_category("https://blog.com/x", "Spring Boot") == "tech_article"
 
-    def test_get_digest_sections(self):
+    @pytest.mark.asyncio
+    async def test_get_digest_sections(self):
         from standalone.task_executor import get_digest_sections
-        sections = get_digest_sections()
+        sections = await get_digest_sections()
         assert len(sections) >= 3
         names = [s["name"] for s in sections]
         assert "news" in names

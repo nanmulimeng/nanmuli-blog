@@ -73,15 +73,19 @@ async def lifespan(app: FastAPI):
     try:
         from ai import content_organizer as organizer
         await organizer.close()
-    except Exception:
-        pass
+    except (ImportError, RuntimeError, AttributeError) as e:
+        logger.warning("Failed to close AI organizer during shutdown: %s", e)
+    except Exception as e:
+        logger.error("Unexpected error closing AI organizer: %s", e)
 
     # 取消运行中的任务
     try:
         from standalone.task_executor import executor
         await executor.shutdown()
-    except Exception:
-        pass
+    except (ImportError, RuntimeError) as e:
+        logger.warning("Failed to shutdown task executor: %s", e)
+    except Exception as e:
+        logger.error("Unexpected error shutting down task executor: %s", e)
 
     logger.info("Web Collector Crawler Service shutting down...")
 
@@ -105,7 +109,7 @@ def create_app() -> "FastAPI":
     app.include_router(health_router)
     register_error_handlers(app)
 
-    # 独立模式：管理 API + 认证
+    # 独立模式：管理 API + 认证（覆盖 /api/v1/*, /crawl/*, /organize, /keyword）
     if settings.standalone:
         from standalone.auth import ApiKeyMiddleware
         from standalone.routes import router as standalone_router

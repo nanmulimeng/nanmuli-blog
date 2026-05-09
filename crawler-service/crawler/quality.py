@@ -230,9 +230,9 @@ class ContentQuality:
         total_score = max(0, min(100, total_score))
 
         # 推荐决策
-        if total_score >= 70 and not paywall_flag:
+        if total_score >= settings.quality_keep_threshold and not paywall_flag:
             recommendation = "keep"
-        elif total_score >= 50 or (paywall_flag and total_score >= 60):
+        elif total_score >= settings.quality_review_threshold or (paywall_flag and total_score >= settings.quality_keep_threshold - 10):
             recommendation = "review"
         else:
             recommendation = "filter"
@@ -309,23 +309,23 @@ def evaluate_content(url: str, title: str, content: str) -> Dict:
     source = SourceAuthority.score(url)
     quality = ContentQuality.score(title, content, url)
 
-    # 综合评分：来源权重40% + 质量权重60%
-    final_score = source["score"] * 0.4 + quality["total_score"] * 0.6
+    # 综合评分：来源权重 + 质量权重
+    final_score = source["score"] * settings.quality_source_weight + quality["total_score"] * settings.quality_content_weight
 
     # 决策（P1: 宁可少而不可错）
     if source["level"] == "spam":
         verdict = "reject"
     elif source["level"] == "low":
         # 内容农场来源更严格：质量分<50直接拒绝，50-60 review，>=60才考虑pass
-        if quality["total_score"] < 50:
+        if quality["total_score"] < settings.quality_review_threshold:
             verdict = "reject"
-        elif final_score >= 60:
+        elif final_score >= settings.eval_review_threshold + 15:
             verdict = "review"  # 内容农场即使分数高也不直接pass
         else:
             verdict = "reject"
-    elif final_score >= 65:
+    elif final_score >= settings.eval_pass_threshold:
         verdict = "pass"
-    elif final_score >= 45:
+    elif final_score >= settings.eval_review_threshold:
         verdict = "review"
     else:
         verdict = "reject"

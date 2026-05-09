@@ -265,11 +265,16 @@ class TestWhitelistPaths:
         finally:
             _cleanup_app(app)
 
-    def test_crawl_prefix_no_auth_needed(self):
+    def test_crawl_prefix_requires_auth(self):
+        """C2 fix: /crawl/* endpoints now require authentication"""
         app = _make_app_with_middleware(VALID_KEY)
         try:
             client = TestClient(app)
+            # Without API key -> 401
             resp = client.get("/crawl/status")
+            assert resp.status_code == 401
+            # With valid API key -> 200
+            resp = client.get("/crawl/status", headers={"X-API-Key": VALID_KEY})
             assert resp.status_code == 200
         finally:
             _cleanup_app(app)

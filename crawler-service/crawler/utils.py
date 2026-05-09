@@ -26,3 +26,33 @@ def normalize_url(url: str) -> str:
     url = re.sub(r'[?&](utm_[^&=]*|ref|source)=[^&]*', '', url)
     url = re.sub(r'\?+$', '', url)
     return url
+
+
+def get_result_url(r) -> str | None:
+    """从爬取结果对象中安全提取 URL（兼容 dict 和对象两种类型）。"""
+    if isinstance(r, dict):
+        return r.get("url")
+    return getattr(r, "url", None)
+
+
+def get_result_success(r) -> bool:
+    """从爬取结果对象中安全提取 success 标志（兼容 dict 和对象两种类型）。"""
+    if isinstance(r, dict):
+        return bool(r.get("success", False))
+    return bool(getattr(r, "success", False))
+
+
+def dedup_results_into(results: list, seen_urls: set, target: list) -> int:
+    """将 results 中未重复的 URL 追加到 target，返回新增数量。
+
+    统一的去重逻辑，供 task_executor / feedback / bubble_breaker 复用。
+    """
+    added = 0
+    for r in results:
+        url = get_result_url(r)
+        success = get_result_success(r)
+        if url and url not in seen_urls and success:
+            seen_urls.add(url)
+            target.append(r)
+            added += 1
+    return added

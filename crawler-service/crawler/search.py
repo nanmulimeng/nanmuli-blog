@@ -24,7 +24,7 @@ from .single import CrawlResult, crawl_single_page
 logger = logging.getLogger(__name__)
 
 MAX_DOMAIN_DEDUP = settings.max_domain_dedup
-SEARCH_PAGE_RETRIES = 2
+SEARCH_PAGE_RETRIES = settings.search_page_retries
 
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
@@ -114,7 +114,7 @@ def _build_headers() -> dict:
     }
 
 
-MIN_WORD_COUNT = 50
+MIN_WORD_COUNT = settings.search_min_word_count
 
 
 def _extract_keyword_parts(keyword: str) -> list[str]:
@@ -229,7 +229,7 @@ async def _fetch_search_html(
 ) -> Optional[str]:
     """获取搜索页 HTML，浏览器失败时降级为 httpx 直接获取"""
     try:
-        run_config = get_search_run_config(page_timeout=20000)
+        run_config = get_search_run_config(page_timeout=settings.search_browser_fetch_timeout_ms)
         if crawler is not None:
             result = await crawler.arun(url=search_url, config=run_config)
         else:
@@ -249,7 +249,7 @@ async def _fetch_search_html(
     # 降级：httpx 直接获取 HTML
     if fallback_headers:
         try:
-            client_kwargs = {"follow_redirects": True, "timeout": 15}
+            client_kwargs = {"follow_redirects": True, "timeout": settings.search_httpx_fallback_timeout}
             if settings.proxy_url:
                 client_kwargs["proxy"] = settings.proxy_url
             async with httpx.AsyncClient(**client_kwargs) as client:
@@ -439,7 +439,7 @@ async def _get_search_results(keyword: str, engine: str, max_results: int, time_
         logger.info("[Search] Applying time filter '%s' for engine '%s'", time_range, engine)
 
     # 共享 httpx client（非 google 引擎）和浏览器实例（google）
-    client_kwargs = {"follow_redirects": True, "timeout": 30}
+    client_kwargs = {"follow_redirects": True, "timeout": settings.search_client_timeout}
     if settings.proxy_url:
         client_kwargs["proxy"] = settings.proxy_url
     is_google = engine == "google"
@@ -453,7 +453,7 @@ async def _get_search_results(keyword: str, engine: str, max_results: int, time_
         shared_client = httpx.AsyncClient(**client_kwargs)
 
     try:
-        while len(urls) < max_results and page < 5:
+        while len(urls) < max_results and page < settings.search_max_pages_per_engine:
             if engine == "bing":
                 first = page * 10 + 1
                 search_url = f"https://www.bing.com/search?q={quote_plus(keyword)}&setmkt=en-US&setlang=en&first={first}{time_filter}"
@@ -494,7 +494,7 @@ async def _get_search_results(keyword: str, engine: str, max_results: int, time_
                 elif engine == "sogou":
                     if page == 0:
                         try:
-                            await shared_client.get("https://www.sogou.com/", headers={"User-Agent": headers["User-Agent"]}, timeout=10)
+                            await shared_client.get("https://www.sogou.com/", headers={"User-Agent": headers["User-Agent"]}, timeout=settings.search_warmup_timeout)
                             await asyncio.sleep(0.5)
                         except Exception:
                             pass
@@ -549,8 +549,8 @@ async def _get_search_results(keyword: str, engine: str, max_results: int, time_
                     consecutive_empty_pages = 0
 
                 page += 1
-                if page < 5:
-                    await asyncio.sleep(random.uniform(0.8, 2.0))
+                if page < settings.search_max_pages_per_engine:
+                    await asyncio.sleep(random.uniform(settings.search_page_delay_min, settings.search_page_delay_max))
             except Exception as exc:
                 logger.warning("[Search] Page %s failed for '%s': %s", page + 1, keyword, exc)
                 break
@@ -580,9 +580,9 @@ async def _crawl_urls_with_shared_browser(
         async with sem:
             try:
                 result = await crawl_single_page(url=url, config=config, crawler=active_crawler)
-                if result.success and result.word_count < MIN_WORD_COUNT:
+                if result.success and result.word_count < settings.search_min_word_count:
                     result.success = False
-                    result.error_message = f"Content too short ({result.word_count} words, min 50)"
+                    result.error_message = f"Content too short ({result.word_count} words, min {settings.search_min_word_count})"
                 result.search_rank = rank
                 result.metadata["search_keyword"] = keyword
                 result.metadata["search_engine"] = url_source_map.get(url, "unknown")
@@ -668,7 +668,7 @@ async def crawl_by_keyword(
             tried_engines.append(current_engine)
 
         if idx < len(engines_to_try) - 1:
-            await asyncio.sleep(random.uniform(2.0, 5.0))
+            await asyncio.sleep(random.uniform(settings.search_engine_switch_delay_min, settings.search_engine_switch_delay_max))
 
     if not all_search_urls:
         logger.error("[Search] All engines failed for keyword: '%s'. Tried: %s", keyword, tried_engines)

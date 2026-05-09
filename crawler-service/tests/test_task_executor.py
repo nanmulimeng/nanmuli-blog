@@ -27,6 +27,17 @@ from standalone.task_executor import TaskExecutor
 
 # ============== Helpers ==============
 
+@asynccontextmanager
+async def _noop_scoped_db():
+    """透传的 task_scoped_db mock，不创建真实连接"""
+    yield
+
+from standalone.models import TaskStatus
+from standalone.task_executor import TaskExecutor
+
+
+# ============== Helpers ==============
+
 def make_crawl_result(url="https://example.com", title="Test",
                        markdown=None,
                        success=True, word_count=100, crawl_time_ms=500, error_message=None):
@@ -355,6 +366,7 @@ class TestConcurrency:
             return make_crawl_result()
 
         with patch("standalone.task_executor.repo", mock_db), \
+             patch("standalone.task_executor.task_scoped_db", _noop_scoped_db), \
              patch("crawler.single.crawl_single_page", new_callable=AsyncMock, side_effect=slow_crawl), \
              patch("crawler.config.get_browser_config", return_value=MagicMock()), \
              patch("crawl4ai.AsyncWebCrawler", return_value=_mock_crawler()), \

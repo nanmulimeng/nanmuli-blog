@@ -14,12 +14,25 @@ from .config import AiSettings, ai_settings
 
 logger = logging.getLogger(__name__)
 
-# ============== Constants ==============
+# ============== Constants (configured via ai_settings) ==============
+# Values are read dynamically from ai_settings so changes to config take effect.
+# We keep module-level names for backward compatibility with internal references.
 
-MIN_SUMMARY_LENGTH = 10
-MIN_FULL_CONTENT_LENGTH = 20
-MAX_KEY_POINTS = 10
-MAX_TAGS = 10
+
+def _cfg_min_summary_length():
+    return ai_settings.ai_min_summary_length
+
+
+def _cfg_min_full_content_length():
+    return ai_settings.ai_min_full_content_length
+
+
+def _cfg_max_key_points():
+    return ai_settings.ai_max_key_points
+
+
+def _cfg_max_tags():
+    return ai_settings.ai_max_tags
 
 ALLOWED_CATEGORIES = {
     "后端开发", "前端开发", "移动开发", "数据库", "DevOps",
@@ -516,6 +529,7 @@ class ContentOrganizer:
         request_body = {
             "model": self._settings.ai_model,
             "temperature": self._settings.ai_temperature,
+            "max_tokens": self._settings.ai_max_tokens,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -561,8 +575,8 @@ class ContentOrganizer:
         content = OrganizedContent()
         content.title = _normalize(raw.get("title", ""))
         content.summary = _normalize(raw.get("summary", ""))
-        content.key_points = _normalize_list(raw.get("keyPoints"), MAX_KEY_POINTS)
-        content.tags = _normalize_list(raw.get("tags"), MAX_TAGS)
+        content.key_points = _normalize_list(raw.get("keyPoints"), _cfg_max_key_points())
+        content.tags = _normalize_list(raw.get("tags"), _cfg_max_tags())
         content.category = _normalize_category(raw.get("category", ""))
         content.full_content = _normalize(raw.get("fullContent", ""))
 
@@ -572,9 +586,9 @@ class ContentOrganizer:
     def _validate_organized(self, c: OrganizedContent):
         if not c.title:
             raise InvalidOutputError("Missing title")
-        if not c.summary or len(c.summary) < MIN_SUMMARY_LENGTH:
+        if not c.summary or len(c.summary) < _cfg_min_summary_length():
             raise InvalidOutputError("Summary too short")
-        if not c.full_content or len(c.full_content) < MIN_FULL_CONTENT_LENGTH:
+        if not c.full_content or len(c.full_content) < _cfg_min_full_content_length():
             raise InvalidOutputError("fullContent too short")
         if not c.key_points:
             raise InvalidOutputError("Missing keyPoints")
@@ -590,7 +604,7 @@ class ContentOrganizer:
         content.title = _normalize(raw.get("title", ""))
         content.summary = _normalize(raw.get("summary", ""))
         content.highlight = _normalize(raw.get("highlight", ""))
-        content.tags = _normalize_list(raw.get("tags"), MAX_TAGS)
+        content.tags = _normalize_list(raw.get("tags"), _cfg_max_tags())
         content.full_content = _normalize(raw.get("fullContent", ""))
 
         sections_raw = raw.get("sections", [])
@@ -620,9 +634,9 @@ class ContentOrganizer:
     def _validate_digest(self, c: DigestContent):
         if not c.title:
             raise InvalidOutputError("Digest missing title")
-        if not c.summary or len(c.summary) < MIN_SUMMARY_LENGTH:
+        if not c.summary or len(c.summary) < _cfg_min_summary_length():
             raise InvalidOutputError("Digest summary too short")
-        if not c.full_content or len(c.full_content) < MIN_FULL_CONTENT_LENGTH:
+        if not c.full_content or len(c.full_content) < _cfg_min_full_content_length():
             raise InvalidOutputError("Digest fullContent too short")
         if not c.tags:
             raise InvalidOutputError("Digest missing tags")

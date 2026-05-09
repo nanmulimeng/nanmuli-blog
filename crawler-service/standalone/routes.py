@@ -1,9 +1,7 @@
 """独立模式管理 API 路由"""
 
-import ipaddress
 import json
 import logging
-from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field, HttpUrl
@@ -16,33 +14,10 @@ from standalone.export import export_task_as_markdown
 from config import settings
 from api.crawl import CrawlConfig
 from ai.config import ai_settings
+from api.ssrf_guard import _is_private_url
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["standalone"])
-
-
-def _is_private_url(url: str) -> bool:
-    """检查 URL 是否指向内网/私有地址（SSRF 防护）"""
-    try:
-        parsed = urlparse(str(url))
-        hostname = parsed.hostname
-        if not hostname:
-            return False
-        # 去除 IPv6 方括号
-        if hostname.startswith("[") and hostname.endswith("]"):
-            hostname = hostname[1:-1]
-        # 常见内网域名
-        if hostname in ("localhost", "localhost.localdomain") or hostname.endswith(".local"):
-            return True
-        # IP 地址检查
-        try:
-            ip = ipaddress.ip_address(hostname)
-            return ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
-        except ValueError:
-            pass  # 非 IP 的域名，放行
-        return False
-    except Exception:
-        return False
 
 
 # ============== Request Models ==============
@@ -280,6 +255,82 @@ async def get_stats():
     return await repo.get_stats()
 
 
+# ============== Optimization API ==============
+
+@router.get("/optimization/config")
+async def get_optimization_config():
+    """查看优化引擎配置"""
+    from config import settings as s
+    return {
+        "enabled": s.optimization_enabled,
+        "target_score": s.optimization_target_score,
+        "max_rounds": s.optimization_max_rounds,
+        "min_improvement": s.optimization_min_improvement,
+        "mode": s.optimization_mode,
+    }
+
+
+@router.get("/optimization/history")
+async def get_optimization_history(
+    task_id: Opt[int] = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+):
+    """查看优化历史记录"""
+    if task_id:
+        records = await repo.get_optimization_records(task_id)
+        return {"task_id": task_id, "records": records}
+
+    strategies = await repo.get_effective_strategies(limit)
+    return {"effective_strategies": strategies}
+
+
+@router.get("/optimization/stats")
+async def get_optimization_stats():
+    """优化引擎统计"""
+    from optimization.knowledge_base import KnowledgeBase
+    kb = KnowledgeBase()
+    return await kb.get_stats()
+
+
+@router.get("/optimization/engines")
+async def get_engine_effectiveness():
+    """各搜索引擎效能统计"""
+    from optimization.knowledge_base import KnowledgeBase
+    kb = KnowledgeBase()
+    data = await kb.get_engine_effectiveness()
+    return {"engine_effectiveness": data}
+
+
+@router.get("/optimization/strategy-types")
+async def get_strategy_type_effectiveness():
+    """各策略类型效能统计"""
+    from optimization.knowledge_base import KnowledgeBase
+    kb = KnowledgeBase()
+    data = await kb.get_strategy_type_effectiveness()
+    return {"strategy_type_effectiveness": data}
+
+
+@router.get("/tasks/{task_id}/optimization")
+async def get_task_optimization(task_id: int):
+    """查看任务的优化记录"""
+    task = await repo.get_task(task_id)
+    if not task:
+        raise HTTPException(404, "任务不存在")
+
+    records = await repo.get_optimization_records(task_id)
+    return {"task_id": task_id, "rounds": records}
+
+
+@router.get("/optimization/bubble-breaker")
+async def get_bubble_breaker_status():
+    """信息茧房突破模块状态"""
+    return {
+        "enabled": settings.bubble_breaker_enabled,
+        "min_source_diversity": settings.bubble_min_source_diversity,
+        "cross_language": settings.bubble_cross_language,
+    }
+
+
 # ============== Digest API ==============
 
 @router.get("/digests")
@@ -322,7 +373,8 @@ async def get_latest_digest():
 async def get_digest_sections_config():
     """查看日报板块配置"""
     from standalone.task_executor import get_digest_sections
-    return {"sections": get_digest_sections()}
+    sections = await get_digest_sections()
+    return {"sections": sections}
 
 
 @router.get("/digests/scheduler/status")

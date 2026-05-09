@@ -320,20 +320,39 @@ async def save_digest_results(
 
 
 async def get_digest_sections(task_id: int) -> list[dict]:
-    """获取日报结构化数据（sections + items）"""
+    """获取日报结构化数据（sections + items）— 批量查询避免 N+1"""
     async with get_db() as db:
+        # 1. 一次性获取所有 sections
         cursor = await db.execute(
             "SELECT * FROM digest_section WHERE task_id = ? ORDER BY sort_order",
             (task_id,)
         )
+        sec_rows = await cursor.fetchall()
+        if not sec_rows:
+            return []
+
+        section_ids = [sec["id"] for sec in sec_rows]
+
+        # 2. 一次性获取所有 items（IN 查询）
+        placeholders = ",".join("?" * len(section_ids))
+        item_cursor = await db.execute(
+            f"SELECT * FROM digest_item WHERE section_id IN ({placeholders}) ORDER BY section_id, sort_order",
+            section_ids,
+        )
+        all_items = await item_cursor.fetchall()
+
+        # 3. 按 section_id 分组
+        items_by_section: dict[int, list[dict]] = {}
+        for item_row in all_items:
+            item_dict = _row_to_dict(item_row)
+            sid = item_dict["section_id"]
+            items_by_section.setdefault(sid, []).append(item_dict)
+
+        # 4. 组装结果
         sections = []
-        for sec_row in await cursor.fetchall():
+        for sec_row in sec_rows:
             sec = _row_to_dict(sec_row)
-            item_cursor = await db.execute(
-                "SELECT * FROM digest_item WHERE section_id = ? ORDER BY sort_order",
-                (sec["id"],)
-            )
-            sec["items"] = [_row_to_dict(r) for r in await item_cursor.fetchall()]
+            sec["items"] = items_by_section.get(sec["id"], [])
             sections.append(sec)
         return sections
 
@@ -417,3 +436,75 @@ async def get_stats() -> dict:
         "pending_tasks": row["pending"],
         "total_words": row["total_words"],
     }
+
+
+# ============== Optimization Record CRUD ==============
+
+async def save_optimization_round(
+    task_id: int, round_num: int,
+    angle_coverage: float, source_diversity: float, depth_coverage: float,
+    temporal_coverage: float, perspective_balance: float, language_coverage: float,
+    overall_score: float,
+    search_keyword: str, search_engine: str, time_range: str,
+    strategy_type: str, strategy_detail: str,
+    weaknesses: list[str], suggestions: list[str],
+    urls_before: int, urls_after: int, score_delta: float,
+):
+    async with get_db() as db:
+        await db.execute(
+            """INSERT INTO optimization_record
+               (task_id, round_num,
+                angle_coverage, source_diversity, depth_coverage,
+                temporal_coverage, perspective_balance, language_coverage,
+                overall_score,
+                search_keyword, search_engine, time_range,
+                strategy_type, strategy_detail,
+                weaknesses, suggestions,
+                urls_before, urls_after, score_delta)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (task_id, round_num,
+             angle_coverage, source_diversity, depth_coverage,
+             temporal_coverage, perspective_balance, language_coverage,
+             overall_score,
+             search_keyword, search_engine, time_range,
+             strategy_type, strategy_detail,
+             json.dumps(weaknesses, ensure_ascii=False) if weaknesses else None,
+             json.dumps(suggestions, ensure_ascii=False) if suggestions else None,
+             urls_before, urls_after, score_delta),
+        )
+        await db.commit()
+
+
+async def get_optimization_records(task_id: int) -> list[dict]:
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT * FROM optimization_record WHERE task_id = ? ORDER BY round_num",
+            (task_id,),
+        )
+        rows = await cursor.fetchall()
+    results = []
+    for r in rows:
+        d = _row_to_dict(r)
+        for field in ("weaknesses", "suggestions"):
+            raw = d.get(field)
+            if raw and isinstance(raw, str):
+                try:
+                    d[field] = json.loads(raw)
+                except json.JSONDecodeError:
+                    pass
+        results.append(d)
+    return results
+
+
+async def get_effective_strategies(limit: int = 10) -> list[dict]:
+    async with get_db() as db:
+        cursor = await db.execute(
+            """SELECT search_keyword, search_engine, time_range, strategy_type,
+                      overall_score, score_delta, created_at
+               FROM optimization_record
+               WHERE score_delta > 0.05
+               ORDER BY score_delta DESC
+               LIMIT ?""",
+            (limit,),
+        )
+        return [dict(r) for r in await cursor.fetchall()]

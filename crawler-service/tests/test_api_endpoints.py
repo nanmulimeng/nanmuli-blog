@@ -41,7 +41,7 @@ class TestOrganizeEndpoint:
         assert resp.status_code == 503
 
     def test_organize_returns_400_for_empty_pages(self, client):
-        """空页面列表应返回 success=false"""
+        """空页面列表应返回 400"""
         import ai
         mock_org = MagicMock()
         mock_org.is_available = True
@@ -53,9 +53,8 @@ class TestOrganizeEndpoint:
                 "pages": [{"url": "http://a.com", "title": "A", "markdown": "", "word_count": 0}],
                 "template": "tech_summary",
             })
-            # Empty markdown -> filtered out -> HTTPException(400) caught by generic except -> 200 + success=false
-            assert resp.status_code == 200
-            assert resp.json()["success"] is False
+            # Empty markdown -> filtered out -> HTTPException(400)
+            assert resp.status_code == 400
 
     def test_organize_invalid_template_rejected(self, client):
         """非法 template 值应被 Pydantic 拒绝"""
