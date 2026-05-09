@@ -22,6 +22,7 @@ import com.nanmuli.blog.shared.result.PageResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -55,8 +56,9 @@ public class WebCollectorAppService {
     private final DailyLogAppService dailyLogAppService;
     private final ObjectMapper objectMapper;
 
+    @Autowired
     @Lazy
-    private final WebCollectorAppService self;
+    private WebCollectorAppService self;
 
     // ============== 任务 CRUD ==============
 
@@ -368,6 +370,9 @@ public class WebCollectorAppService {
             crawlerTaskClient.getTask(task.getPythonTaskId()).ifPresent(pythonTask -> {
                 self.syncPythonTaskToDb(task.getId(), pythonTask);
             });
+        } catch (org.springframework.dao.OptimisticLockingFailureException e) {
+            log.info("[syncFromPython] Concurrent sync detected for taskId={}, another callback already processed it",
+                    task.getId());
         } catch (Exception e) {
             log.warn("[syncFromPython] Failed for taskId={}, pythonTaskId={}: {}",
                     task.getId(), task.getPythonTaskId(), e.getMessage());

@@ -9,6 +9,8 @@ import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
+import jakarta.annotation.PreDestroy;
+import java.io.IOException;
 import java.util.*;
 
 import org.apache.hc.client5.http.config.RequestConfig;
@@ -28,6 +30,7 @@ import org.apache.hc.core5.util.Timeout;
 public class CrawlerTaskClient {
 
     private final RestTemplate restTemplate;
+    private final CloseableHttpClient httpClient;
     private final String baseUrl;
     private final String apiKey;
     private final ObjectMapper objectMapper;
@@ -48,7 +51,7 @@ public class CrawlerTaskClient {
         cm.setMaxTotal(maxTotal);
         cm.setDefaultMaxPerRoute(maxPerRoute);
 
-        CloseableHttpClient httpClient = HttpClients.custom()
+        this.httpClient = HttpClients.custom()
                 .setConnectionManager(cm)
                 .setDefaultRequestConfig(RequestConfig.custom()
                         .setConnectTimeout(Timeout.ofMilliseconds(connectTimeout))
@@ -60,6 +63,14 @@ public class CrawlerTaskClient {
         this.restTemplate = new RestTemplate(factory);
         log.info("[CrawlerTaskClient] initialized: baseUrl={}, connectTimeout={}ms, readTimeout={}ms",
                 baseUrl, connectTimeout, readTimeout);
+    }
+
+    @PreDestroy
+    public void close() throws IOException {
+        if (httpClient != null) {
+            httpClient.close();
+            log.info("[CrawlerTaskClient] closed");
+        }
     }
 
     /**
