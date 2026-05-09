@@ -164,6 +164,7 @@ async def init_db():
 
     async with aiosqlite.connect(settings.db_path) as db:
         db.text_factory = lambda b: b.decode("utf-8", errors="replace")
+        db.row_factory = aiosqlite.Row
         await db.execute("PRAGMA journal_mode=WAL")
         await db.execute("PRAGMA foreign_keys=ON")
         await db.execute(f"PRAGMA busy_timeout={settings.db_busy_timeout}")

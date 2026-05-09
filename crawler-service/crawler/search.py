@@ -158,9 +158,20 @@ def _is_relevant_to_keyword(keyword: str, title: str, snippet: str) -> bool:
 
     keyword_lower = keyword.lower().strip()
 
-    # 完整匹配：关键词直接出现在标题或摘要中
-    if keyword_lower in combined:
-        return True
+    # 完整匹配检测：
+    # - 纯 ASCII 关键词用 \b 单词边界，避免 "go" 误匹配 "good"/"algorithm"
+    # - 含中文的关键词直接子串匹配（中文无单词边界，但字符自分隔）
+    has_cjk = any('一' <= c <= '鿿' for c in keyword_lower)
+    if has_cjk:
+        if keyword_lower in combined:
+            return True
+    else:
+        try:
+            if re.search(r'\b' + re.escape(keyword_lower) + r'\b', combined):
+                return True
+        except re.error:
+            if keyword_lower in combined:
+                return True
 
     # 片段匹配
     parts = _extract_keyword_parts(keyword_lower)
@@ -346,7 +357,14 @@ async def _parse_search_results(
                     try:
                         encoded = parsed["u"][0]
                         if encoded.startswith("a1"):
-                            href = base64.b64decode(encoded[2:] + "==").decode("utf-8")
+                            raw = encoded[2:]
+                            pad = 4 - len(raw) % 4
+                            if pad != 4:
+                                raw += "=" * pad
+                            decoded = base64.b64decode(raw).decode("utf-8")
+                            # 跳过解码后仍指向 bing.com 的 URL
+                            if "bing.com" not in decoded:
+                                href = decoded
                     except Exception as exc:
                         logger.debug("[Search] Bing ck/a base64 decode failed: %s", exc)
         elif engine == "google" and href.startswith("/url?"):

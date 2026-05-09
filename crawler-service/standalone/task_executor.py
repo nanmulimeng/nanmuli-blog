@@ -383,12 +383,15 @@ class TaskExecutor:
                 except Exception as e:
                     logger.warning("Digest section '%s' failed: %s", section["name"], e)
 
-        # === 日报自动优化（可选） ===
-        if settings.optimization_enabled and settings.optimization_mode in ("digest", "both"):
-            all_results = await self._run_digest_optimization(
-                task=task, all_results=all_results, seen_urls=seen_urls,
-                engine=engine, config=config, crawler=shared_crawler,
-            )
+            # === 日报自动优化（可选，仍在 shared_crawler 生命周期内） ===
+            if settings.optimization_enabled and settings.optimization_mode in ("digest", "both"):
+                try:
+                    all_results = await self._run_digest_optimization(
+                        task=task, all_results=all_results, seen_urls=seen_urls,
+                        engine=engine, config=config, crawler=shared_crawler,
+                    )
+                except Exception as e:
+                    logger.warning("Digest optimization failed (non-critical): %s", e)
 
         return all_results
 

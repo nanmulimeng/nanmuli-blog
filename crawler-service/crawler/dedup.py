@@ -109,19 +109,24 @@ class DedupEngine:
     SIMHASH_THRESHOLD = 5
     # 标题相似度阈值：≥0.8视为相似
     TITLE_SIMILARITY_THRESHOLD = 0.8
+    # SimHash 分桶数（64位哈希分为 4 × 16位桶，减少比较次数）
+    _BUCKET_COUNT = 4
+    _BUCKET_BITS = 16
 
     def __init__(self):
         self._url_seen: set = set()
         self._fingerprint_seen: List[ContentFingerprint] = []
         self._title_seen: List[str] = []
+        # SimHash 分桶索引：bucket_index -> set of fingerprint list positions
+        self._simhash_buckets: List[dict] = [{} for _ in range(self._BUCKET_COUNT)]
 
     def add_reference(self, url: str, title: str = "", content: str = ""):
         """添加参考内容（如历史采集记录），用于跨任务去重"""
         self._url_seen.add(self._normalize_url(url))
         if title:
             self._title_seen.append(title.lower().strip())
-        if content:
-            self._fingerprint_seen.append(ContentFingerprint(content))
+        if content and len(content) >= 100:
+            self._add_fingerprint(ContentFingerprint(content))
 
     def is_duplicate(self, url: str, title: str = "", content: str = "") -> dict:
         """
@@ -143,10 +148,12 @@ class DedupEngine:
                 "confidence": 1.0
             }
 
-        # Layer 2: 内容相似度去重（需要content）
+        # Layer 2: 内容相似度去重（使用 SimHash 分桶加速）
         if content and len(content) >= 100:
             fp = ContentFingerprint(content)
-            for seen_fp in self._fingerprint_seen:
+            candidates = self._get_simhash_candidates(fp.simhash)
+            for idx in candidates:
+                seen_fp = self._fingerprint_seen[idx]
                 distance = hamming_distance(fp.simhash, seen_fp.simhash)
                 if distance <= self.SIMHASH_THRESHOLD:
                     confidence = 1.0 - (distance / self.SIMHASH_THRESHOLD) * 0.3
@@ -180,7 +187,40 @@ class DedupEngine:
         if title:
             self._title_seen.append(title.lower().strip())
         if content and len(content) >= 100:
-            self._fingerprint_seen.append(ContentFingerprint(content))
+            self._add_fingerprint(ContentFingerprint(content))
+
+    def _add_fingerprint(self, fp: ContentFingerprint):
+        """添加指纹并维护分桶索引"""
+        idx = len(self._fingerprint_seen)
+        self._fingerprint_seen.append(fp)
+        hash_val = fp.simhash
+        if hash_val == 0:
+            return
+        for bucket_idx in range(self._BUCKET_COUNT):
+            bucket_key = self._extract_bucket(hash_val, bucket_idx)
+            bucket = self._simhash_buckets[bucket_idx]
+            if bucket_key not in bucket:
+                bucket[bucket_key] = set()
+            bucket[bucket_key].add(idx)
+
+    def _get_simhash_candidates(self, hash_val: int) -> set:
+        """通过分桶索引获取候选指纹的下标集合"""
+        if not self._fingerprint_seen or hash_val == 0:
+            return set(range(len(self._fingerprint_seen)))
+        candidates = set()
+        for bucket_idx in range(self._BUCKET_COUNT):
+            bucket_key = self._extract_bucket(hash_val, bucket_idx)
+            bucket = self._simhash_buckets[bucket_idx]
+            if bucket_key in bucket:
+                candidates.update(bucket[bucket_key])
+        # 如果桶索引未命中任何候选，回退到全量扫描
+        return candidates if candidates else set(range(len(self._fingerprint_seen)))
+
+    def _extract_bucket(self, hash_val: int, bucket_idx: int) -> int:
+        """提取 64 位哈希的第 bucket_idx 个 16 位桶"""
+        shift = bucket_idx * self._BUCKET_BITS
+        mask = (1 << self._BUCKET_BITS) - 1
+        return (hash_val >> shift) & mask
 
     @staticmethod
     def _normalize_url(url: str) -> str:
