@@ -81,8 +81,9 @@ async function handleAiTest(): Promise<void> {
         { type: 'warning' }
       )
     }
-  } catch (e: any) {
-    ElMessage.error('测试失败：' + (e.message || '未知错误'))
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : '未知错误'
+    ElMessage.error('测试失败：' + msg)
   } finally {
     aiTesting.value = false
   }

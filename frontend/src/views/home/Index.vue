@@ -6,7 +6,9 @@ import { getArticleList } from '@/api/article'
 import { getHomeAggregated } from '@/api/home'
 import { formatDateCN } from '@/utils/format'
 import type { Article } from '@/types/article'
+import type { Category } from '@/types/category'
 import type { HomeAggregated } from '@/types/home'
+import { PAGE_SIZE } from '@/constants/api'
 
 const router = useRouter()
 const configStore = useConfigStore()
@@ -32,7 +34,7 @@ async function fetchData() {
   loading.value = true
   try {
     const [articlesRes, aggRes] = await Promise.all([
-      getArticleList({ current: 1, size: 6 }),
+      getArticleList({ current: 1, size: PAGE_SIZE.HOME_ARTICLES }),
       getHomeAggregated(),
     ])
     articles.value = articlesRes.records
@@ -109,7 +111,7 @@ function navigateToCategory(categoryId: string) {
 
 
 // 处理探索分类点击
-function handleCategoryClick(cat: any) {
+function handleCategoryClick(cat: Category) {
   if (cat.name === '日志') {
     router.push('/daily-log')
   } else if (cat.name === '项目展示') {
@@ -121,13 +123,13 @@ function handleCategoryClick(cat: any) {
 
 // 过滤文章 - 支持父级分类筛选（包含所有子分类的文章）
 const filteredArticles = computed(() => {
-  if (!activeCategory.value) return articles.value.slice(0, 6)
+  if (!activeCategory.value) return articles.value.slice(0, PAGE_SIZE.HOME_ARTICLES)
 
   // 获取该分类及其所有子分类的ID
   const categoryIds = getCategoryAndChildrenIds(activeCategory.value)
 
   // 过滤属于这些分类的文章（只显示6个）
-  return articles.value.filter(a => categoryIds.includes(String(a.category?.id))).slice(0, 6)
+  return articles.value.filter(a => categoryIds.includes(String(a.category?.id))).slice(0, PAGE_SIZE.HOME_ARTICLES)
 })
 
 // 递归获取分类及其所有子分类的ID
@@ -135,7 +137,7 @@ function getCategoryAndChildrenIds(categoryId: string): string[] {
   const result: Set<string> = new Set([String(categoryId)])
 
   // 在聚合数据中找到该分类
-  const findCategory = (categories: any[], id: string): any => {
+  const findCategory = (categories: Category[], id: string): Category | null => {
     for (const cat of categories) {
       if (String(cat.id) === id) return cat
       if (cat.children?.length) {
@@ -151,7 +153,7 @@ function getCategoryAndChildrenIds(categoryId: string): string[] {
     : null
 
   // 递归添加子分类ID
-  const addChildrenIds = (cat: any) => {
+  const addChildrenIds = (cat: Category) => {
     if (cat.children?.length) {
       for (const child of cat.children) {
         result.add(String(child.id))
@@ -429,6 +431,7 @@ watch(experience, (newVal) => {
               v-if="article.cover"
               :src="article.cover"
               :alt="article.title"
+              v-img-fallback
               class="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
             />
             <div v-else class="flex h-full w-full items-center justify-center bg-gradient-to-br from-blue-400/20 to-cyan-300/20 dark:from-cyan-500/20 dark:to-blue-400/20">

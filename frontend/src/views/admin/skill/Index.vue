@@ -46,8 +46,9 @@ async function fetchData(): Promise<void> {
   loading.value = true
   try {
     skills.value = await getAdminSkillList()
-  } catch (error: any) {
-    ElMessage.error(error?.message || '加载技能列表失败')
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : '加载技能列表失败'
+    ElMessage.error(msg)
   } finally {
     loading.value = false
   }
@@ -82,11 +83,12 @@ async function handleDelete(row: Skill): Promise<void> {
     await deleteSkill(row.id)
     ElMessage.success('删除成功')
     fetchData()
-  } catch (error: any) {
-    if (error === 'cancel' || error?.message === 'cancel') {
+  } catch (error: unknown) {
+    if (error === 'cancel' || (error instanceof Error && error.message === 'cancel')) {
       return
     }
-    const msg = error?.response?.data?.message || error?.message || '删除失败'
+    const axiosErr = error as { response?: { data?: { message?: string } }; message?: string }
+    const msg = axiosErr?.response?.data?.message || axiosErr?.message || '删除失败'
     ElMessage.error(msg)
   }
 }
@@ -107,8 +109,9 @@ async function handleSubmit(): Promise<void> {
     }
     dialogVisible.value = false
     fetchData()
-  } catch (error: any) {
-    const msg = error?.response?.data?.message || error?.message || '操作失败'
+  } catch (error: unknown) {
+    const axiosErr = error as { response?: { data?: { message?: string } }; message?: string }
+    const msg = axiosErr?.response?.data?.message || axiosErr?.message || '操作失败'
     ElMessage.error(msg)
   }
 }

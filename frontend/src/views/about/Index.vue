@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useConfigStore } from '@/stores/modules/config'
+import { sanitize } from '@/utils/sanitize'
 import { getSkillList } from '@/api/skill'
 import type { Skill } from '@/types/skill'
 import { UserFilled, Promotion, Message, Monitor, Collection, DataLine, Ship, Cpu, Lock } from '@element-plus/icons-vue'
@@ -84,7 +85,7 @@ onMounted(() => {
     <section v-if="configStore.siteAbout" class="py-12">
       <div class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
         <h2 class="text-xl font-bold text-content-primary mb-6">关于我</h2>
-        <div class="prose prose-gray max-w-none text-content-secondary leading-relaxed" v-html="configStore.siteAbout" />
+        <div class="prose prose-gray max-w-none text-content-secondary leading-relaxed" v-html="sanitize(configStore.siteAbout)" />
       </div>
     </section>
 

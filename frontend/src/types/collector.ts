@@ -210,3 +210,59 @@ export const CrawlerHealthStatus = {
   AVAILABLE: 'available',
   UNAVAILABLE: 'unavailable',
 } as const
+
+// ============== Source ==============
+
+export interface Source {
+  id: string
+  name: string
+  type: string
+  value: string
+  contentCategory: string | null
+  crawlMode: string | null
+  maxDepth: number | null
+  maxPages: number | null
+  cssSelector: string | null
+  aiTemplate: string | null
+  scheduleCron: string | null
+  freshnessHours: number | null
+  isActive: boolean
+  lastRunAt: string | null
+  lastRunStatus: string | null
+  runCount: number | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CreateSourceCommand {
+  name: string
+  type: string
+  value: string
+  contentCategory?: string
+  crawlMode?: string
+  maxDepth?: number
+  maxPages?: number
+  cssSelector?: string
+  aiTemplate?: string
+  scheduleCron?: string
+  freshnessHours?: number
+}
+
+export interface UpdateSourceCommand extends CreateSourceCommand {
+  isActive?: boolean
+}
+
+export const SourceTypeMap: Record<string, { label: string; type: 'info' | 'warning' | 'primary' | 'success' | 'danger' }> = {
+  keyword: { label: '关键词', type: 'warning' },
+  url: { label: 'URL', type: 'primary' },
+  rss: { label: 'RSS', type: 'success' },
+}
+
+export const ContentCategoryMap: Record<string, { label: string; color: string }> = {
+  hot_trend: { label: '热点趋势', color: '#ef4444' },
+  open_source: { label: '开源项目', color: '#f59e0b' },
+  tech_article: { label: '技术文章', color: '#3b82f6' },
+  dev_tool: { label: '开发工具', color: '#10b981' },
+  creative: { label: '创意发现', color: '#8b5cf6' },
+  paper: { label: '论文研究', color: '#6366f1' },
+}

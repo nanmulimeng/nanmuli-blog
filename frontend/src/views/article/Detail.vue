@@ -3,11 +3,15 @@ import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getArticleBySlug, recordArticleViewByVisitor, getArticleList, getArticleStats, type ArticleStats } from '@/api/article'
 import { generateVisitorId } from '@/utils/visitor'
-import { formatDateCN, formatDateTimeCN } from '@/utils/format'
+import { formatDateTimeCN } from '@/utils/format'
+import { sanitize } from '@/utils/sanitize'
 import type { Article } from '@/types/article'
-import hljs from 'highlight.js'
+import hljs from '@/utils/hljs'
 import { ElMessage } from 'element-plus'
 import { ArrowUp } from '@element-plus/icons-vue'
+import ArticleDetailHero from './ArticleDetailHero.vue'
+import ArticleDetailToc from './ArticleDetailToc.vue'
+import { DELAY, PAGE_SIZE } from '@/constants/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -19,21 +23,13 @@ const toc = ref<Array<{ id: string; text: string; level: number }>>([])
 const activeHeading = ref('')
 const copySuccess = ref(false)
 const contentRef = ref<HTMLElement | null>(null)
-const tocNavRef = ref<HTMLElement | null>(null)
 
 // 移动端目录控制
-const showMobileToc = ref(false)
 const isMobile = ref(false)
 
 // 检测是否为移动端
 function checkMobile() {
   isMobile.value = window.innerWidth < 1024 // lg breakpoint
-}
-
-// 处理移动端目录选择
-function handleTocSelect(index: number): void {
-  scrollToHeading(index)
-  showMobileToc.value = false
 }
 
 // 访问统计
@@ -196,7 +192,7 @@ async function fetchArticle(): Promise<void> {
         if (visitorId) {
           recordArticleViewByVisitor(articleId, visitorId)
         }
-      }, 5000)
+      }, DELAY.UV_RECORD)
     }
 
     // processContent 将由 watch(article) 触发
@@ -211,7 +207,7 @@ async function fetchRelatedArticles(categoryId: string, excludeId: string): Prom
   try {
     const res = await getArticleList({
       current: 1,
-      size: 4,
+      size: PAGE_SIZE.RELATED_ARTICLES,
       categoryId
     })
     relatedArticles.value = res.records.filter((a: Article) => a.id !== excludeId).slice(0, 3)
@@ -398,30 +394,6 @@ watch(article, (newArticle) => {
     }, 500)
   }
 }, { immediate: false })
-
-// 监听 activeHeading 变化，自动滚动目录到可视区域
-watch(activeHeading, (newId) => {
-  if (!newId || !tocNavRef.value) return
-
-  // 找到当前激活的目录项
-  const activeLink = tocNavRef.value.querySelector(`a[href="#${newId}"]`)
-  if (!activeLink) return
-
-  // 滚动到可视区域
-  const nav = tocNavRef.value
-  const linkElement = activeLink as HTMLElement
-  const linkTop = linkElement.offsetTop
-  const navHeight = nav.clientHeight
-  const linkHeight = linkElement.clientHeight
-
-  // 计算目标滚动位置，让当前项居中显示
-  const targetScrollTop = linkTop - navHeight / 2 + linkHeight / 2
-
-  nav.scrollTo({
-    top: Math.max(0, targetScrollTop),
-    behavior: 'smooth'
-  })
-})
 </script>
 
 <template>
@@ -441,135 +413,7 @@ watch(activeHeading, (newId) => {
 
     <template v-else-if="article">
       <!-- Article Hero Section -->
-      <section class="relative pt-32 pb-16 overflow-hidden">
-        <!-- Background Decoration -->
-        <div class="absolute inset-0 bg-gradient-to-b from-primary/10 via-transparent to-transparent" />
-
-        <div class="relative mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
-          <!-- Breadcrumb -->
-          <nav class="mb-8 flex items-center gap-2 text-sm text-content-tertiary">
-            <router-link to="/" class="hover:text-primary transition-colors">
-              首页
-            </router-link>
-            <el-icon><ArrowRight class="text-xs" /></el-icon>
-            <router-link to="/article" class="hover:text-primary transition-colors">
-              文章
-            </router-link>
-            <el-icon><ArrowRight class="text-xs" /></el-icon>
-            <span class="text-content-primary font-medium truncate max-w-[150px] sm:max-w-[200px]" :title="article.title">
-              {{ article.title.length > 20 ? article.title.slice(0, 20) + '...' : article.title }}
-            </span>
-          </nav>
-
-          <!-- Category Badge -->
-          <div class="mb-6">
-            <div v-if="article.categoryPath?.length" class="flex items-center gap-2 flex-wrap">
-              <span
-                v-for="(cat, index) in article.categoryPath"
-                :key="cat.id"
-                class="flex items-center gap-2"
-              >
-                <router-link
-                  :to="`/article?categoryId=${cat.id}`"
-                  class="text-sm transition-colors"
-                  :class="index === article.categoryPath.length - 1
-                    ? 'inline-flex items-center px-4 py-1.5 rounded-full bg-gradient-to-r from-primary to-primary-light text-white font-medium shadow-lg shadow-primary/30'
-                    : 'text-content-tertiary hover:text-primary'"
-                >
-                  {{ cat.name }}
-                </router-link>
-                <span v-if="index < article.categoryPath.length - 1" class="text-content-tertiary/50">/</span>
-              </span>
-            </div>
-            <router-link
-              v-else
-              :to="`/article?categoryId=${article.categoryId}`"
-              class="inline-flex items-center px-4 py-1.5 rounded-full bg-gradient-to-r from-primary to-primary-light text-white font-medium shadow-lg shadow-primary/30"
-            >
-              {{ article.category?.name || article.categoryName }}
-            </router-link>
-          </div>
-
-          <!-- Title -->
-          <h1 class="text-3xl md:text-4xl lg:text-5xl font-bold text-content-primary leading-tight">
-            {{ article.title }}
-          </h1>
-
-          <!-- Meta Info -->
-          <div class="mt-8 flex flex-wrap items-center gap-4 text-sm">
-            <!-- 原创/转载标识 -->
-            <span
-              class="flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium"
-              :class="article.isOriginal
-                ? 'bg-success/10 text-success'
-                : 'bg-warning/10 text-warning'"
-            >
-              <el-icon v-if="article.isOriginal"><DocumentChecked /></el-icon>
-              <el-icon v-else><Link /></el-icon>
-              {{ article.isOriginal ? '原创内容' : '转载内容' }}
-            </span>
-            <span class="flex items-center gap-2 text-content-tertiary">
-              <div class="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
-                <el-icon class="text-primary"><Calendar /></el-icon>
-              </div>
-              {{ formatDateCN(article.publishTime) }}
-            </span>
-            <!-- 访问统计 -->
-            <template v-if="articleStats">
-              <span class="flex items-center gap-2 text-content-tertiary" title="总访问量">
-                <div class="flex h-8 w-8 items-center justify-center rounded-full bg-info/10">
-                  <el-icon class="text-info"><View /></el-icon>
-                </div>
-                {{ articleStats.visitCount || 0 }}
-              </span>
-              <span class="flex items-center gap-2 text-content-tertiary" title="访客数">
-                <div class="flex h-8 w-8 items-center justify-center rounded-full bg-info/10">
-                  <el-icon class="text-info"><User /></el-icon>
-                </div>
-                {{ articleStats.visitorCount || 0 }}
-              </span>
-              <span class="flex items-center gap-2 text-content-tertiary" title="今日访问">
-                <div class="flex h-8 w-8 items-center justify-center rounded-full bg-success/10">
-                  <el-icon class="text-success"><TrendCharts /></el-icon>
-                </div>
-                今日 {{ articleStats.todayCount || 0 }}
-              </span>
-            </template>
-            <span v-else class="flex items-center gap-2 text-content-tertiary">
-              <div class="flex h-8 w-8 items-center justify-center rounded-full bg-info/10">
-                <el-icon class="text-info"><View /></el-icon>
-              </div>
-              {{ article.viewCount }} 人阅读
-            </span>
-            <span class="flex items-center gap-2 text-content-tertiary">
-              <div class="flex h-8 w-8 items-center justify-center rounded-full bg-warning/10">
-                <el-icon class="text-warning"><Clock /></el-icon>
-              </div>
-              {{ article.readingTime }}分钟
-            </span>
-            <span class="flex items-center gap-2 text-content-tertiary">
-              <div class="flex h-8 w-8 items-center justify-center rounded-full bg-success/10">
-                <el-icon class="text-success"><Document /></el-icon>
-              </div>
-              {{ article.wordCount }}字
-            </span>
-            <!-- 非原创文章来源 -->
-            <span v-if="!article.isOriginal && article.originalUrl" class="flex items-center gap-2 text-sm">
-              <span class="text-content-tertiary">来源：</span>
-              <a
-                :href="article.originalUrl"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="text-primary hover:text-primary-light hover:underline truncate max-w-[200px]"
-              >
-                {{ article.originalUrl.replace(/^https?:\/\//, '').split('/')[0] }}
-              </a>
-              <el-icon class="text-content-tertiary text-xs"><Link /></el-icon>
-            </span>
-          </div>
-
-        </div>
-      </section>
+      <ArticleDetailHero :article="article" :article-stats="articleStats" />
 
       <!-- Article Content -->
       <section class="pb-20">
@@ -580,7 +424,7 @@ watch(activeHeading, (newId) => {
               <article ref="contentRef" class="glass-card rounded-3xl p-8 md:p-12">
                 <div
                   class="markdown-body prose prose-lg max-w-none dark:prose-invert"
-                  v-html="article.contentHtml"
+                  v-html="sanitize(article.contentHtml)"
                 />
               </article>
 
@@ -644,98 +488,13 @@ watch(activeHeading, (newId) => {
               </div>
             </div>
 
-            <!-- Mobile TOC Button -->
-            <button
-              v-if="isMobile && toc.length > 0"
-              class="fixed bottom-6 right-6 z-50 p-3 rounded-full bg-primary text-white shadow-lg shadow-primary/30 hover:bg-primary-light transition-all"
-              @click="showMobileToc = true"
-            >
-              <el-icon><List /></el-icon>
-            </button>
-
-            <!-- Mobile TOC Drawer -->
-            <el-drawer
-              v-model="showMobileToc"
-              title="目录"
-              direction="btt"
-              size="50%"
-              :with-header="true"
-            >
-              <nav class="space-y-1 max-h-[60vh] overflow-y-auto">
-                <a
-                  v-for="(item, index) in toc"
-                  :key="item.id"
-                  :href="`#${item.id}`"
-                  class="block py-3 text-sm transition-all rounded-lg px-3 border-b border-surface-tertiary last:border-0"
-                  :class="[
-                    item.level === 1 ? 'text-content-secondary font-medium' : 'text-content-tertiary',
-                    item.level === 2 ? 'pl-6' : '',
-                    item.level === 3 ? 'pl-9' : '',
-                    activeHeading === item.id
-                      ? 'bg-primary/10 text-primary'
-                      : 'hover:bg-surface-tertiary'
-                  ]"
-                  @click.prevent="handleTocSelect(index)"
-                >
-                  {{ item.text }}
-                </a>
-              </nav>
-            </el-drawer>
-
-            <!-- Sidebar TOC -->
-            <div class="hidden lg:block lg:col-span-4">
-              <div class="sticky top-28 space-y-6">
-                <!-- TOC Card -->
-                <div class="glass-card rounded-2xl p-6">
-                  <h3 class="flex items-center gap-2 text-sm font-semibold text-content-primary mb-4">
-                    <el-icon><List /></el-icon>
-                    目录
-                  </h3>
-                  <nav ref="tocNavRef" class="space-y-1 max-h-[calc(100vh-300px)] overflow-y-auto scrollbar-hide">
-                    <a
-                      v-for="(item, index) in toc"
-                      :key="item.id"
-                      :href="`#${item.id}`"
-                      class="block py-2 text-sm transition-all rounded-lg px-3"
-                      :class="[
-                        item.level === 1 ? 'text-content-secondary font-medium' : 'text-content-tertiary',
-                        item.level === 2 ? 'pl-6' : '',
-                        item.level === 3 ? 'pl-9' : '',
-                        activeHeading === item.id
-                          ? 'bg-primary/10 text-primary'
-                          : 'hover:bg-surface-tertiary'
-                      ]"
-                      @click.prevent="scrollToHeading(index)"
-                    >
-                      {{ item.text }}
-                    </a>
-                  </nav>
-                </div>
-
-                <!-- Quick Actions -->
-                <div class="glass-card rounded-2xl p-6">
-                  <h3 class="text-sm font-semibold text-content-primary mb-4">
-                    快速操作
-                  </h3>
-                  <div class="space-y-2">
-                    <router-link
-                      to="/article"
-                      class="flex items-center gap-3 p-3 rounded-xl text-sm text-content-secondary transition-all hover:bg-surface-tertiary"
-                    >
-                      <el-icon><ArrowLeft /></el-icon>
-                      返回文章列表
-                    </router-link>
-                    <router-link
-                      to="/"
-                      class="flex items-center gap-3 p-3 rounded-xl text-sm text-content-secondary transition-all hover:bg-surface-tertiary"
-                    >
-                      <el-icon><HomeFilled /></el-icon>
-                      回到首页
-                    </router-link>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <!-- TOC Sidebar (includes mobile drawer + desktop sidebar) -->
+            <ArticleDetailToc
+              :toc="toc"
+              :active-heading="activeHeading"
+              :is-mobile="isMobile"
+              @select="scrollToHeading"
+            />
           </div>
         </div>
       </section>
@@ -754,14 +513,6 @@ watch(activeHeading, (newId) => {
 </template>
 
 <style scoped>
-.scrollbar-hide {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-.scrollbar-hide::-webkit-scrollbar {
-  display: none;
-}
-
 /* 代码块复制按钮样式 */
 :deep(pre) {
   position: relative;

@@ -6,20 +6,15 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { getAdminDailyLogList, deleteDailyLog } from '@/api/dailyLog'
 import { formatDateCN } from '@/utils/format'
 import type { DailyLog } from '@/types/dailyLog'
+import { MOOD_MAP, MOOD_DEFAULT_COLOR } from '@/constants/mood'
+import { PAGE_SIZE } from '@/constants/api'
 
 const router = useRouter()
 const loading = ref(false)
 const logs = ref<DailyLog[]>([])
 const total = ref(0)
 const currentPage = ref(1)
-const pageSize = ref(10)
-
-const moodMap: Record<string, { label: string; color: string }> = {
-  happy: { label: '开心', color: '#f59e0b' },
-  excited: { label: '兴奋', color: '#ef4444' },
-  normal: { label: '平静', color: '#64748B' },
-  tired: { label: '疲惫', color: '#3B82F6' },
-}
+const pageSize = ref(PAGE_SIZE.DAILY_LOG_ADMIN)
 
 async function fetchData(): Promise<void> {
   loading.value = true
@@ -51,9 +46,9 @@ async function handleDelete(row: DailyLog): Promise<void> {
     await deleteDailyLog(row.id)
     ElMessage.success('删除成功')
     fetchData()
-  } catch (error: any) {
+  } catch (error: unknown) {
     // 用户取消对话框时会抛出 'cancel'，不需要提示
-    if (error === 'cancel' || error?.message === 'cancel') {
+    if (error === 'cancel' || (error instanceof Error && error.message === 'cancel')) {
       return
     }
     console.error('删除日志失败:', error)
@@ -119,11 +114,11 @@ onMounted(fetchData)
             v-if="row.mood"
             class="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs"
             :style="{
-              backgroundColor: moodMap[row.mood]?.color + '20' || '#64748B20',
-              color: moodMap[row.mood]?.color || '#64748B'
+              backgroundColor: MOOD_MAP[row.mood]?.color + '20' || MOOD_DEFAULT_COLOR + '20',
+              color: MOOD_MAP[row.mood]?.color || MOOD_DEFAULT_COLOR
             }"
           >
-            {{ moodMap[row.mood]?.label || row.mood }}
+            {{ MOOD_MAP[row.mood]?.label || row.mood }}
           </span>
         </template>
       </el-table-column>
@@ -151,6 +146,7 @@ onMounted(fetchData)
         v-model:current-page="currentPage"
         v-model:page-size="pageSize"
         :total="total"
+        :pager-count="7"
         layout="total, prev, pager, next"
         @current-change="handlePageChange"
       />

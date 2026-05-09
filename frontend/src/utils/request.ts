@@ -1,5 +1,6 @@
 import axios, { AxiosError, type AxiosInstance, type AxiosRequestConfig } from 'axios'
 import { ElMessage } from 'element-plus'
+import { REQUEST_TIMEOUT, REQUEST_RETRY_COUNT } from '@/constants/api'
 
 // 扩展 AxiosRequestConfig 类型以支持重试计数和取消信号
 declare module 'axios' {
@@ -19,14 +20,14 @@ function generateRequestKey(config: AxiosRequestConfig): string {
 
 const request: AxiosInstance = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
-  timeout: 30000,
+  timeout: REQUEST_TIMEOUT,
   headers: {
     'Content-Type': 'application/json',
   },
 })
 
-// 最大重试次数
-const MAX_RETRIES = 3
+// 最大重试次数（来自常量配置）
+const MAX_RETRIES = REQUEST_RETRY_COUNT
 
 // 指数退避延迟计算
 function getRetryDelay(retryCount: number): number {
@@ -66,8 +67,9 @@ request.interceptors.response.use(
   (response) => {
     // 清理请求控制器
     const config = response.config
-    if ((config as any).__cleanup) {
-      (config as any).__cleanup()
+    const configExt = config as typeof config & { __cleanup?: () => void }
+    if (configExt.__cleanup) {
+      configExt.__cleanup()
     }
 
     const { data } = response

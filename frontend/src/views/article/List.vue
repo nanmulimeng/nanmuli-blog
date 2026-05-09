@@ -6,6 +6,7 @@ import { getCategoryList, getLeafCategoryList } from '@/api/category'
 import { formatDateCN } from '@/utils/format'
 import type { Article } from '@/types/article'
 import type { Category } from '@/types/category'
+import { PAGE_SIZE, DELAY } from '@/constants/api'
 
 const router = useRouter()
 const route = useRoute()
@@ -19,7 +20,7 @@ const total = ref(0)
 const searchKeyword = ref('')
 
 const currentPage = ref(1)
-const pageSize = ref(12)
+const pageSize = ref(PAGE_SIZE.ARTICLE_FRONT)
 const selectedCategory = ref<string | undefined>(undefined)
 const sortBy = ref('newest')
 
@@ -79,7 +80,7 @@ async function fetchArticles(): Promise<void> {
   // 延迟显示loading状态（避免快速切换时的闪烁）
   loadingDelayTimer.value = setTimeout(() => {
     loading.value = true
-  }, 100)
+  }, DELAY.LOADING_THRESHOLD)
 
   try {
     const res = await getArticleList({
@@ -110,7 +111,7 @@ function debouncedFetchArticles(): void {
   // 延迟100ms显示loading，如果请求在100ms内完成则不显示loading（避免闪烁）
   fetchTimeout = setTimeout(() => {
     fetchArticles()
-  }, 150)
+  }, DELAY.LOADING_THRESHOLD + 50)
 }
 
 async function fetchCategories(): Promise<void> {

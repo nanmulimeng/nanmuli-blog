@@ -7,9 +7,10 @@ import { getArticleList } from '@/api/article'
 import type { Article } from '@/types/article'
 import ThemeSwitcher from './ThemeSwitcher.vue'
 import {
-  HomeFilled, Document, OfficeBuilding, Timer, UserFilled,
+  HomeFilled, Document, OfficeBuilding, Timer, UserFilled, TrendCharts,
   Search, Menu, Close, ArrowRight, Loading, Calendar, View, DocumentDelete, Setting
 } from '@element-plus/icons-vue'
+import { sanitize } from '@/utils/sanitize'
 
 const router = useRouter()
 const route = useRoute()
@@ -35,6 +36,7 @@ const searchInputRef = ref<HTMLInputElement | null>(null)
 const navItems = [
   { path: '/', label: '首页', icon: markRaw(HomeFilled) },
   { path: '/article', label: '文章', icon: markRaw(Document) },
+  { path: '/digest', label: '日报', icon: markRaw(TrendCharts) },
   { path: '/project', label: '项目', icon: markRaw(OfficeBuilding) },
   { path: '/daily-log', label: '日志', icon: markRaw(Timer) },
   { path: '/about', label: '关于', icon: markRaw(UserFilled) },
@@ -388,9 +390,9 @@ onUnmounted(() => {
                     </div>
                     <!-- Article Info -->
                     <div class="flex-1 min-w-0">
-                      <h4 class="font-medium text-content-primary truncate" v-html="highlightKeyword(article.title, searchQuery)">
+                      <h4 class="font-medium text-content-primary truncate" v-html="sanitize(highlightKeyword(article.title, searchQuery))">
                       </h4>
-                      <p class="mt-1 text-sm text-content-secondary line-clamp-1" v-html="highlightKeyword(article.summary || '暂无摘要', searchQuery)">
+                      <p class="mt-1 text-sm text-content-secondary line-clamp-1" v-html="sanitize(highlightKeyword(article.summary || '暂无摘要', searchQuery))">
                       </p>
                       <div class="mt-1.5 flex items-center gap-3 text-xs text-content-tertiary">
                         <span class="flex items-center gap-1">

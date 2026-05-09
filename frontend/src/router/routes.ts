@@ -1,7 +1,9 @@
 import type { RouteRecordRaw } from 'vue-router'
-import DefaultLayout from '@/layouts/DefaultLayout.vue'
-import AdminLayout from '@/layouts/AdminLayout.vue'
-import BlankLayout from '@/layouts/BlankLayout.vue'
+
+// 布局组件懒加载 — 减少首屏 bundle 体积
+const DefaultLayout = () => import('@/layouts/DefaultLayout.vue')
+const AdminLayout = () => import('@/layouts/AdminLayout.vue')
+const BlankLayout = () => import('@/layouts/BlankLayout.vue')
 
 /**
  * 公开路由 - 不需要登录
@@ -48,6 +50,24 @@ const publicRoutes: RouteRecordRaw[] = [
     name: 'About',
     component: () => import('@/views/about/Index.vue'),
     meta: { layout: DefaultLayout, title: '关于' },
+  },
+  {
+    path: '/digest',
+    name: 'PublicDigestList',
+    component: () => import('@/views/digest/List.vue'),
+    meta: { layout: DefaultLayout, title: '技术日报' },
+  },
+  {
+    path: '/digest/latest',
+    name: 'PublicDigestLatest',
+    component: () => import('@/views/digest/Detail.vue'),
+    meta: { layout: DefaultLayout, title: '最新日报' },
+  },
+  {
+    path: '/digest/:date',
+    name: 'PublicDigestDate',
+    component: () => import('@/views/digest/Detail.vue'),
+    meta: { layout: DefaultLayout, title: '日报详情' },
   },
   {
     path: '/project',
@@ -132,6 +152,12 @@ const adminRoutes: RouteRecordRaw[] = [
     name: 'AdminCollector',
     component: () => import('@/views/admin/collector/TaskList.vue'),
     meta: { layout: AdminLayout, title: '内容采集', requiresAuth: true },
+  },
+  {
+    path: '/admin/source',
+    name: 'AdminSource',
+    component: () => import('@/views/admin/collector/SourceList.vue'),
+    meta: { layout: AdminLayout, title: '订阅源管理', requiresAuth: true },
   },
   {
     path: '/admin/collector/:id',

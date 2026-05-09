@@ -1,19 +1,28 @@
 import type { Router, NavigationGuardNext, RouteLocationNormalized } from 'vue-router'
 import { useUserStore } from '@/stores/modules/user'
 
+// 标记是否已做过一次 auth 验证（避免每次导航都请求后端）
+let authChecked = false
+
 /**
  * 设置路由守卫
  * @param router - Vue Router 实例
  */
 export function setupRouterGuards(router: Router): void {
   // 全局前置守卫
-  router.beforeEach((
+  router.beforeEach(async (
     to: RouteLocationNormalized,
     _from: RouteLocationNormalized,
     next: NavigationGuardNext
   ) => {
-    // 使用 store 获取登录状态，确保与组件层状态一致
     const userStore = useUserStore()
+
+    // 页面刷新后首次访问需要登录的页面时，验证 token 有效性
+    if (!authChecked && userStore.isLoggedIn) {
+      authChecked = true
+      await userStore.checkAuthStatus()
+    }
+
     const isLoggedIn = userStore.isLoggedIn
 
     // 需要登录的页面

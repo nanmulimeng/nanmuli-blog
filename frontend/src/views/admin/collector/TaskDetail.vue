@@ -1,15 +1,19 @@
 ﻿<script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, Delete, Document, Notebook, Refresh } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { deleteCollectTask, getCollectTaskDetail, getCollectTaskPages, retryCollectTask } from '@/api/collector'
 import ConvertArticleDialog from '@/components/collector/ConvertArticleDialog.vue'
 import ConvertDailyLogDialog from '@/components/collector/ConvertDailyLogDialog.vue'
+import TaskStatusTag from '@/components/collector/TaskStatusTag.vue'
+import TaskTypeTag from '@/components/collector/TaskTypeTag.vue'
 import type { CollectPage, CollectTask } from '@/types/collector'
-import { CollectTaskStatusMap, CollectTaskTypeMap } from '@/types/collector'
 import { formatDateCN } from '@/utils/format'
 import { renderMarkdown } from '@/utils/markdown'
+import { sanitize } from '@/utils/sanitize'
+import { usePolling } from '@/composables/usePolling'
+import { POLLING_INTERVAL } from '@/constants/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -24,7 +28,6 @@ const markdownExpanded = ref<Record<number, boolean>>({})
 const showConvertArticle = ref(false)
 const showConvertDailyLog = ref(false)
 
-let pollTimer: ReturnType<typeof setInterval> | null = null
 let lastStatus: number | null = null
 
 const isTerminal = computed(() => {
@@ -115,23 +118,15 @@ function toggleMarkdown(idx: number): void {
   markdownExpanded.value[idx] = !markdownExpanded.value[idx]
 }
 
-function startPolling(): void {
-  if (pollTimer) return
-  pollTimer = setInterval(() => {
-    if (isActive.value && !loading.value) {
-      fetchTask()
-    } else if (!isActive.value) {
-      stopPolling()
-    }
-  }, 5000)
-}
-
-function stopPolling(): void {
-  if (pollTimer) {
-    clearInterval(pollTimer)
-    pollTimer = null
-  }
-}
+// 使用 usePolling 替代手动 setInterval 轮询
+const { start: startPolling, stop: stopPolling } = usePolling(
+  fetchTask,
+  POLLING_INTERVAL.TASK_STATUS,
+  {
+    immediate: false,
+    condition: () => isActive.value && !loading.value,
+  },
+)
 
 function goBack(): void {
   router.push('/admin/collector')
@@ -142,8 +137,6 @@ onMounted(async () => {
   await fetchPages()
   if (isActive.value) startPolling()
 })
-
-onUnmounted(stopPolling)
 </script>
 
 <template>
@@ -154,9 +147,7 @@ onUnmounted(stopPolling)
           <el-button :icon="ArrowLeft" @click="goBack">返回列表</el-button>
           <h2 class="text-xl font-bold text-content-primary">
             任务 #{{ task.id }}
-            <el-tag :type="CollectTaskTypeMap[task.taskType]?.type || 'info'" size="small" class="ml-2">
-              {{ CollectTaskTypeMap[task.taskType]?.label || task.taskType }}
-            </el-tag>
+            <TaskTypeTag :task-type="task.taskType" class="ml-2" />
           </h2>
         </div>
 
@@ -201,14 +192,7 @@ onUnmounted(stopPolling)
           </div>
           <div>
             <div class="mb-1 text-xs text-content-tertiary">状态</div>
-            <el-tag :type="CollectTaskStatusMap[task.status]?.type || 'info'" size="small">
-              <div class="flex items-center gap-1">
-                <el-icon v-if="task.status === 1 || task.status === 2" :size="12" class="animate-spin">
-                  <Refresh />
-                </el-icon>
-                {{ CollectTaskStatusMap[task.status]?.label || '未知' }}
-              </div>
-            </el-tag>
+            <TaskStatusTag :status="task.status" />
           </div>
           <div>
             <div class="mb-1 text-xs text-content-tertiary">进度</div>
@@ -327,7 +311,7 @@ onUnmounted(stopPolling)
             <el-collapse-item title="查看 AI 完整内容">
               <div
                 class="prose prose-sm max-w-none text-sm text-content-secondary dark:prose-invert"
-                v-html="renderMarkdown(task.aiFullContent)"
+                v-html="sanitize(renderMarkdown(task.aiFullContent))"
               />
             </el-collapse-item>
           </el-collapse>
@@ -384,7 +368,7 @@ onUnmounted(stopPolling)
                 <div
                   v-if="markdownExpanded[idx]"
                   class="prose prose-sm max-w-none text-sm text-content-secondary dark:prose-invert"
-                  v-html="renderMarkdown(page.rawMarkdown)"
+                  v-html="sanitize(renderMarkdown(page.rawMarkdown))"
                 />
                 <div
                   v-else

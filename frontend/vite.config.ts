@@ -6,6 +6,7 @@ import Components from 'unplugin-vue-components/vite'
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
 import Icons from 'unplugin-icons/vite'
 import { FileSystemIconLoader } from 'unplugin-icons/loaders'
+import viteCompression from 'vite-plugin-compression'
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -23,6 +24,11 @@ export default defineConfig({
     }),
     Icons({
       autoInstall: true,
+    }),
+    // 生产环境 gzip 压缩
+    viteCompression({
+      algorithm: 'gzip',
+      threshold: 10240, // 10KB 以上的文件才压缩
     }),
   ],
   resolve: {

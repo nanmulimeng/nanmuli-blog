@@ -18,6 +18,7 @@ const menuItems = [
   { path: '/admin/daily-log', icon: markRaw(Notebook), label: '日志管理' },
   { path: '/admin/digest', icon: markRaw(Memo), label: '技术日报' },
   { path: '/admin/collector', icon: markRaw(Link), label: '内容采集' },
+  { path: '/admin/source', icon: markRaw(Collection), label: '订阅源' },
   { path: '/admin/category', icon: markRaw(Collection), label: '分类管理' },
   { path: '/admin/project', icon: markRaw(FolderOpened), label: '项目管理' },
   { path: '/admin/skill', icon: markRaw(Trophy), label: '技能管理' },

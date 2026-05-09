@@ -167,12 +167,13 @@ async function handleDelete(row: Category) {
     await deleteCategory(row.id)
     ElMessage.success('删除成功')
     fetchData()
-  } catch (error: any) {
+  } catch (error: unknown) {
     // 如果后端返回错误，显示错误信息
-    if (error?.response?.data?.message) {
-      ElMessage.error(error.response.data.message)
-    } else if (error?.message && error.message !== 'cancel') {
-      ElMessage.error(error.message)
+    const axiosErr = error as { response?: { data?: { message?: string } }; message?: string }
+    if (axiosErr?.response?.data?.message) {
+      ElMessage.error(axiosErr.response.data.message)
+    } else if (axiosErr?.message && axiosErr.message !== 'cancel') {
+      ElMessage.error(axiosErr.message)
     }
     // 取消删除不处理
   }
@@ -199,9 +200,10 @@ async function handleSubmit() {
       }
       dialogVisible.value = false
       fetchData()
-    } catch (error: any) {
+    } catch (error: unknown) {
       // 显示后端返回的具体错误信息
-      const message = error?.response?.data?.message || error?.message || '操作失败'
+      const axiosErr = error as { response?: { data?: { message?: string } }; message?: string }
+      const message = axiosErr?.response?.data?.message || axiosErr?.message || '操作失败'
       ElMessage.error(message)
     }
   })

@@ -2,6 +2,7 @@
 import { ref, onMounted, markRaw } from 'vue'
 import { useRouter } from 'vue-router'
 import { Document, FolderOpened, View, User, EditPen, Notebook, Setting } from '@element-plus/icons-vue'
+import type { Component } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getDashboardStats, getRecentArticles } from '@/api/dashboard'
 import type { Article } from '@/types/article'
@@ -12,7 +13,7 @@ const loading = ref(false)
 interface StatItem {
   label: string
   value: number
-  icon: any
+  icon: Component
 }
 
 const stats = ref<StatItem[]>([
@@ -31,16 +32,18 @@ async function fetchStats() {
     if (stats.value[1]) stats.value[1].value = data.projectCount || 0
     if (stats.value[2]) stats.value[2].value = data.visitCount || 0      // 访问量（PV）
     if (stats.value[3]) stats.value[3].value = data.visitorCount || 0    // 访客数（UV）
-  } catch (error: any) {
-    ElMessage.error(error?.message || '加载统计数据失败')
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : '加载统计数据失败'
+    ElMessage.error(msg)
   }
 }
 
 async function fetchRecentArticles() {
   try {
     recentArticles.value = await getRecentArticles(5)
-  } catch (error: any) {
-    ElMessage.error(error?.message || '加载最近文章失败')
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : '加载最近文章失败'
+    ElMessage.error(msg)
   }
 }
 

@@ -3,21 +3,16 @@ import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getDailyLogById, getDailyLogList } from '@/api/dailyLog'
 import { formatDateCN, formatDateTimeCN, formatTimeAgoCN } from '@/utils/format'
+import { sanitize } from '@/utils/sanitize'
 import { ArrowRight, Calendar, PartlyCloudy, Document, Clock, ArrowLeft } from '@element-plus/icons-vue'
 import type { DailyLog } from '@/types/dailyLog'
+import { MOOD_MAP, MOOD_DEFAULT_COLOR, MOOD_DEFAULT_ICON, MOOD_DEFAULT_LABEL } from '@/constants/mood'
 
 const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
 const log = ref<DailyLog | null>(null)
 const relatedLogs = ref<DailyLog[]>([])
-
-const moodMap: Record<string, { icon: string; label: string; color: string; description: string }> = {
-  happy: { icon: 'Sunny', label: '开心', color: '#f59e0b', description: '充满能量，效率很高' },
-  excited: { icon: 'Star', label: '兴奋', color: '#ef4444', description: '充满激情，学习热情高涨' },
-  normal: { icon: 'Minus', label: '平静', color: '#64748B', description: '稳步推进，保持节奏' },
-  tired: { icon: 'Moon', label: '疲惫', color: '#3B82F6', description: '需要休息，适当放松' },
-}
 
 // 阅读时间估算（分钟）
 const readingTime = computed(() => {
@@ -85,24 +80,24 @@ onMounted(fetchLog)
           <div class="flex items-center gap-4 mb-6">
             <div
               class="w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg"
-              :style="{ backgroundColor: moodMap[log.mood]?.color + '20' || 'var(--theme-surface-tertiary)' }"
+              :style="{ backgroundColor: MOOD_MAP[log.mood]?.color + '20' || 'var(--theme-surface-tertiary)' }"
             >
               <el-icon
                 :size="32"
-                :style="{ color: moodMap[log.mood]?.color || '#64748B' }"
+                :style="{ color: MOOD_MAP[log.mood]?.color || MOOD_DEFAULT_COLOR }"
               >
-                <component :is="moodMap[log.mood]?.icon || 'Minus'" />
+                <component :is="MOOD_MAP[log.mood]?.icon || MOOD_DEFAULT_ICON" />
               </el-icon>
             </div>
             <div>
               <div
                 class="text-xl font-semibold"
-                :style="{ color: moodMap[log.mood]?.color || '#6b7280' }"
+                :style="{ color: MOOD_MAP[log.mood]?.color || '#6b7280' }"
               >
-                {{ moodMap[log.mood]?.label || '平静' }}
+                {{ MOOD_MAP[log.mood]?.label || MOOD_DEFAULT_LABEL }}
               </div>
               <div class="text-sm text-content-tertiary mt-1">
-                {{ moodMap[log.mood]?.description }}
+                {{ MOOD_MAP[log.mood]?.description }}
               </div>
             </div>
           </div>
@@ -141,7 +136,7 @@ onMounted(fetchLog)
       <section class="py-8">
         <div class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
           <article class="bg-surface-secondary rounded-2xl p-8 shadow-sm border border-border">
-            <div class="prose prose-lg max-w-none dark:prose-invert" v-html="log.contentHtml" />
+            <div class="prose prose-lg max-w-none dark:prose-invert" v-html="sanitize(log.contentHtml)" />
           </article>
 
           <!-- Content Footer -->
@@ -178,13 +173,13 @@ onMounted(fetchLog)
             >
               <div
                 class="w-10 h-10 rounded-xl flex items-center justify-center"
-                :style="{ backgroundColor: moodMap[related.mood]?.color + '20' || 'var(--theme-surface-tertiary)' }"
+                :style="{ backgroundColor: MOOD_MAP[related.mood]?.color + '20' || 'var(--theme-surface-tertiary)' }"
               >
                 <el-icon
                   :size="18"
-                  :style="{ color: moodMap[related.mood]?.color || '#64748B' }"
+                  :style="{ color: MOOD_MAP[related.mood]?.color || MOOD_DEFAULT_COLOR }"
                 >
-                  <component :is="moodMap[related.mood]?.icon || 'Minus'" />
+                  <component :is="MOOD_MAP[related.mood]?.icon || MOOD_DEFAULT_ICON" />
                 </el-icon>
               </div>
               <div class="flex-1 min-w-0">
@@ -192,7 +187,7 @@ onMounted(fetchLog)
                   {{ formatDateCN(related.logDate) }} 的日志
                 </div>
                 <div class="text-xs text-content-tertiary mt-0.5">
-                  {{ related.wordCount || 0 }} 字 · {{ related.mood ? moodMap[related.mood]?.label : '平静' }}
+                  {{ related.wordCount || 0 }} 字 · {{ related.mood ? MOOD_MAP[related.mood]?.label : MOOD_DEFAULT_LABEL }}
                 </div>
               </div>
               <el-icon class="text-content-tertiary"><ArrowRight /></el-icon>

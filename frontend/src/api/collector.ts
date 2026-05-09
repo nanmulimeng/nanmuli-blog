@@ -1,5 +1,5 @@
-import { get, post, del } from '@/utils/request'
-import type { CollectTask, CollectTaskListDTO, CollectPage, CreateCollectTaskCommand, ConvertToArticleCommand, ConvertToDailyLogCommand, CollectTaskQuery, DigestListResult, DigestDetail, DigestSchedulerStatus, DigestSectionConfig } from '@/types/collector'
+import { get, post, del, put } from '@/utils/request'
+import type { CollectTask, CollectTaskListDTO, CollectPage, CreateCollectTaskCommand, ConvertToArticleCommand, ConvertToDailyLogCommand, CollectTaskQuery, DigestListResult, DigestDetail, DigestSchedulerStatus, DigestSectionConfig, Source, CreateSourceCommand, UpdateSourceCommand } from '@/types/collector'
 import type { PageResult } from '@/types/api'
 
 // 创建采集任务
@@ -77,5 +77,48 @@ export function getDigestSchedulerStatus(): Promise<DigestSchedulerStatus> {
 // 获取日报板块配置
 export function getDigestSectionConfig(): Promise<{ sections: DigestSectionConfig[] }> {
   return get<{ sections: DigestSectionConfig[] }>('/admin/collector/digest/config/sections')
+}
+
+// ============== Public Digest API ==============
+
+// 公开日报列表
+export function getPublicDigestList(page = 1, size = 10): Promise<DigestListResult> {
+  return get<DigestListResult>('/digest', { params: { page, size } })
+}
+
+// 公开最近一期日报
+export function getPublicLatestDigest(): Promise<DigestDetail> {
+  return get<DigestDetail>('/digest/latest')
+}
+
+// 公开按日期查询日报
+export function getPublicDigestByDate(date: string): Promise<DigestDetail> {
+  return get<DigestDetail>(`/digest/${date}`)
+}
+
+// ============== Source API ==============
+
+export function getSourceList(): Promise<Source[]> {
+  return get<Source[]>('/admin/collector/source/list')
+}
+
+export function getSourceDetail(id: string): Promise<Source> {
+  return get<Source>(`/admin/collector/source/${id}`)
+}
+
+export function createSource(data: CreateSourceCommand): Promise<string> {
+  return post<string>('/admin/collector/source', data)
+}
+
+export function updateSource(id: string, data: UpdateSourceCommand): Promise<void> {
+  return put<void>(`/admin/collector/source/${id}`, data)
+}
+
+export function deleteSource(id: string): Promise<void> {
+  return del<void>(`/admin/collector/source/${id}`)
+}
+
+export function toggleSource(id: string): Promise<void> {
+  return post<void>(`/admin/collector/source/${id}/toggle`)
 }
 

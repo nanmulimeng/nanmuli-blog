@@ -44,8 +44,9 @@ async function handleSubmit(): Promise<void> {
     // 支持重定向：优先跳转到 redirect 参数指定的页面，否则默认到 /admin
     const redirect = route.query.redirect as string
     await router.push(redirect || '/admin')
-  } catch (error: any) {
-    ElMessage.error(error?.message || '登录失败，请检查用户名和密码')
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : '登录失败，请检查用户名和密码'
+    ElMessage.error(msg)
   } finally {
     loading.value = false
   }

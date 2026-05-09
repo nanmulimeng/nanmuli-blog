@@ -1,21 +1,21 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getDigestList, triggerDigest } from '@/api/collector'
 import type { DigestListItem } from '@/types/collector'
 import { CollectTaskStatusMap } from '@/types/collector'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, Calendar, View, Promotion } from '@element-plus/icons-vue'
+import { usePolling } from '@/composables/usePolling'
+import { PAGE_SIZE, POLLING_INTERVAL, DELAY } from '@/constants/api'
 
 const router = useRouter()
 const loading = ref(false)
 const digests = ref<DigestListItem[]>([])
 const total = ref(0)
 const currentPage = ref(1)
-const pageSize = ref(10)
+const pageSize = ref(PAGE_SIZE.DIGEST)
 const triggerLoading = ref(false)
-
-let pollTimer: ReturnType<typeof setInterval> | null = null
 
 async function fetchData(): Promise<void> {
   loading.value = true
@@ -62,9 +62,9 @@ async function handleTrigger(): Promise<void> {
     }
 
     ElMessage.success('日报生成已触发，请稍后刷新查看')
-    setTimeout(() => fetchData(), 3000)
-  } catch (error: any) {
-    if (error === 'cancel' || error?.message === 'cancel') return
+    setTimeout(() => fetchData(), DELAY.DIGEST_REFRESH)
+  } catch (error: unknown) {
+    if (error === 'cancel' || (error instanceof Error && error.message === 'cancel')) return
   } finally {
     triggerLoading.value = false
   }
@@ -79,26 +79,16 @@ function hasActiveTasks(): boolean {
   return digests.value.some(d => d.status === 0 || d.status === 1 || d.status === 2)
 }
 
-function startPolling(): void {
-  if (pollTimer) return
-  pollTimer = setInterval(() => {
-    if (hasActiveTasks() && !loading.value) fetchData()
-  }, 5000)
-}
-
-function stopPolling(): void {
-  if (pollTimer) {
-    clearInterval(pollTimer)
-    pollTimer = null
-  }
-}
+// 使用 usePolling 替代手动 setInterval 轮询
+const { start: startPolling } = usePolling(fetchData, POLLING_INTERVAL.DIGEST_STATUS, {
+  immediate: false,
+  condition: () => hasActiveTasks() && !loading.value,
+})
 
 onMounted(() => {
   fetchData()
   startPolling()
 })
-
-onUnmounted(stopPolling)
 </script>
 
 <template>
@@ -190,6 +180,7 @@ onUnmounted(stopPolling)
         v-model:current-page="currentPage"
         v-model:page-size="pageSize"
         :total="total"
+        :pager-count="7"
         layout="total, prev, pager, next"
         @current-change="handlePageChange"
       />

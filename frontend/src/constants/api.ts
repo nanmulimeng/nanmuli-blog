@@ -33,3 +33,30 @@ export const REQUEST_TIMEOUT = 30000
 
 // 请求重试次数
 export const REQUEST_RETRY_COUNT = 3
+
+/** 分页大小常量 */
+export const PAGE_SIZE = {
+  DEFAULT: 10,
+  ARTICLE_FRONT: 12,
+  ARTICLE_ADMIN: 10,
+  DAILY_LOG_FRONT: 20,
+  DAILY_LOG_ADMIN: 10,
+  DIGEST: 10,
+  COLLECTOR: 10,
+  HOME_ARTICLES: 6,
+  RELATED_ARTICLES: 4,
+} as const
+
+/** 轮询间隔常量（毫秒） */
+export const POLLING_INTERVAL = {
+  TASK_STATUS: 5000,
+  DIGEST_STATUS: 5000,
+  AUTO_SAVE: 30000,
+} as const
+
+/** 延迟常量（毫秒） */
+export const DELAY = {
+  UV_RECORD: 5000,
+  DIGEST_REFRESH: 3000,
+  LOADING_THRESHOLD: 100,
+} as const

@@ -1,19 +1,21 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getDigestByDate, getLatestDigest, getDigestByTaskId } from '@/api/collector'
 import type { DigestDetail } from '@/types/collector'
 import { CollectTaskStatusMap } from '@/types/collector'
 import { ArrowLeft, Refresh, Calendar } from '@element-plus/icons-vue'
 import { renderMarkdown } from '@/utils/markdown'
+import { sanitize } from '@/utils/sanitize'
+import { usePolling } from '@/composables/usePolling'
+import { getDigestCategoryColor } from '@/constants/digest'
+import { POLLING_INTERVAL } from '@/constants/api'
 
 const route = useRoute()
 const router = useRouter()
 
 const loading = ref(false)
 const digest = ref<DigestDetail | null>(null)
-
-let pollTimer: ReturnType<typeof setInterval> | null = null
 
 // 路由参数解析：/admin/digest/latest | /admin/digest/:date | /admin/digest/task/:id
 const routeMode = computed(() => {
@@ -31,15 +33,6 @@ const isActive = computed(() => {
   if (!digest.value) return false
   return digest.value.status === 0 || digest.value.status === 1 || digest.value.status === 2
 })
-
-const categoryColors: Record<string, string> = {
-  hot_trend: '#ef4444',
-  open_source: '#f59e0b',
-  tech_article: '#3b82f6',
-  dev_tool: '#10b981',
-  creative: '#8b5cf6',
-  paper: '#6366f1',
-}
 
 async function fetchDigest(): Promise<void> {
   loading.value = true
@@ -64,27 +57,22 @@ async function fetchDigest(): Promise<void> {
 }
 
 function sectionBorderColor(category: string): string {
-  return categoryColors[category] || '#6b7280'
+  return getDigestCategoryColor(category)
 }
 
 function goBack(): void {
   router.push('/admin/digest')
 }
 
-function startPolling(): void {
-  if (pollTimer) return
-  pollTimer = setInterval(() => {
-    if (isActive.value && !loading.value) fetchDigest()
-    else if (!isActive.value) stopPolling()
-  }, 5000)
-}
-
-function stopPolling(): void {
-  if (pollTimer) {
-    clearInterval(pollTimer)
-    pollTimer = null
-  }
-}
+// 使用 usePolling 替代手动 setInterval 轮询
+const { start: startPolling, stop: stopPolling } = usePolling(
+  fetchDigest,
+  POLLING_INTERVAL.DIGEST_STATUS,
+  {
+    immediate: false,
+    condition: () => isActive.value && !loading.value,
+  },
+)
 
 onMounted(() => {
   fetchDigest()
@@ -98,8 +86,6 @@ watch(() => route.params, () => {
     startPolling()
   }
 })
-
-onUnmounted(stopPolling)
 </script>
 
 <template>
@@ -209,7 +195,7 @@ onUnmounted(stopPolling)
         <h3 class="mb-4 text-lg font-semibold text-content-primary">完整内容</h3>
         <div
           class="prose prose-sm max-w-none text-sm text-content-secondary dark:prose-invert"
-          v-html="renderMarkdown(digest.ai_full_content)"
+          v-html="sanitize(renderMarkdown(digest.ai_full_content))"
         />
       </div>
 

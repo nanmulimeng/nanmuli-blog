@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { getAdminArticleList, deleteArticle } from '@/api/article'
 import { formatDateCN } from '@/utils/format'
 import { ArticleStatusMap } from '@/constants'
+import { PAGE_SIZE } from '@/constants/api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Edit, Delete, Search } from '@element-plus/icons-vue'
 import type { Article } from '@/types/article'
@@ -13,7 +14,7 @@ const loading = ref(false)
 const articles = ref<Article[]>([])
 const total = ref(0)
 const currentPage = ref(1)
-const pageSize = ref(10)
+const pageSize = ref(PAGE_SIZE.ARTICLE_ADMIN)
 const searchKeyword = ref('')
 
 async function fetchData(): Promise<void> {
@@ -57,9 +58,9 @@ async function handleDelete(row: Article): Promise<void> {
     await deleteArticle(row.id)
     ElMessage.success('删除成功')
     fetchData()
-  } catch (error: any) {
+  } catch (error: unknown) {
     // 用户取消对话框时会抛出 'cancel'，不需要提示
-    if (error === 'cancel' || error?.message === 'cancel') {
+    if (error === 'cancel' || (error instanceof Error && error.message === 'cancel')) {
       return
     }
     // API 错误已由 request.ts 拦截器处理，这里不需要额外提示
@@ -146,6 +147,7 @@ onMounted(fetchData)
         v-model:current-page="currentPage"
         v-model:page-size="pageSize"
         :total="total"
+        :pager-count="7"
         layout="total, prev, pager, next"
         @current-change="handlePageChange"
       />

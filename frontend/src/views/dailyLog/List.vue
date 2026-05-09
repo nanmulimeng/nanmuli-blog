@@ -5,6 +5,8 @@ import { getDailyLogList } from '@/api/dailyLog'
 import { formatDateCN, formatMonthCN } from '@/utils/format'
 import { Timer, PartlyCloudy, ArrowRight } from '@element-plus/icons-vue'
 import type { DailyLog } from '@/types/dailyLog'
+import { MOOD_MAP, MOOD_DEFAULT_COLOR, MOOD_DEFAULT_ICON } from '@/constants/mood'
+import { PAGE_SIZE } from '@/constants/api'
 
 const router = useRouter()
 
@@ -12,14 +14,7 @@ const logs = ref<DailyLog[]>([])
 const loading = ref(false)
 const total = ref(0)
 const currentPage = ref(1)
-const pageSize = ref(20)
-
-const moodMap: Record<string, { icon: string; label: string; color: string; bgColor: string }> = {
-  happy: { icon: 'Sunny', label: '开心', color: '#f59e0b', bgColor: '#fef3c7' },
-  excited: { icon: 'Star', label: '兴奋', color: '#ef4444', bgColor: '#fee2e2' },
-  normal: { icon: 'Minus', label: '平静', color: '#64748B', bgColor: '#f1f5f9' },
-  tired: { icon: 'Moon', label: '疲惫', color: '#3B82F6', bgColor: '#dbeafe' },
-}
+const pageSize = ref(PAGE_SIZE.DAILY_LOG_FRONT)
 
 // 统计数据
 const stats = computed(() => {
@@ -154,13 +149,13 @@ onMounted(fetchLogs)
                 <!-- Timeline Dot -->
                 <div
                   class="absolute left-0 w-8 h-8 rounded-full flex items-center justify-center z-10"
-                  :style="{ backgroundColor: moodMap[log.mood]?.color + '20' || 'var(--theme-surface-tertiary)' }"
+                  :style="{ backgroundColor: MOOD_MAP[log.mood]?.color + '20' || 'var(--theme-surface-tertiary)' }"
                 >
                   <el-icon
                     :size="16"
-                    :style="{ color: moodMap[log.mood]?.color || '#64748B' }"
+                    :style="{ color: MOOD_MAP[log.mood]?.color || MOOD_DEFAULT_COLOR }"
                   >
-                    <component :is="moodMap[log.mood]?.icon || 'Minus'" />
+                    <component :is="MOOD_MAP[log.mood]?.icon || MOOD_DEFAULT_ICON" />
                   </el-icon>
                 </div>
 
@@ -184,12 +179,12 @@ onMounted(fetchLogs)
                         v-if="log.mood"
                         class="flex items-center gap-1 text-xs px-2 py-1 rounded-full"
                         :style="{
-                          backgroundColor: moodMap[log.mood]?.color + '15',
-                          color: moodMap[log.mood]?.color
+                          backgroundColor: MOOD_MAP[log.mood]?.color + '15',
+                          color: MOOD_MAP[log.mood]?.color
                         }"
                       >
-                        <el-icon :size="12"><component :is="moodMap[log.mood]?.icon" /></el-icon>
-                        {{ moodMap[log.mood]?.label }}
+                        <el-icon :size="12"><component :is="MOOD_MAP[log.mood]?.icon" /></el-icon>
+                        {{ MOOD_MAP[log.mood]?.label }}
                       </span>
                       <span v-if="log.weather" class="text-sm text-content-tertiary flex items-center gap-1">
                         <el-icon :size="14"><PartlyCloudy /></el-icon>
@@ -235,6 +230,7 @@ onMounted(fetchLogs)
             :current-page="currentPage"
             :page-size="pageSize"
             :total="total"
+            :pager-count="7"
             layout="prev, pager, next"
             background
             @current-change="handlePageChange"

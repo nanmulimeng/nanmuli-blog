@@ -1,11 +1,13 @@
 <script setup lang="ts">
+import { sanitize } from '@/utils/sanitize'
+
 defineProps<{
   html: string
 }>()
 </script>
 
 <template>
-  <div class="markdown-body prose prose-slate max-w-none" v-html="html" />
+  <div class="markdown-body prose prose-slate max-w-none" v-html="sanitize(html)" />
 </template>
 
 <style scoped>

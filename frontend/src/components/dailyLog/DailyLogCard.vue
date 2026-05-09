@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { DailyLog } from '@/types/dailyLog'
 import { formatDate } from '@/utils/format'
+import { MOOD_MAP, MOOD_DEFAULT_COLOR, MOOD_DEFAULT_ICON, MOOD_DEFAULT_LABEL } from '@/constants/mood'
 
 const props = defineProps<{
   log: DailyLog
@@ -9,13 +10,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   click: [id: string]
 }>()
-
-const moodMap: Record<string, { icon: string; label: string; color: string }> = {
-  happy: { icon: 'Sunny', label: '开心', color: '#f59e0b' },
-  excited: { icon: 'Star', label: '兴奋', color: '#ef4444' },
-  normal: { icon: 'Minus', label: '平静', color: '#64748B' },
-  tired: { icon: 'Moon', label: '疲惫', color: '#3B82F6' },
-}
 
 function handleClick(): void {
   emit('click', props.log.id)
@@ -31,21 +25,21 @@ function handleClick(): void {
       <div class="flex items-center gap-3">
         <div
           class="flex h-10 w-10 items-center justify-center rounded-full"
-          :style="{ backgroundColor: (moodMap[log.mood]?.color || '#64748B') + '20' }"
+          :style="{ backgroundColor: (MOOD_MAP[log.mood]?.color || MOOD_DEFAULT_COLOR) + '20' }"
         >
           <el-icon
             :size="20"
-            :style="{ color: moodMap[log.mood]?.color || '#64748B' }"
+            :style="{ color: MOOD_MAP[log.mood]?.color || MOOD_DEFAULT_COLOR }"
           >
-            <component :is="moodMap[log.mood]?.icon || 'Minus'" />
+            <component :is="MOOD_MAP[log.mood]?.icon || MOOD_DEFAULT_ICON" />
           </el-icon>
         </div>
         <div>
           <div
             class="text-sm font-medium"
-            :style="{ color: moodMap[log.mood]?.color || '#64748B' }"
+            :style="{ color: MOOD_MAP[log.mood]?.color || MOOD_DEFAULT_COLOR }"
           >
-            {{ moodMap[log.mood]?.label || '平静' }}
+            {{ MOOD_MAP[log.mood]?.label || MOOD_DEFAULT_LABEL }}
           </div>
           <div class="text-xs text-content-tertiary">{{ formatDate(log.logDate) }}</div>
         </div>

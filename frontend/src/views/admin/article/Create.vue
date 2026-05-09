@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { reactive, ref, onMounted, onBeforeUnmount, watch } from 'vue'
-import { useRouter, onBeforeRouteLeave } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { reactive, ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import { createArticle } from '@/api/article'
 import { getLeafCategoryList } from '@/api/category'
 import MarkdownEditor from '@/components/editor/MarkdownEditor.vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import type { Category } from '@/types/category'
+import { useAutoSave } from '@/composables/useAutoSave'
 
 const router = useRouter()
 const formRef = ref<FormInstance>()
@@ -25,74 +26,10 @@ const form = reactive({
   status: 1,
 })
 
-// 自动保存相关
-const DRAFT_KEY = 'article_draft_create'
-const DRAFT_TIME_KEY = 'article_draft_create_time'
-let autoSaveInterval: number | null = null
-
-// 未保存修改标记
-const hasUnsavedChanges = ref(false)
-
-// 监听表单变化
-watch(form, () => {
-  hasUnsavedChanges.value = true
-}, { deep: true, flush: 'post' })
-
-// 浏览器原生离开提示
-function handleBeforeUnload(e: BeforeUnloadEvent) {
-  if (hasUnsavedChanges.value) {
-    e.preventDefault()
-    e.returnValue = ''
-  }
-}
-
-// 恢复草稿
-function restoreDraft() {
-  const draft = localStorage.getItem(DRAFT_KEY)
-  const draftTime = localStorage.getItem(DRAFT_TIME_KEY)
-  if (draft && draftTime) {
-    const hours = (Date.now() - parseInt(draftTime)) / 3600000
-    if (hours < 24) {
-      ElMessageBox.confirm('检测到有未提交的草稿，是否恢复？', '提示', {
-        confirmButtonText: '恢复',
-        cancelButtonText: '放弃',
-        type: 'info',
-      })
-        .then(() => {
-          const draftData = JSON.parse(draft)
-          Object.assign(form, draftData)
-          ElMessage.success('草稿已恢复')
-        })
-        .catch(() => {
-          localStorage.removeItem(DRAFT_KEY)
-          localStorage.removeItem(DRAFT_TIME_KEY)
-        })
-    } else {
-      localStorage.removeItem(DRAFT_KEY)
-      localStorage.removeItem(DRAFT_TIME_KEY)
-    }
-  }
-}
-
-// 自动保存
-function startAutoSave() {
-  autoSaveInterval = window.setInterval(() => {
-    if (form.title || form.content) {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify(form))
-      localStorage.setItem(DRAFT_TIME_KEY, Date.now().toString())
-    }
-  }, 30000) // 每30秒保存一次
-}
-
-// 清除草稿
-function clearDraft() {
-  localStorage.removeItem(DRAFT_KEY)
-  localStorage.removeItem(DRAFT_TIME_KEY)
-  if (autoSaveInterval) {
-    clearInterval(autoSaveInterval)
-    autoSaveInterval = null
-  }
-}
+// 使用 useAutoSave 替代手动草稿保存逻辑
+const { clearDraft, markSaved } = useAutoSave(form, {
+  draftKey: 'article_draft_create',
+})
 
 const rules: FormRules = {
   title: [{ required: true, message: '请输入标题', trigger: 'blur' }],
@@ -116,8 +53,8 @@ async function handleSubmit(): Promise<void> {
     loading.value = true
     try {
       await createArticle(form)
-      hasUnsavedChanges.value = false // 重置未保存标记
-      clearDraft() // 发布成功后清除草稿
+      markSaved()
+      clearDraft()
       ElMessage.success('创建成功')
       router.push('/admin/article')
     } catch {
@@ -134,35 +71,6 @@ function handleCancel(): void {
 
 onMounted(() => {
   fetchCategories()
-  restoreDraft()
-  startAutoSave()
-  window.addEventListener('beforeunload', handleBeforeUnload)
-})
-
-onBeforeUnmount(() => {
-  if (autoSaveInterval) {
-    clearInterval(autoSaveInterval)
-  }
-  window.removeEventListener('beforeunload', handleBeforeUnload)
-})
-
-// 路由离开守卫
-onBeforeRouteLeave((_to, _from, next) => {
-  if (hasUnsavedChanges.value) {
-    ElMessageBox.confirm('有未保存的修改，确定要离开吗？', '提示', {
-      confirmButtonText: '离开',
-      cancelButtonText: '取消',
-      type: 'warning',
-    })
-      .then(() => {
-        next()
-      })
-      .catch(() => {
-        next(false)
-      })
-  } else {
-    next()
-  }
 })
 </script>
 

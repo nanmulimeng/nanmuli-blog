@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getCollectTaskList, deleteCollectTask, retryCollectTask } from '@/api/collector'
 import type { CollectTaskListDTO } from '@/types/collector'
@@ -7,19 +7,22 @@ import { CollectTaskStatusMap, CollectTaskTypeMap } from '@/types/collector'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Delete, Refresh, Search, View } from '@element-plus/icons-vue'
 import TaskCreateDialog from '@/components/collector/TaskCreateDialog.vue'
+import TaskStatusTag from '@/components/collector/TaskStatusTag.vue'
+import TaskTypeTag from '@/components/collector/TaskTypeTag.vue'
+import CrawlProgress from '@/components/collector/CrawlProgress.vue'
+import { usePolling } from '@/composables/usePolling'
+import { PAGE_SIZE, POLLING_INTERVAL } from '@/constants/api'
 
 const router = useRouter()
 const loading = ref(false)
 const tasks = ref<CollectTaskListDTO[]>([])
 const total = ref(0)
 const currentPage = ref(1)
-const pageSize = ref(10)
+const pageSize = ref(PAGE_SIZE.COLLECTOR)
 const searchKeyword = ref('')
 const filterStatus = ref<number | undefined>(undefined)
 const filterType = ref<string | undefined>(undefined)
 const showCreateDialog = ref(false)
-
-let pollTimer: ReturnType<typeof setInterval> | null = null
 
 async function fetchData(): Promise<void> {
   loading.value = true
@@ -65,8 +68,8 @@ async function handleRetry(row: CollectTaskListDTO): Promise<void> {
     await retryCollectTask(row.id)
     ElMessage.success('任务已重新提交')
     fetchData()
-  } catch (error: any) {
-    if (error === 'cancel' || error?.message === 'cancel') return
+  } catch (error: unknown) {
+    if (error === 'cancel' || (error instanceof Error && error.message === 'cancel')) return
   }
 }
 
@@ -76,8 +79,8 @@ async function handleDelete(row: CollectTaskListDTO): Promise<void> {
     await deleteCollectTask(row.id)
     ElMessage.success('删除成功')
     fetchData()
-  } catch (error: any) {
-    if (error === 'cancel' || error?.message === 'cancel') return
+  } catch (error: unknown) {
+    if (error === 'cancel' || (error instanceof Error && error.message === 'cancel')) return
   }
 }
 
@@ -90,26 +93,16 @@ function hasActiveTasks(): boolean {
   return tasks.value.some(t => t.status === 0 || t.status === 1 || t.status === 2)
 }
 
-function startPolling(): void {
-  if (pollTimer) return
-  pollTimer = setInterval(() => {
-    if (hasActiveTasks() && !loading.value) fetchData()
-  }, 5000)
-}
-
-function stopPolling(): void {
-  if (pollTimer) {
-    clearInterval(pollTimer)
-    pollTimer = null
-  }
-}
+// 使用 usePolling 替代手动 setInterval 轮询
+const { start: startPolling } = usePolling(fetchData, POLLING_INTERVAL.TASK_STATUS, {
+  immediate: false,
+  condition: () => hasActiveTasks() && !loading.value,
+})
 
 onMounted(() => {
   fetchData()
   startPolling()
 })
-
-onUnmounted(stopPolling)
 </script>
 
 <template>
@@ -161,9 +154,7 @@ onUnmounted(stopPolling)
 
       <el-table-column label="类型" width="120">
         <template #default="{ row }">
-          <el-tag :type="CollectTaskTypeMap[row.taskType]?.type || 'info'" size="small">
-            {{ CollectTaskTypeMap[row.taskType]?.label || row.taskType }}
-          </el-tag>
+          <TaskTypeTag :task-type="row.taskType" />
         </template>
       </el-table-column>
 
@@ -184,31 +175,18 @@ onUnmounted(stopPolling)
 
       <el-table-column label="进度" width="150">
         <template #default="{ row }">
-          <div class="flex items-center gap-2">
-            <el-progress
-              :percentage="row.progressPercent"
-              :stroke-width="8"
-              :show-text="false"
-              :color="row.status === 4 ? '#EF4444' : undefined"
-              class="flex-1"
-            />
-            <span class="text-xs text-content-tertiary whitespace-nowrap">
-              {{ row.completedPages }}/{{ row.totalPages }}
-            </span>
-          </div>
+          <CrawlProgress
+            :percent="row.progressPercent"
+            :completed="row.completedPages"
+            :total="row.totalPages"
+            :status="row.status"
+          />
         </template>
       </el-table-column>
 
       <el-table-column label="状态" width="110">
         <template #default="{ row }">
-          <el-tag :type="CollectTaskStatusMap[row.status]?.type || 'info'" size="small">
-            <div class="flex items-center gap-1">
-              <el-icon v-if="row.status === 1 || row.status === 2" :size="12" class="animate-spin">
-                <Refresh />
-              </el-icon>
-              {{ CollectTaskStatusMap[row.status]?.label || '未知' }}
-            </div>
-          </el-tag>
+          <TaskStatusTag :status="row.status" />
         </template>
       </el-table-column>
 
@@ -256,6 +234,7 @@ onUnmounted(stopPolling)
         v-model:current-page="currentPage"
         v-model:page-size="pageSize"
         :total="total"
+        :pager-count="7"
         layout="total, prev, pager, next"
         @current-change="handlePageChange"
       />
