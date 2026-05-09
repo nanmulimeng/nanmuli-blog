@@ -2,6 +2,7 @@ package com.nanmuli.blog.infrastructure.config.cache;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Data;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.cache.CacheManager;
@@ -60,7 +61,7 @@ public class CacheConfig {
      */
     @Bean
     public CacheManager cacheManager(RedisConnectionFactory connectionFactory,
-                                     ObjectMapper objectMapper,
+                                     @Qualifier("redisObjectMapper") ObjectMapper objectMapper,
                                      TtlProperties ttlProps) {
 
         GenericJackson2JsonRedisSerializer jsonSerializer = new GenericJackson2JsonRedisSerializer(objectMapper);

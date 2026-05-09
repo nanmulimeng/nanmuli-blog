@@ -56,7 +56,7 @@ public class RateLimitFilter implements Filter {
 
         String clientIp = resolveClientIp(httpRequest);
         String key = clientIp;
-        RequestCounter counter = counters.computeIfAbsent(key, k -> new RequestCounter());
+        RequestCounter counter = counters.computeIfAbsent(key, k -> new RequestCounter(windowSeconds));
 
         if (counter.incrementAndGet() > maxRequestsPerMinute) {
             log.warn("[RateLimit] IP {} exceeded {} requests/{}s on {}", clientIp, maxRequestsPerMinute, windowSeconds, path);
@@ -111,12 +111,17 @@ public class RateLimitFilter implements Filter {
     private static class RequestCounter {
         private final AtomicInteger count = new AtomicInteger(0);
         private volatile long windowStart = System.currentTimeMillis();
+        private final long windowMillis;
+
+        RequestCounter(int windowSeconds) {
+            this.windowMillis = TimeUnit.SECONDS.toMillis(windowSeconds);
+        }
 
         int incrementAndGet() {
             long now = System.currentTimeMillis();
-            if (now - windowStart > 60_000) {
+            if (now - windowStart > windowMillis) {
                 synchronized (this) {
-                    if (now - windowStart > 60_000) {
+                    if (now - windowStart > windowMillis) {
                         count.set(0);
                         windowStart = now;
                     }

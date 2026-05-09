@@ -12,18 +12,18 @@ import com.nanmuli.blog.application.skill.SkillAppService;
 import com.nanmuli.blog.application.skill.dto.SkillDTO;
 import com.nanmuli.blog.shared.result.Result;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 
 @Tag(name = "首页聚合")
 @RestController
 @RequestMapping("/api")
-@RequiredArgsConstructor
 public class HomeController {
 
     private final ArticleAppService articleAppService;
@@ -31,18 +31,33 @@ public class HomeController {
     private final SkillAppService skillAppService;
     private final ProjectAppService projectAppService;
     private final DailyLogAppService dailyLogAppService;
+    private final Executor taskExecutor;
+
+    public HomeController(ArticleAppService articleAppService,
+                          CategoryAppService categoryAppService,
+                          SkillAppService skillAppService,
+                          ProjectAppService projectAppService,
+                          DailyLogAppService dailyLogAppService,
+                          @Qualifier("taskExecutor") Executor taskExecutor) {
+        this.articleAppService = articleAppService;
+        this.categoryAppService = categoryAppService;
+        this.skillAppService = skillAppService;
+        this.projectAppService = projectAppService;
+        this.dailyLogAppService = dailyLogAppService;
+        this.taskExecutor = taskExecutor;
+    }
 
     @GetMapping("/home/aggregated")
     public Result<HomeAggregatedDTO> aggregated() {
         HomeAggregatedDTO dto = new HomeAggregatedDTO();
 
-        // 并行执行独立查询，避免串行阻塞
-        CompletableFuture<List<ArticleDTO>> topArticlesFuture = CompletableFuture.supplyAsync(() -> articleAppService.listTop(3));
-        CompletableFuture<List<CategoryDTO>> categoriesFuture = CompletableFuture.supplyAsync(() -> categoryAppService.listAllActive());
-        CompletableFuture<List<SkillDTO>> skillsFuture = CompletableFuture.supplyAsync(() -> skillAppService.listAllVisible());
-        CompletableFuture<List<ProjectDTO>> projectsFuture = CompletableFuture.supplyAsync(() -> projectAppService.listAllVisible());
-        CompletableFuture<Long> articleCountFuture = CompletableFuture.supplyAsync(() -> articleAppService.countPublished());
-        CompletableFuture<Long> dailyLogCountFuture = CompletableFuture.supplyAsync(() -> dailyLogAppService.count());
+        // 并行执行独立查询，使用 taskExecutor 避免 ForkJoinPool 线程饥饿
+        CompletableFuture<List<ArticleDTO>> topArticlesFuture = CompletableFuture.supplyAsync(() -> articleAppService.listTop(3), taskExecutor);
+        CompletableFuture<List<CategoryDTO>> categoriesFuture = CompletableFuture.supplyAsync(() -> categoryAppService.listAllActive(), taskExecutor);
+        CompletableFuture<List<SkillDTO>> skillsFuture = CompletableFuture.supplyAsync(() -> skillAppService.listAllVisible(), taskExecutor);
+        CompletableFuture<List<ProjectDTO>> projectsFuture = CompletableFuture.supplyAsync(() -> projectAppService.listAllVisible(), taskExecutor);
+        CompletableFuture<Long> articleCountFuture = CompletableFuture.supplyAsync(() -> articleAppService.countPublished(), taskExecutor);
+        CompletableFuture<Long> dailyLogCountFuture = CompletableFuture.supplyAsync(() -> dailyLogAppService.count(), taskExecutor);
 
         // 等待所有查询完成
         CompletableFuture.allOf(
