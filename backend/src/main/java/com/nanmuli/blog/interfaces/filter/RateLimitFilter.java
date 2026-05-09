@@ -10,6 +10,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -31,11 +32,21 @@ public class RateLimitFilter implements Filter {
     @Value("${rate-limit.window-seconds:60}")
     private int windowSeconds;
 
+    @Value("${rate-limit.trusted-proxies:}")
+    private String trustedProxies;
+
+    @Value("${rate-limit.max-tracked-ips:10000}")
+    private int maxTrackedIps;
+
+    private Set<String> trustedProxySet = Set.of();
     private final ConcurrentHashMap<String, RequestCounter> counters = new ConcurrentHashMap<>();
     private ScheduledExecutorService cleaner;
 
     @Override
     public void init(FilterConfig filterConfig) {
+        if (trustedProxies != null && !trustedProxies.isBlank()) {
+            trustedProxySet = Set.of(trustedProxies.split(","));
+        }
         cleaner = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "rate-limit-cleaner");
             t.setDaemon(true);
@@ -55,8 +66,13 @@ public class RateLimitFilter implements Filter {
         }
 
         String clientIp = resolveClientIp(httpRequest);
-        String key = clientIp;
-        RequestCounter counter = counters.computeIfAbsent(key, k -> new RequestCounter(windowSeconds));
+
+        if (counters.size() >= maxTrackedIps && !counters.containsKey(clientIp)) {
+            log.warn("[RateLimit] Tracked IP limit reached ({}), forcing cleanup", maxTrackedIps);
+            cleanup();
+        }
+
+        RequestCounter counter = counters.computeIfAbsent(clientIp, k -> new RequestCounter(windowSeconds));
 
         if (counter.incrementAndGet() > maxRequestsPerMinute) {
             log.warn("[RateLimit] IP {} exceeded {} requests/{}s on {}", clientIp, maxRequestsPerMinute, windowSeconds, path);
@@ -78,26 +94,27 @@ public class RateLimitFilter implements Filter {
     }
 
     private String resolveClientIp(HttpServletRequest request) {
-        String ip = request.getHeader("X-Forwarded-For");
-        if (ip != null && !ip.isBlank() && !"unknown".equalsIgnoreCase(ip)) {
-            return ip.split(",")[0].trim();
+        String remoteAddr = request.getRemoteAddr();
+
+        // 仅在受信任代理后时才读取 X-Forwarded-For
+        if (!trustedProxySet.isEmpty() && trustedProxySet.contains(remoteAddr)) {
+            String xff = request.getHeader("X-Forwarded-For");
+            if (xff != null && !xff.isBlank() && !"unknown".equalsIgnoreCase(xff)) {
+                return xff.split(",")[0].trim();
+            }
+            String realIp = request.getHeader("X-Real-IP");
+            if (realIp != null && !realIp.isBlank() && !"unknown".equalsIgnoreCase(realIp)) {
+                return realIp.trim();
+            }
         }
-        ip = request.getHeader("X-Real-IP");
-        if (ip != null && !ip.isBlank() && !"unknown".equalsIgnoreCase(ip)) {
-            return ip.trim();
-        }
-        return request.getRemoteAddr();
+
+        return remoteAddr;
     }
 
     private void cleanup() {
         long now = System.currentTimeMillis();
         long threshold = now - TimeUnit.SECONDS.toMillis(windowSeconds);
-        counters.entrySet().removeIf(entry -> {
-            if (entry.getValue().isExpired(threshold)) {
-                return true;
-            }
-            return false;
-        });
+        counters.entrySet().removeIf(entry -> entry.getValue().isExpired(threshold));
     }
 
     @Override
@@ -122,8 +139,8 @@ public class RateLimitFilter implements Filter {
             if (now - windowStart > windowMillis) {
                 synchronized (this) {
                     if (now - windowStart > windowMillis) {
-                        count.set(0);
                         windowStart = now;
+                        count.set(0);
                     }
                 }
             }
