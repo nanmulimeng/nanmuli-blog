@@ -20,5 +20,7 @@ public interface WebCollectTaskRepository {
 
     IPage<WebCollectTask> findPageFiltered(IPage<WebCollectTask> page, Long userId, Integer status, String taskType, String keyword);
 
+    Optional<WebCollectTask> findByPythonTaskId(Integer pythonTaskId);
+
     void deleteById(Long id);
 }

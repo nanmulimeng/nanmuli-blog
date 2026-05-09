@@ -73,6 +73,15 @@ public class WebCollectTaskRepositoryImpl implements WebCollectTaskRepository {
     }
 
     @Override
+    public Optional<WebCollectTask> findByPythonTaskId(Integer pythonTaskId) {
+        LambdaQueryWrapper<WebCollectTask> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(WebCollectTask::getPythonTaskId, pythonTaskId)
+               .eq(WebCollectTask::getIsDeleted, false)
+               .last("LIMIT 1");
+        return Optional.ofNullable(taskMapper.selectOne(wrapper));
+    }
+
+    @Override
     public void deleteById(Long id) {
         taskMapper.deleteById(id);
     }

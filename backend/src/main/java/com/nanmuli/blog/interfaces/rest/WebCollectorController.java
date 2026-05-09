@@ -1,12 +1,16 @@
 package com.nanmuli.blog.interfaces.rest;
 
 import com.nanmuli.blog.application.webcollector.WebCollectorAppService;
+import com.nanmuli.blog.application.webcollector.WebCollectSourceAppService;
 import com.nanmuli.blog.application.webcollector.command.ConvertToArticleCommand;
 import com.nanmuli.blog.application.webcollector.command.ConvertToDailyLogCommand;
 import com.nanmuli.blog.application.webcollector.command.CreateCollectTaskCommand;
+import com.nanmuli.blog.application.webcollector.command.CreateSourceCommand;
+import com.nanmuli.blog.application.webcollector.command.UpdateSourceCommand;
 import com.nanmuli.blog.application.webcollector.dto.CollectPageDTO;
 import com.nanmuli.blog.application.webcollector.dto.CollectTaskDTO;
 import com.nanmuli.blog.application.webcollector.dto.CollectTaskListDTO;
+import com.nanmuli.blog.application.webcollector.dto.SourceDTO;
 import com.nanmuli.blog.application.webcollector.query.CollectTaskPageQuery;
 import com.nanmuli.blog.infrastructure.crawler.CrawlerTaskClient;
 import com.nanmuli.blog.shared.exception.BusinessException;
@@ -35,6 +39,7 @@ import java.util.Map;
 public class WebCollectorController {
 
     private final WebCollectorAppService collectorAppService;
+    private final WebCollectSourceAppService sourceAppService;
     private final CrawlerTaskClient crawlerTaskClient;
 
     /**
@@ -71,7 +76,7 @@ public class WebCollectorController {
      */
     @Operation(summary = "查询任务列表")
     @GetMapping("/task/list")
-    public Result<PageResult<CollectTaskListDTO>> listTasks(CollectTaskPageQuery query) {
+    public Result<PageResult<CollectTaskListDTO>> listTasks(@Valid CollectTaskPageQuery query) {
         Long userId = getCurrentUserId();
         PageResult<CollectTaskListDTO> result = collectorAppService.listTasks(query, userId);
         return Result.success(result);
@@ -154,6 +159,54 @@ public class WebCollectorController {
 
     private Long getCurrentUserId() {
         return cn.dev33.satoken.stp.StpUtil.getLoginIdAsLong();
+    }
+
+    // ============== Source Management ==============
+
+    @Operation(summary = "创建订阅源")
+    @PostMapping("/source")
+    public Result<Long> createSource(@Valid @RequestBody CreateSourceCommand command) {
+        Long userId = getCurrentUserId();
+        Long id = sourceAppService.create(command, userId);
+        return Result.success(id);
+    }
+
+    @Operation(summary = "订阅源列表")
+    @GetMapping("/source/list")
+    public Result<List<SourceDTO>> listSources() {
+        Long userId = getCurrentUserId();
+        return Result.success(sourceAppService.listByUser(userId));
+    }
+
+    @Operation(summary = "订阅源详情")
+    @GetMapping("/source/{id}")
+    public Result<SourceDTO> getSource(@PathVariable Long id) {
+        Long userId = getCurrentUserId();
+        return Result.success(sourceAppService.getById(id, userId));
+    }
+
+    @Operation(summary = "更新订阅源")
+    @PutMapping("/source/{id}")
+    public Result<Void> updateSource(@PathVariable Long id, @Valid @RequestBody UpdateSourceCommand command) {
+        Long userId = getCurrentUserId();
+        sourceAppService.update(id, command, userId);
+        return Result.success();
+    }
+
+    @Operation(summary = "删除订阅源")
+    @DeleteMapping("/source/{id}")
+    public Result<Void> deleteSource(@PathVariable Long id) {
+        Long userId = getCurrentUserId();
+        sourceAppService.delete(id, userId);
+        return Result.success();
+    }
+
+    @Operation(summary = "切换订阅源启用状态")
+    @PostMapping("/source/{id}/toggle")
+    public Result<Void> toggleSource(@PathVariable Long id) {
+        Long userId = getCurrentUserId();
+        sourceAppService.toggleActive(id, userId);
+        return Result.success();
     }
 
     // ============== Digest Proxy ==============

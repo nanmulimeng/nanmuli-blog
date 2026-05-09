@@ -46,7 +46,7 @@ public class CategoryController {
 
     @Operation(summary = "分页查询分类列表（管理后台）")
     @GetMapping("/admin/category/page")
-    public Result<PageResult<CategoryDTO>> adminPage(CategoryPageQuery query) {
+    public Result<PageResult<CategoryDTO>> adminPage(@Valid CategoryPageQuery query) {
         return Result.success(categoryAppService.listPage(query));
     }
 

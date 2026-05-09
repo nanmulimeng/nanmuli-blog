@@ -29,6 +29,11 @@ frontend/package-lock.json
 # Backup files
 *.bak
 
+# Environment variables
+**/.env
+backend/.env
+crawler-service/.env
+
 # Build output
 frontend/dist/
 META-INF/

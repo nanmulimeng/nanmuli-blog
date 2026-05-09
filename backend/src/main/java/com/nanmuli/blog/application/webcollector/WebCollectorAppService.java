@@ -383,6 +383,24 @@ public class WebCollectorAppService {
     }
 
     /**
+     * 处理 Python 回调：按 pythonTaskId 找到 Java 任务并同步状态
+     */
+    public void handleCallback(Integer pythonTaskId) {
+        Optional<WebCollectTask> opt = taskRepository.findByPythonTaskId(pythonTaskId);
+        if (opt.isEmpty()) {
+            log.warn("[Callback] No Java task found for pythonTaskId={}", pythonTaskId);
+            return;
+        }
+        WebCollectTask task = opt.get();
+        if (isTerminal(task.getStatus())) {
+            log.debug("[Callback] Task {} already terminal, skipping", task.getId());
+            return;
+        }
+        log.info("[Callback] Syncing task {} from pythonTaskId={}", task.getId(), pythonTaskId);
+        syncFromPythonSilent(task);
+    }
+
+    /**
      * 将 Python 任务 API 响应同步到 MySQL 实体
      */
     private void updateTaskFromPython(WebCollectTask task, Map<String, Object> pythonTask) {

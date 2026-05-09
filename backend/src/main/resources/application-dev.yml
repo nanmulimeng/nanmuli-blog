@@ -2,7 +2,7 @@ spring:
   datasource:
     url: jdbc:postgresql://localhost:5433/nanmuli_blog
     username: postgres
-    password: postgres
+    password: ${DB_PASSWORD:postgres}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 10
@@ -35,6 +35,20 @@ sa-token:
         max-idle: 8
         min-idle: 0
 
+# 缓存 TTL 配置
+blog:
+  cache:
+    ttl:
+      default-duration: 1h
+      article: 30m
+      article-list: 10m
+      article-top: 10m
+      category: 2h
+      tag: 2h
+      config: 24h
+      article-archive: 1h
+      article-stats: 5m
+
 # Web Collector - Python 爬虫服务配置
 crawler:
   service:
@@ -42,6 +56,12 @@ crawler:
     api-key: ${CRAWLER_API_KEY:}
     connect-timeout: ${CRAWLER_CONNECT_TIMEOUT:10000}
     read-timeout: ${CRAWLER_READ_TIMEOUT:30000}
+  callback:
+    api-key: ${CRAWLER_CALLBACK_API_KEY:}
+  http:
+    pool:
+      max-total: 20
+      max-per-route: 10
 
 logging:
   level:
@@ -49,3 +69,8 @@ logging:
     com.nanmuli.blog: debug
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] [%X{traceId}] %-5level %logger{36} - %msg%n"
+
+# CORS 配置
+cors:
+  max-age: 3600
+  allowed-methods: GET,POST,PUT,DELETE,OPTIONS

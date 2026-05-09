@@ -22,7 +22,8 @@ public class DailyLogController {
     public Result<PageResult<DailyLogDTO>> list(
             @RequestParam(defaultValue = "1") int current,
             @RequestParam(defaultValue = "10") int size) {
-        return Result.success(dailyLogAppService.listPublicPage(current, size));
+        int safeSize = Math.min(size, 100);
+        return Result.success(dailyLogAppService.listPublicPage(current, safeSize));
     }
 
     @GetMapping("/daily-log/{id}")
@@ -51,7 +52,8 @@ public class DailyLogController {
     public Result<PageResult<DailyLogDTO>> adminList(
             @RequestParam(defaultValue = "1") int current,
             @RequestParam(defaultValue = "10") int size) {
-        return Result.success(dailyLogAppService.listPage(current, size));
+        int safeSize = Math.min(size, 100);
+        return Result.success(dailyLogAppService.listPage(current, safeSize));
     }
 
     @GetMapping("/admin/daily-log/{id}")

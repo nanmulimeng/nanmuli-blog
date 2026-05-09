@@ -36,14 +36,17 @@ public class CrawlerTaskClient {
             @Value("${crawler.service.base-url:http://localhost:8500}") String baseUrl,
             @Value("${crawler.service.api-key:}") String apiKey,
             @Value("${crawler.service.connect-timeout:10000}") int connectTimeout,
-            @Value("${crawler.service.read-timeout:30000}") int readTimeout) {
+            @Value("${crawler.service.read-timeout:30000}") int readTimeout,
+            @Value("${crawler.http.pool.max-total:20}") int maxTotal,
+            @Value("${crawler.http.pool.max-per-route:10}") int maxPerRoute,
+            ObjectMapper objectMapper) {
         this.baseUrl = baseUrl;
         this.apiKey = apiKey;
-        this.objectMapper = new ObjectMapper();
+        this.objectMapper = objectMapper;
 
         PoolingHttpClientConnectionManager cm = new PoolingHttpClientConnectionManager();
-        cm.setMaxTotal(20);
-        cm.setDefaultMaxPerRoute(10);
+        cm.setMaxTotal(maxTotal);
+        cm.setDefaultMaxPerRoute(maxPerRoute);
 
         CloseableHttpClient httpClient = HttpClients.custom()
                 .setConnectionManager(cm)

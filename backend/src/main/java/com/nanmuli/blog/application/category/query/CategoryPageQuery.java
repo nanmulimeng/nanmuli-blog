@@ -1,21 +1,15 @@
 package com.nanmuli.blog.application.category.query;
 
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
+import com.nanmuli.blog.shared.query.BasePageQuery;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 
 /**
  * 分类分页查询参数
  */
 @Data
-public class CategoryPageQuery {
-
-    @Min(value = 1, message = "页码不能小于1")
-    private Long current = 1L;
-
-    @Min(value = 1, message = "每页数量不能小于1")
-    @Max(value = 100, message = "每页数量不能超过100")
-    private Long size = 10L;
+@EqualsAndHashCode(callSuper = false)
+public class CategoryPageQuery extends BasePageQuery {
 
     /**
      * 父分类ID（查询指定父分类下的子分类）

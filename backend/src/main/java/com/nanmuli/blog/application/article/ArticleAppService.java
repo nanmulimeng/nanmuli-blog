@@ -9,7 +9,6 @@ import com.nanmuli.blog.application.article.dto.ArticleArchiveDTO;
 import com.nanmuli.blog.application.article.dto.ArticleDTO;
 import com.nanmuli.blog.application.article.dto.ArticleStatsDTO;
 import com.nanmuli.blog.application.article.query.ArticlePageQuery;
-import com.nanmuli.blog.application.category.CategoryAppService;
 import com.nanmuli.blog.application.category.dto.CategoryDTO;
 import com.nanmuli.blog.domain.article.Article;
 import com.nanmuli.blog.domain.article.ArticleId;
@@ -29,6 +28,7 @@ import com.nanmuli.blog.shared.util.MarkdownUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.util.StringUtils;
 import org.springframework.cache.annotation.CacheConfig;
@@ -59,7 +59,6 @@ public class ArticleAppService {
     private final ArticleViewRecordRepository articleViewRecordRepository;
     private final ArticleVisitLogRepository articleVisitLogRepository;
     private final CategoryRepository categoryRepository;
-    private final CategoryAppService categoryAppService;
     private final ApplicationEventPublisher eventPublisher;
     private final MarkdownUtil markdownUtil;
 
@@ -78,8 +77,8 @@ public class ArticleAppService {
         Article article = new Article();
         BeanUtils.copyProperties(command, article);
 
-        // slug 由文章ID生成，先设置临时值，保存后再更新
-        article.setSlug("temp-" + System.currentTimeMillis());
+        // 使用UUID作为slug，一次性保存，避免INSERT后再UPDATE的双重操作
+        article.setSlug(java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16));
         article.calculateWordCount();
 
         // 设置当前登录用户
@@ -108,15 +107,19 @@ public class ArticleAppService {
             article.publish(); // 默认发布
         }
 
-        articleRepository.save(article);
-
-        // 使用文章ID作为slug，确保唯一性
-        article.setSlug(String.valueOf(article.getId()));
-        articleRepository.save(article);
+        // TODO: 数据库层应添加 slug 唯一索引（如 ALTER TABLE article ADD UNIQUE INDEX uk_slug (slug)）
+        // UUID slug 碰撞概率极低，但仍需防御性处理
+        try {
+            articleRepository.save(article);
+        } catch (DuplicateKeyException e) {
+            log.warn("slug冲突，重新生成: articleId={}", article.getId());
+            article.setSlug(java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16));
+            articleRepository.save(article);
+        }
 
         // 更新分类文章数
         if (article.getCategoryId() != null) {
-            categoryAppService.refreshArticleCount(article.getCategoryId());
+            refreshCategoryArticleCount(article.getCategoryId());
         }
 
         // 发布文章创建事件
@@ -198,10 +201,10 @@ public class ArticleAppService {
         Long newCategoryId = article.getCategoryId();
         if (!java.util.Objects.equals(oldCategoryId, newCategoryId)) {
             if (oldCategoryId != null) {
-                categoryAppService.refreshArticleCount(oldCategoryId);
+                refreshCategoryArticleCount(oldCategoryId);
             }
             if (newCategoryId != null) {
-                categoryAppService.refreshArticleCount(newCategoryId);
+                refreshCategoryArticleCount(newCategoryId);
             }
         }
     }
@@ -265,13 +268,10 @@ public class ArticleAppService {
     }
 
     /**
-     * 根据关键词查找匹配的分类ID（包括分类名匹配）
+     * 根据关键词查找匹配的分类ID（使用SQL LIKE查询，避免全表加载）
      */
     private List<Long> findCategoryIdsByKeyword(String keyword) {
-        return categoryRepository.findAll().stream()
-                .filter(cat -> cat.getName() != null && cat.getName().toLowerCase().contains(keyword.toLowerCase()))
-                .map(cat -> cat.getId())
-                .toList();
+        return categoryRepository.findIdsByNameLike(keyword);
     }
 
     @Transactional(readOnly = true)
@@ -305,7 +305,7 @@ public class ArticleAppService {
 
         // 更新分类文章数
         if (categoryId != null) {
-            categoryAppService.refreshArticleCount(categoryId);
+            refreshCategoryArticleCount(categoryId);
         }
     }
 
@@ -456,6 +456,23 @@ public class ArticleAppService {
         if (!category.isLeaf()) {
             throw new BusinessException("只能选择叶子分类关联文章");
         }
+    }
+
+    /**
+     * 刷新指定分类的文章数量
+     * 原 CategoryAppService.refreshArticleCount() 的内联实现，避免 AppService 跨调用耦合
+     */
+    private void refreshCategoryArticleCount(Long categoryId) {
+        if (categoryId == null) {
+            return;
+        }
+        Category category = categoryRepository.findById(categoryId).orElse(null);
+        if (category == null) {
+            return;
+        }
+        Long count = articleRepository.countByCategoryId(categoryId);
+        category.setArticleCount(count.intValue());
+        categoryRepository.save(category);
     }
 
     /**

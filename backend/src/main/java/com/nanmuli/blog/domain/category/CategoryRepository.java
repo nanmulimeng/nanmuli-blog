@@ -45,4 +45,9 @@ public interface CategoryRepository {
      * 根据ID集合批量查询分类
      */
     List<Category> findAllById(Collection<Long> ids);
+
+    /**
+     * 根据名称模糊匹配查询分类ID列表（避免全表加载）
+     */
+    List<Long> findIdsByNameLike(String keyword);
 }

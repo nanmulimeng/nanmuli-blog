@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 @Tag(name = "首页聚合")
 @RestController
@@ -35,17 +36,33 @@ public class HomeController {
     public Result<HomeAggregatedDTO> aggregated() {
         HomeAggregatedDTO dto = new HomeAggregatedDTO();
 
-        dto.setLatestArticles(articleAppService.listTop(5));
-        dto.setTopArticles(articleAppService.listTop(3));
-        dto.setHotArticles(articleAppService.listTop(5));
-        dto.setCategories(categoryAppService.listAllActive());
-        dto.setSkills(skillAppService.listAllVisible());
-        dto.setProjects(projectAppService.listAllVisible());
+        // 并行执行独立查询，避免串行阻塞
+        CompletableFuture<List<ArticleDTO>> topArticlesFuture = CompletableFuture.supplyAsync(() -> articleAppService.listTop(3));
+        CompletableFuture<List<CategoryDTO>> categoriesFuture = CompletableFuture.supplyAsync(() -> categoryAppService.listAllActive());
+        CompletableFuture<List<SkillDTO>> skillsFuture = CompletableFuture.supplyAsync(() -> skillAppService.listAllVisible());
+        CompletableFuture<List<ProjectDTO>> projectsFuture = CompletableFuture.supplyAsync(() -> projectAppService.listAllVisible());
+        CompletableFuture<Long> articleCountFuture = CompletableFuture.supplyAsync(() -> articleAppService.countPublished());
+        CompletableFuture<Long> dailyLogCountFuture = CompletableFuture.supplyAsync(() -> dailyLogAppService.count());
+
+        // 等待所有查询完成
+        CompletableFuture.allOf(
+                topArticlesFuture, categoriesFuture, skillsFuture,
+                projectsFuture, articleCountFuture, dailyLogCountFuture
+        ).join();
+
+        // latestArticles 和 hotArticles 复用 listTop(5) 的缓存结果
+        List<ArticleDTO> latestAndHot = articleAppService.listTop(5);
+        dto.setLatestArticles(latestAndHot);
+        dto.setHotArticles(latestAndHot);
+        dto.setTopArticles(topArticlesFuture.join());
+        dto.setCategories(categoriesFuture.join());
+        dto.setSkills(skillsFuture.join());
+        dto.setProjects(projectsFuture.join());
 
         HomeAggregatedDTO.SiteStatsDTO stats = new HomeAggregatedDTO.SiteStatsDTO();
-        stats.setArticleCount(articleAppService.countPublished());
+        stats.setArticleCount(articleCountFuture.join());
         stats.setProjectCount((long) dto.getProjects().size());
-        stats.setDailyLogCount(dailyLogAppService.count());
+        stats.setDailyLogCount(dailyLogCountFuture.join());
         dto.setStats(stats);
 
         return Result.success(dto);

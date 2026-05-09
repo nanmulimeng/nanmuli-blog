@@ -27,7 +27,7 @@ public class ArticleController {
     private final ArticleAppService articleAppService;
 
     @GetMapping("/article/list")
-    public Result<PageResult<ArticleDTO>> list(ArticlePageQuery query) {
+    public Result<PageResult<ArticleDTO>> list(@Valid ArticlePageQuery query) {
         return Result.success(articleAppService.listPublished(query));
     }
 
@@ -65,7 +65,7 @@ public class ArticleController {
     }
 
     @GetMapping("/admin/article/list")
-    public Result<PageResult<ArticleDTO>> adminList(ArticlePageQuery query) {
+    public Result<PageResult<ArticleDTO>> adminList(@Valid ArticlePageQuery query) {
         return Result.success(articleAppService.listAll(query));
     }
 

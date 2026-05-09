@@ -1,6 +1,7 @@
 package com.nanmuli.blog.infrastructure.persistence.category;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.StringUtils;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
@@ -142,6 +143,21 @@ public class CategoryRepositoryImpl implements CategoryRepository {
         wrapper.in(Category::getId, ids)
                .eq(Category::getIsDeleted, false);
         return categoryMapper.selectList(wrapper);
+    }
+
+    @Override
+    public List<Long> findIdsByNameLike(String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return List.of();
+        }
+        String escapedKeyword = escapeLikeKeyword(keyword);
+        QueryWrapper<Category> wrapper = Wrappers.query();
+        wrapper.select("id")
+               .eq("is_deleted", false)
+               .like("name", escapedKeyword.substring(1, escapedKeyword.length() - 1));
+        return categoryMapper.selectList(wrapper).stream()
+                .map(Category::getId)
+                .toList();
     }
 
     /**

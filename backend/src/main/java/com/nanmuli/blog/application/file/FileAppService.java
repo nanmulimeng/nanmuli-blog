@@ -27,25 +27,32 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class FileAppService {
 
-    // 最大文件大小：10MB
-    private static final long MAX_FILE_SIZE = 10 * 1024 * 1024;
-
-    private static final Set<String> ALLOWED_EXTENSIONS = Set.of(
-            "jpg", "jpeg", "png", "gif", "webp", "svg",
-            "txt", "md", "pdf",
-            "zip", "rar", "7z"
-    );
-
-    private static final Set<String> ALLOWED_MIME_TYPES = Set.of(
-            "image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml",
-            "text/plain", "text/markdown", "application/pdf",
-            "application/zip", "application/x-rar-compressed", "application/x-7z-compressed"
+    private static final Map<String, String> EXTENSION_TO_MIME = Map.ofEntries(
+            Map.entry("jpg", "image/jpeg"), Map.entry("jpeg", "image/jpeg"),
+            Map.entry("png", "image/png"), Map.entry("gif", "image/gif"),
+            Map.entry("webp", "image/webp"), Map.entry("svg", "image/svg+xml"),
+            Map.entry("txt", "text/plain"), Map.entry("md", "text/markdown"),
+            Map.entry("pdf", "application/pdf"),
+            Map.entry("zip", "application/zip"), Map.entry("rar", "application/x-rar-compressed"),
+            Map.entry("7z", "application/x-7z-compressed")
     );
 
     private final FileRepository fileRepository;
 
     @Value("${blog.file.upload-path:./uploads}")
     private String uploadPath;
+
+    @Value("${blog.file.access-url:/uploads/}")
+    private String accessUrl;
+
+    @Value("${blog.file.max-size:10485760}")
+    private long maxFileSize;
+
+    @Value("${blog.file.allowed-extensions:jpg,jpeg,png,gif,webp,svg,txt,md,pdf,zip,rar,7z}")
+    private String allowedExtensionsConfig;
+
+    @Value("${blog.file.storage-type:local}")
+    private String storageType;
 
     // 常见文件类型的Magic Number
     private static final Map<String, byte[]> MAGIC_NUMBERS = Map.of(
@@ -57,6 +64,13 @@ public class FileAppService {
             "webp", new byte[]{0x52, 0x49, 0x46, 0x46}
     );
 
+    /**
+     * 解析配置的允许扩展名为 Set
+     */
+    private Set<String> getAllowedExtensions() {
+        return Set.of(allowedExtensionsConfig.split(","));
+    }
+
     @Transactional
     public FileDTO upload(UploadFileCommand command) {
         String originalName = command.getOriginalName();
@@ -65,13 +79,14 @@ public class FileAppService {
         }
 
         String extension = getExtension(originalName).toLowerCase(Locale.ROOT);
-        if (!ALLOWED_EXTENSIONS.contains(extension)) {
+        Set<String> allowedExtensions = getAllowedExtensions();
+        if (!allowedExtensions.contains(extension)) {
             throw new BusinessException("不支持的文件类型");
         }
 
         // 文件大小限制检查
-        if (command.getFileSize() > MAX_FILE_SIZE) {
-            throw new BusinessException("文件大小超过限制（最大10MB）");
+        if (command.getFileSize() > maxFileSize) {
+            throw new BusinessException("文件大小超过限制");
         }
 
         // Magic Number校验：验证文件实际类型与扩展名是否一致
@@ -80,8 +95,14 @@ public class FileAppService {
         }
 
         String contentType = command.getContentType();
-        if (contentType != null && !ALLOWED_MIME_TYPES.contains(contentType.toLowerCase(Locale.ROOT))) {
-            throw new BusinessException("不支持的文件格式");
+        if (contentType != null) {
+            String expectedMime = EXTENSION_TO_MIME.get(extension);
+            if (expectedMime != null && !expectedMime.equalsIgnoreCase(contentType)) {
+                // 扩展名与 Content-Type 不匹配时检查是否在已知 MIME 映射中
+                if (!EXTENSION_TO_MIME.containsValue(contentType.toLowerCase(Locale.ROOT))) {
+                    throw new BusinessException("不支持的文件格式");
+                }
+            }
         }
 
         String md5 = DigestUtils.md5DigestAsHex(command.getContent());
@@ -109,12 +130,12 @@ public class FileAppService {
         blogFile.setOriginalName(originalName);
         blogFile.setFileName(fileName);
         blogFile.setFilePath(targetPath.toString());
-        blogFile.setFileUrl("/uploads/" + fileName);
+        blogFile.setFileUrl(accessUrl + fileName);
         blogFile.setFileSize(command.getFileSize());
         blogFile.setMimeType(contentType);
         blogFile.setFileType(contentType);
         blogFile.setMd5(md5);
-        blogFile.setStorageType("local");
+        blogFile.setStorageType(storageType);
         fileRepository.save(blogFile);
 
         log.info("文件上传成功, fileName={}, md5={}, size={}", fileName, md5, command.getFileSize());
