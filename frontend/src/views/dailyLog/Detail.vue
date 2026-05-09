@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getDailyLogById, getDailyLogList } from '@/api/dailyLog'
 import { formatDateCN, formatDateTimeCN, formatTimeAgoCN } from '@/utils/format'
@@ -29,8 +29,9 @@ async function fetchLog(): Promise<void> {
 
   loading.value = true
   try {
-    log.value = await getDailyLogById(id)
-    fetchRelatedLogs()
+    const fetched = await getDailyLogById(id)
+    log.value = fetched
+    fetchRelatedLogs(fetched.id)
   } catch {
     router.push('/404')
   } finally {
@@ -39,17 +40,23 @@ async function fetchLog(): Promise<void> {
 }
 
 // 获取相关日志（相近日期或相同心情）
-async function fetchRelatedLogs(): Promise<void> {
-  if (!log.value) return
+async function fetchRelatedLogs(currentId?: string): Promise<void> {
+  const excludeId = currentId || log.value?.id
+  if (!excludeId) return
   try {
     const res = await getDailyLogList({ current: 1, size: 5 })
     relatedLogs.value = res.records
-      .filter((l: DailyLog) => l.id !== log.value?.id)
+      .filter((l: DailyLog) => l.id !== excludeId)
       .slice(0, 3)
   } catch {
     // ignore
   }
 }
+
+// 路由参数变化时重新获取数据（同组件复用场景）
+watch(() => route.params.id, (newId) => {
+  if (newId) fetchLog()
+})
 
 onMounted(fetchLog)
 </script>

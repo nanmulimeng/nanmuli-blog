@@ -7,19 +7,16 @@ import router from '@/router'
 export const useUserStore = defineStore(
   'user',
   () => {
-    // Cookie模式：Token由浏览器自动管理，不存储在localStorage
     const isAuthenticated = ref<boolean>(false)
     const userInfo = ref<UserInfo | null>(null)
 
     const isLoggedIn = computed(() => isAuthenticated.value)
 
     async function loginAction(form: LoginForm): Promise<void> {
-      // Cookie模式：后端设置httpOnly Cookie，前端无需处理Token
       await login(form)
 
       isAuthenticated.value = true
 
-      // 登录成功后获取用户信息
       try {
         const user = await getCurrentUser()
         userInfo.value = user
@@ -34,7 +31,6 @@ export const useUserStore = defineStore(
       } finally {
         isAuthenticated.value = false
         userInfo.value = null
-        // Cookie模式下Token由后端清除，前端无需操作
         router.push('/login')
       }
     }
@@ -43,7 +39,6 @@ export const useUserStore = defineStore(
       userInfo.value = info
     }
 
-    // 检查登录状态（页面刷新时调用）
     async function checkAuthStatus(): Promise<boolean> {
       try {
         const user = await getCurrentUser()
@@ -55,6 +50,23 @@ export const useUserStore = defineStore(
         userInfo.value = null
         return false
       }
+    }
+
+    // 跨 Tab 同步：监听 localStorage 变化，当其他 Tab 登出时同步清除状态
+    if (typeof window !== 'undefined') {
+      window.addEventListener('storage', (e) => {
+        if (e.key === 'user') {
+          try {
+            const parsed = e.newValue ? JSON.parse(e.newValue) : null
+            if (!parsed?.isAuthenticated) {
+              isAuthenticated.value = false
+              userInfo.value = null
+            }
+          } catch {
+            isAuthenticated.value = false
+          }
+        }
+      })
     }
 
     return {

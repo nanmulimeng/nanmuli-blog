@@ -15,7 +15,11 @@ const pendingControllers = new Map<string, AbortController>()
 
 // 生成请求唯一标识
 function generateRequestKey(config: AxiosRequestConfig): string {
-  return `${config.method}_${config.url}_${JSON.stringify(config.params)}_${JSON.stringify(config.data)}`
+  const method = config.method?.toUpperCase() || 'GET'
+  const url = config.url || ''
+  const params = config.params ? JSON.stringify(config.params) : ''
+  const data = config.data ? JSON.stringify(config.data) : ''
+  return `${method}_${url}_${params}_${data}`
 }
 
 const request: AxiosInstance = axios.create({

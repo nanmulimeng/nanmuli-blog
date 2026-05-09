@@ -2,7 +2,7 @@ import { ref, onUnmounted } from 'vue'
 import { POLLING_INTERVAL } from '@/constants/api'
 
 /**
- * 轮询 composable — 统一管理 setInterval 轮询逻辑
+ * 轮询 composable — 使用递归 setTimeout 避免慢网络下请求堆叠
  *
  * @param fn - 要定时执行的异步函数
  * @param intervalMs - 轮询间隔（毫秒），默认 5000
@@ -18,37 +18,50 @@ export function usePolling(
   },
 ) {
   const isPolling = ref(false)
-  let timer: ReturnType<typeof setInterval> | null = null
+  let timer: ReturnType<typeof setTimeout> | null = null
+  let running = false
 
   const immediate = options?.immediate ?? true
   const condition = options?.condition
 
   async function poll(): Promise<void> {
+    if (running) return
     if (condition && !condition()) {
-      // 条件不满足时自动停止
       stop()
       return
     }
-    if (isPolling.value) return
+    running = true
     isPolling.value = true
     try {
       await fn()
     } finally {
+      running = false
       isPolling.value = false
+    }
+
+    // 执行完成后调度下一轮（而非固定间隔，避免请求堆叠）
+    if (timer !== null) {
+      timer = setTimeout(poll, intervalMs) as unknown as ReturnType<typeof setTimeout>
     }
   }
 
   function start(): void {
-    if (timer) return
-    if (immediate) poll()
-    timer = setInterval(poll, intervalMs)
+    if (timer !== null) return
+    if (immediate) {
+      poll()
+      // poll 完成后会自动调度下一轮
+    } else {
+      timer = setTimeout(poll, intervalMs) as unknown as ReturnType<typeof setTimeout>
+    }
   }
 
   function stop(): void {
-    if (timer) {
-      clearInterval(timer)
+    if (timer !== null) {
+      clearTimeout(timer)
       timer = null
     }
+    running = false
+    isPolling.value = false
   }
 
   onUnmounted(() => stop())
