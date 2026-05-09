@@ -114,7 +114,7 @@ onMounted(fetchData)
             v-if="row.mood"
             class="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs"
             :style="{
-              backgroundColor: MOOD_MAP[row.mood]?.color + '20' || MOOD_DEFAULT_COLOR + '20',
+              backgroundColor: (MOOD_MAP[row.mood]?.color || MOOD_DEFAULT_COLOR) + '20',
               color: MOOD_MAP[row.mood]?.color || MOOD_DEFAULT_COLOR
             }"
           >

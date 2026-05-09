@@ -149,7 +149,7 @@ onMounted(fetchLogs)
                 <!-- Timeline Dot -->
                 <div
                   class="absolute left-0 w-8 h-8 rounded-full flex items-center justify-center z-10"
-                  :style="{ backgroundColor: MOOD_MAP[log.mood]?.color + '20' || 'var(--theme-surface-tertiary)' }"
+                  :style="{ backgroundColor: (MOOD_MAP[log.mood]?.color || 'var(--theme-surface-tertiary)') + '20' }"
                 >
                   <el-icon
                     :size="16"

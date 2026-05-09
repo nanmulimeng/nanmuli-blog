@@ -80,7 +80,7 @@ onMounted(fetchLog)
           <div class="flex items-center gap-4 mb-6">
             <div
               class="w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg"
-              :style="{ backgroundColor: MOOD_MAP[log.mood]?.color + '20' || 'var(--theme-surface-tertiary)' }"
+              :style="{ backgroundColor: (MOOD_MAP[log.mood]?.color || 'var(--theme-surface-tertiary)') + '20' }"
             >
               <el-icon
                 :size="32"
@@ -173,7 +173,7 @@ onMounted(fetchLog)
             >
               <div
                 class="w-10 h-10 rounded-xl flex items-center justify-center"
-                :style="{ backgroundColor: MOOD_MAP[related.mood]?.color + '20' || 'var(--theme-surface-tertiary)' }"
+                :style="{ backgroundColor: (MOOD_MAP[related.mood]?.color || 'var(--theme-surface-tertiary)') + '20' }"
               >
                 <el-icon
                   :size="18"
