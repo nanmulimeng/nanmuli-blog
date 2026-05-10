@@ -26,5 +26,7 @@ public interface DailyLogRepository {
 
     Long count();
 
+    Long countPublic();
+
     void deleteById(Long id);
 }

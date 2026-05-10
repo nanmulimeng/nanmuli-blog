@@ -72,4 +72,11 @@ public class DailyLogRepositoryImpl implements DailyLogRepository {
         LambdaQueryWrapper<DailyLog> wrapper = Wrappers.lambdaQuery();
         return dailyLogMapper.selectCount(wrapper);
     }
+
+    @Override
+    public Long countPublic() {
+        LambdaQueryWrapper<DailyLog> wrapper = Wrappers.lambdaQuery();
+        wrapper.eq(DailyLog::getIsPublic, true);
+        return dailyLogMapper.selectCount(wrapper);
+    }
 }

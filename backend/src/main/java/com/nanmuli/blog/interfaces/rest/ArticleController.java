@@ -46,6 +46,11 @@ public class ArticleController {
         return Result.success(articleAppService.listTop(limit));
     }
 
+    @GetMapping("/article/count")
+    public Result<Long> count() {
+        return Result.success(articleAppService.countPublished());
+    }
+
     @PostMapping("/admin/article")
     public Result<Long> create(@Valid @RequestBody CreateArticleCommand command) {
         return Result.success(articleAppService.create(command));
@@ -72,14 +77,6 @@ public class ArticleController {
     @GetMapping("/article/archive")
     public Result<List<ArticleArchiveDTO>> archive() {
         return Result.success(articleAppService.getArchive());
-    }
-
-    @Deprecated(since = "1.1", forRemoval = true)
-    @PostMapping("/article/{slug}/view")
-    public Result<Void> incrementViewCount(@PathVariable String slug) {
-        //noinspection deprecation
-        articleAppService.incrementViewCount(slug);
-        return Result.success();
     }
 
     @PostMapping("/article/{articleId}/record-view")

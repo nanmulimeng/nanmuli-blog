@@ -1,6 +1,8 @@
 package com.nanmuli.blog.domain.article;
 
 import java.time.LocalDate;
+import java.util.Collection;
+import java.util.Map;
 
 public interface ArticleVisitLogRepository {
 
@@ -28,4 +30,10 @@ public interface ArticleVisitLogRepository {
      * 统计所有文章今日访问量
      */
     Long countTodayVisits();
+
+    /**
+     * 批量统计多个文章的总访问量（PV）
+     * @return Map<articleId, count>
+     */
+    Map<Long, Long> countByArticleIds(Collection<Long> articleIds);
 }

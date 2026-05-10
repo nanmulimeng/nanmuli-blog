@@ -38,8 +38,6 @@ public interface ArticleRepository {
 
     Long countAll();
 
-    Long sumViewCount();
-
     void deleteById(ArticleId id);
 
     void increaseViewCount(ArticleId id);
@@ -74,4 +72,9 @@ public interface ArticleRepository {
      * 管理端关键词搜索（搜索所有状态的文章，包含content字段）
      */
     IPage<Article> findAllByKeyword(String keyword, List<Long> categoryIds, IPage<Article> page);
+
+    /**
+     * pg_trgm 模糊搜索（FTS精确搜索无结果时的后备，支持部分匹配和拼写容错）
+     */
+    IPage<Article> findPublishedByTrigram(String keyword, List<Long> categoryIds, IPage<Article> page);
 }

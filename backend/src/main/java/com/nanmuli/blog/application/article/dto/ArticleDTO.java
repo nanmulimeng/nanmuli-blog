@@ -24,7 +24,8 @@ public class ArticleDTO implements Serializable {
     private String cover;
     private CategoryDTO category;
     private List<CategoryDTO> categoryPath;  // 分类层级路径
-    private Integer viewCount;
+    private Integer visitorCount;  // UV：独立访客数
+    private Integer visitCount;    // PV：总访问次数
     private Integer likeCount;
     private Integer wordCount;
     private Integer readingTime;

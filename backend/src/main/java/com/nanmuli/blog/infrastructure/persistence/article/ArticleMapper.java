@@ -29,9 +29,6 @@ public interface ArticleMapper extends BaseMapper<Article> {
             """)
     List<Map<String, Object>> selectArchiveByYearMonth();
 
-    @Select("SELECT COALESCE(SUM(view_count), 0) FROM article WHERE is_deleted = false")
-    Long sumViewCount();
-
     /**
      * 批量查询多个分类的文章数量
      * 只统计已发布(status=1)且未删除的文章
@@ -59,11 +56,18 @@ public interface ArticleMapper extends BaseMapper<Article> {
                   </foreach>
                 </if>
               )
-            <choose>
-              <when test='"oldest".equals(sort)'>ORDER BY is_top DESC, publish_time ASC</when>
-              <when test='"popular".equals(sort)'>ORDER BY is_top DESC, view_count DESC</when>
-              <otherwise>ORDER BY is_top DESC, publish_time DESC</otherwise>
-            </choose>
+            ORDER BY is_top DESC,
+              ts_rank(
+                to_tsvector('chinese_zh',
+                    coalesce(title, '') || ' ' || coalesce(summary, '') || ' ' || coalesce(content, '')
+                ),
+                plainto_tsquery('chinese_zh', #{keyword})
+              ) DESC
+              <choose>
+                <when test='"oldest".equals(sort)'>, publish_time ASC</when>
+                <when test='"popular".equals(sort)'>, view_count DESC</when>
+                <otherwise>, publish_time DESC</otherwise>
+              </choose>
             </script>
             """)
     IPage<Article> searchPublishedByFts(IPage<Article> page,
@@ -89,10 +93,45 @@ public interface ArticleMapper extends BaseMapper<Article> {
                   </foreach>
                 </if>
               )
-            ORDER BY created_at DESC
+            ORDER BY
+              ts_rank(
+                to_tsvector('chinese_zh',
+                    coalesce(title, '') || ' ' || coalesce(summary, '') || ' ' || coalesce(content, '')
+                ),
+                plainto_tsquery('chinese_zh', #{keyword})
+              ) DESC,
+              created_at DESC
             </script>
             """)
     IPage<Article> searchAllByFts(IPage<Article> page,
                                   @Param("keyword") String keyword,
                                   @Param("categoryIds") List<Long> categoryIds);
+
+    /**
+     * pg_trgm 模糊搜索 - 已发布文章
+     * word_similarity 比较查询词与文档中任意连续子串的相似度，支持部分匹配和拼写容错
+     * 用于 FTS 精确搜索无结果时的后备
+     */
+    @Select("""
+            <script>
+            SELECT *, word_similarity(#{keyword},
+                coalesce(title, '') || ' ' || coalesce(summary, '') || ' ' || coalesce(content, '')
+            ) AS trgm_sim
+            FROM article
+            WHERE status = 1 AND is_deleted = false
+              AND word_similarity(#{keyword},
+                  coalesce(title, '') || ' ' || coalesce(summary, '') || ' ' || coalesce(content, '')
+              ) &gt; 0.15
+              <if test="categoryIds != null and categoryIds.size() > 0">
+                AND category_id IN
+                <foreach collection="categoryIds" item="id" open="(" separator="," close=")">
+                  #{id}
+                </foreach>
+              </if>
+            ORDER BY trgm_sim DESC
+            </script>
+            """)
+    IPage<Article> searchPublishedByTrigram(IPage<Article> page,
+                                            @Param("keyword") String keyword,
+                                            @Param("categoryIds") List<Long> categoryIds);
 }

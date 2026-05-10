@@ -57,7 +57,7 @@ public class HomeController {
         CompletableFuture<List<SkillDTO>> skillsFuture = CompletableFuture.supplyAsync(() -> skillAppService.listAllVisible(), taskExecutor);
         CompletableFuture<List<ProjectDTO>> projectsFuture = CompletableFuture.supplyAsync(() -> projectAppService.listAllVisible(), taskExecutor);
         CompletableFuture<Long> articleCountFuture = CompletableFuture.supplyAsync(() -> articleAppService.countPublished(), taskExecutor);
-        CompletableFuture<Long> dailyLogCountFuture = CompletableFuture.supplyAsync(() -> dailyLogAppService.count(), taskExecutor);
+        CompletableFuture<Long> dailyLogCountFuture = CompletableFuture.supplyAsync(() -> dailyLogAppService.countPublic(), taskExecutor);
 
         // 等待所有查询完成
         CompletableFuture.allOf(

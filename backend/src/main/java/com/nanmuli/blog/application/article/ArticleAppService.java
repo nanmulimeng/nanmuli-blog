@@ -37,7 +37,6 @@ import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Caching;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -254,6 +253,11 @@ public class ArticleAppService {
             // 先查询匹配关键词的分类ID
             List<Long> matchingCategoryIds = findCategoryIdsByKeyword(query.getKeyword());
             result = articleRepository.findPublishedByKeyword(query.getKeyword(), matchingCategoryIds, page, query.getSort());
+
+            // FTS无结果时回退到pg_trgm模糊搜索（支持部分匹配和拼写容错）
+            if (result.getTotal() == 0) {
+                result = articleRepository.findPublishedByTrigram(query.getKeyword(), matchingCategoryIds, page);
+            }
         } else if (query.getCategoryId() != null) {
             // 获取该分类及其所有子分类的ID
             List<Long> categoryIds = getCategoryAndChildrenIds(query.getCategoryId());
@@ -277,7 +281,7 @@ public class ArticleAppService {
     @Transactional(readOnly = true)
     @Cacheable(cacheNames = "article", key = "'top-' + #limit")
     public List<ArticleDTO> listTop(int limit) {
-        return articleRepository.findTopArticles(limit).stream().map(this::toDTO).toList();
+        return batchConvertToDTO(articleRepository.findTopArticles(limit));
     }
 
     @Transactional
@@ -307,23 +311,6 @@ public class ArticleAppService {
         if (categoryId != null) {
             refreshCategoryArticleCount(categoryId);
         }
-    }
-
-    /**
-     * 增加文章浏览量（已废弃，请使用 recordView 方法）
-     * 注意：此方法与 recordView 重复计数，请勿同时调用
-     */
-    @Deprecated(since = "1.1", forRemoval = true)
-    @Async
-    @Transactional
-    public void incrementViewCount(String slug) {
-        articleRepository.findBySlug(slug).ifPresent(article -> {
-            articleRepository.increaseViewCount(new ArticleId(article.getId()));
-            // 异步更新后清除文章缓存，确保阅读数一致性
-            // 注意：由于@Async方法无法使用@CacheEvict，缓存将在TTL(30分钟)后自动失效
-            // 如需实时一致性，可注入CacheManager手动清除：
-            // cacheManager.getCache("article").evict(article.getSlug());
-        });
     }
 
     /**
@@ -505,20 +492,24 @@ public class ArticleAppService {
 
         // 5. 批量查询 UV 统计（避免 N+1）
         Set<Long> articleIds = articles.stream().map(Article::getId).collect(Collectors.toSet());
-        Map<Long, Long> viewCountMap = articleViewRecordRepository.countUniqueVisitorsByArticleIds(articleIds);
+        Map<Long, Long> visitorCountMap = articleViewRecordRepository.countUniqueVisitorsByArticleIds(articleIds);
 
-        // 6. 内存组装DTO
+        // 6. 批量查询 PV 统计（避免 N+1）
+        Map<Long, Long> visitCountMap = articleVisitLogRepository.countByArticleIds(articleIds);
+
+        // 7. 内存组装DTO
         return articles.stream()
-                .map(article -> toDTO(article, categoryMap, parentMap, viewCountMap))
+                .map(article -> toDTO(article, categoryMap, parentMap, visitorCountMap, visitCountMap))
                 .toList();
     }
 
     private ArticleDTO toDTO(Article article) {
-        return toDTO(article, Map.of(), Map.of(), Map.of());
+        return toDTO(article, Map.of(), Map.of(), Map.of(), Map.of());
     }
 
     private ArticleDTO toDTO(Article article, Map<Long, Category> categoryMap,
-                             Map<Long, Category> parentMap, Map<Long, Long> viewCountMap) {
+                             Map<Long, Category> parentMap, Map<Long, Long> visitorCountMap,
+                             Map<Long, Long> visitCountMap) {
         ArticleDTO dto = new ArticleDTO();
         BeanUtils.copyProperties(article, dto);
         // XSS防护：转义标题中的HTML
@@ -530,13 +521,22 @@ public class ArticleAppService {
         dto.setCreateTime(article.getCreatedAt());
         dto.setUpdateTime(article.getUpdatedAt());
 
-        // UV 统计：优先从批量查询 map 中获取，回退到单条查询
-        if (!viewCountMap.isEmpty() && viewCountMap.containsKey(article.getId())) {
-            Long count = viewCountMap.get(article.getId());
-            dto.setViewCount(count != null ? count.intValue() : 0);
+        // UV 统计（访客数）：优先从批量查询 map 中获取，回退到单条查询
+        if (!visitorCountMap.isEmpty() && visitorCountMap.containsKey(article.getId())) {
+            Long count = visitorCountMap.get(article.getId());
+            dto.setVisitorCount(count != null ? count.intValue() : 0);
         } else {
-            Long viewCount = articleViewRecordRepository.countUniqueVisitorsByArticleId(article.getId());
-            dto.setViewCount(viewCount != null ? viewCount.intValue() : 0);
+            Long uv = articleViewRecordRepository.countUniqueVisitorsByArticleId(article.getId());
+            dto.setVisitorCount(uv != null ? uv.intValue() : 0);
+        }
+
+        // PV 统计（访问次数）：优先从批量查询 map 中获取，回退到单条查询
+        if (!visitCountMap.isEmpty() && visitCountMap.containsKey(article.getId())) {
+            Long count = visitCountMap.get(article.getId());
+            dto.setVisitCount(count != null ? count.intValue() : 0);
+        } else {
+            Long pv = articleVisitLogRepository.countByArticleId(article.getId());
+            dto.setVisitCount(pv != null ? pv.intValue() : 0);
         }
 
         // 填充分类信息和分类路径

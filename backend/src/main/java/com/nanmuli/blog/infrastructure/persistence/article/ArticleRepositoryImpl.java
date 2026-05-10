@@ -3,6 +3,7 @@ package com.nanmuli.blog.infrastructure.persistence.article;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.nanmuli.blog.domain.article.Article;
 import com.nanmuli.blog.domain.article.ArticleId;
 import com.nanmuli.blog.domain.article.ArticleRepository;
@@ -223,12 +224,9 @@ public class ArticleRepositoryImpl implements ArticleRepository {
         if (keyword == null || keyword.isBlank()) {
             return findPublishedPage(page, sort);
         }
+        // optimizeCountSql=false: ORDER BY 含 ts_rank() 函数括号，MyBatis Plus 正则剥离会截断
+        ((Page<Article>) page).setOptimizeCountSql(false);
         return articleMapper.searchPublishedByFts(page, keyword, categoryIds, sort);
-    }
-
-    @Override
-    public Long sumViewCount() {
-        return articleMapper.sumViewCount();
     }
 
     @Override
@@ -244,6 +242,16 @@ public class ArticleRepositoryImpl implements ArticleRepository {
         if (keyword == null || keyword.isBlank()) {
             return findAllPage(page);
         }
+        ((Page<Article>) page).setOptimizeCountSql(false);
         return articleMapper.searchAllByFts(page, keyword, categoryIds);
+    }
+
+    @Override
+    public IPage<Article> findPublishedByTrigram(String keyword, List<Long> categoryIds, IPage<Article> page) {
+        if (keyword == null || keyword.isBlank()) {
+            return findPublishedPage(page);
+        }
+        ((Page<Article>) page).setOptimizeCountSql(false);
+        return articleMapper.searchPublishedByTrigram(page, keyword, categoryIds);
     }
 }

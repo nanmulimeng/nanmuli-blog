@@ -162,4 +162,8 @@ public class DailyLogAppService {
     public Long count() {
         return dailyLogRepository.count();
     }
+
+    public Long countPublic() {
+        return dailyLogRepository.countPublic();
+    }
 }
