@@ -10,6 +10,8 @@ CREATE EXTENSION IF NOT EXISTS vector;
 
 -- 启用 zhparser 扩展(用于中文全文搜索)
 CREATE EXTENSION IF NOT EXISTS zhparser;
+-- 启用 pg_trgm 扩展(用于模糊搜索)
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 -- 创建中文文本搜索配置
 DO $$
@@ -191,6 +193,11 @@ CREATE INDEX IF NOT EXISTS idx_article_fts ON article USING GIN (
     )
 ) WHERE status = 1 AND is_deleted = FALSE;
 
+-- 模糊搜索索引(pg_trgm 三元组,支持部分匹配和拼写容错)
+CREATE INDEX IF NOT EXISTS idx_article_search_trgm ON article USING GIN (
+    coalesce(title, '') || ' ' || coalesce(summary, '') || ' ' || coalesce(content, '') gin_trgm_ops
+) WHERE status = 1 AND is_deleted = FALSE;
+
 -- 复合索引：已发布文章按发布时间排序
 CREATE INDEX IF NOT EXISTS idx_article_status_publish ON article(status, publish_time DESC) WHERE status = 1 AND is_deleted = FALSE;
 
@@ -355,6 +362,7 @@ CREATE TABLE IF NOT EXISTS sys_file (
     md5 VARCHAR(32),
     width INT,
     height INT,
+    thumbnail_url VARCHAR(500),
     user_id BIGINT,
     storage_type VARCHAR(20) DEFAULT 'local',
     usage_type VARCHAR(50),
@@ -916,12 +924,18 @@ VALUES
     ('site.footer', '© 2025 我的技术博客', '© 2025 我的技术博客', '页脚信息', 'site', TRUE),
     ('site.about', '', '', '关于页面内容（Markdown）', 'site', TRUE),
     ('site.avatar', '', '', '个人头像', 'site', TRUE),
+    ('site.author', '', '', '博主名称', 'site', TRUE),
     ('site.email', '', '', '联系邮箱', 'site', TRUE),
     ('site.github', '', '', 'GitHub链接', 'site', TRUE),
     ('ai.enabled', 'false', 'false', '是否启用AI功能', 'ai', FALSE),
     ('ai.model', 'qwen-turbo', 'qwen-turbo', 'AI模型', 'ai', FALSE),
     ('ai.autoTags', 'true', 'true', '是否自动生成标签', 'ai', FALSE),
-    ('ai.autoSummary', 'true', 'true', '是否自动生成摘要', 'ai', FALSE)
+    ('ai.autoSummary', 'true', 'true', '是否自动生成摘要', 'ai', FALSE),
+    ('crawler.ai.enabled', 'false', 'false', '爬虫AI功能开关', 'crawler', FALSE),
+    ('crawler.ai.api_key', '', '', 'AI API密钥（DashScope）', 'crawler', FALSE),
+    ('crawler.ai.model', 'qwen-plus', 'qwen-plus', 'AI模型名称', 'crawler', FALSE),
+    ('crawler.digest.enabled', 'false', 'false', '定时日报生成开关', 'crawler', FALSE),
+    ('crawler.proxy.url', '', '', 'HTTP代理地址', 'crawler', FALSE)
 ON CONFLICT (config_key) DO NOTHING;
 
 -- 插入示例技能

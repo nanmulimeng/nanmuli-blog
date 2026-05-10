@@ -180,6 +180,18 @@ public class CrawlerTaskClient {
     }
 
     /**
+     * 通知爬虫服务刷新配置
+     */
+    public void refreshConfig() {
+        try {
+            post("/api/v1/config/refresh", null);
+            log.info("[CrawlerTaskClient] config refresh notified");
+        } catch (Exception e) {
+            log.warn("[CrawlerTaskClient] config refresh failed: {}", e.getMessage());
+        }
+    }
+
+    /**
      * Digest 代理 POST — 返回原始 Map 给 Controller
      */
     public Map<String, Object> proxyPost(String path) {

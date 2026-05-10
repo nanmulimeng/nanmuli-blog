@@ -10,6 +10,7 @@ from config import settings
 from standalone.models import TaskStatus
 from standalone import repository as repo
 from standalone.task_executor import executor
+from standalone import backend_config
 
 logger = logging.getLogger(__name__)
 
@@ -80,8 +81,8 @@ def start_scheduler():
         logger.warning("Scheduler already running")
         return
 
-    if not settings.digest_enabled:
-        logger.info("Digest scheduling disabled (DIGEST_ENABLED=false)")
+    if not backend_config.get_bool("digest.enabled"):
+        logger.info("Digest scheduling disabled (digest.enabled=false)")
         return
 
     if not settings.digest_cron:
@@ -118,7 +119,7 @@ def stop_scheduler():
 def get_scheduler_status() -> dict:
     """获取调度器状态"""
     if _scheduler is None:
-        return {"running": False, "cron": settings.digest_cron, "enabled": settings.digest_enabled}
+        return {"running": False, "cron": settings.digest_cron, "enabled": backend_config.get_bool("digest.enabled")}
 
     jobs = _scheduler.get_jobs()
     next_run = None
@@ -128,6 +129,6 @@ def get_scheduler_status() -> dict:
     return {
         "running": True,
         "cron": settings.digest_cron,
-        "enabled": settings.digest_enabled,
+        "enabled": backend_config.get_bool("digest.enabled"),
         "next_run": next_run,
     }

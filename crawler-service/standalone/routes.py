@@ -11,6 +11,7 @@ from standalone.models import TaskStatus, TASK_TYPE_LABELS, AI_TEMPLATE_LABELS
 from standalone import repository as repo
 from standalone.task_executor import executor
 from standalone.export import export_task_as_markdown
+from standalone import backend_config
 from config import settings
 from api.crawl import CrawlConfig
 from ai.config import ai_settings
@@ -367,6 +368,16 @@ async def get_latest_digest():
     if not task:
         raise HTTPException(404, "暂无日报")
     return await _build_digest_detail(task["id"])
+
+
+@router.post("/config/refresh")
+async def refresh_config():
+    """刷新配置（从 Java 后端重新拉取）"""
+    result = await backend_config.refresh()
+    return {
+        "message": "配置已刷新",
+        "keys": list(result.keys()) if result else [],
+    }
 
 
 @router.get("/digests/config/sections")

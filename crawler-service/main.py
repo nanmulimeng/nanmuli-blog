@@ -59,6 +59,13 @@ async def lifespan(app: FastAPI):
         await init_db()
         logger.info(f"SQLite database initialized: {settings.db_path}")
 
+        # 从 Java 后端拉取爬虫配置（AI key、日报开关等）
+        try:
+            from standalone import backend_config
+            await backend_config.fetch_from_backend()
+        except Exception as e:
+            logger.warning("Failed to fetch config from backend on startup: %s", e)
+
         from standalone.scheduler import start_scheduler, stop_scheduler
         start_scheduler()
 

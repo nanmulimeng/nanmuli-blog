@@ -3,14 +3,17 @@ package com.nanmuli.blog.interfaces.rest;
 import com.nanmuli.blog.application.webcollector.WebCollectorAppService;
 import com.nanmuli.blog.application.webcollector.WebCollectSourceAppService;
 import com.nanmuli.blog.application.webcollector.dto.SourceDTO;
+import com.nanmuli.blog.domain.config.ConfigRepository;
 import com.nanmuli.blog.shared.result.Result;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * 内部端点（供 Python 爬虫服务调用，不走 Sa-Token 认证）
@@ -23,18 +26,26 @@ public class InternalCallbackController {
 
     private final WebCollectorAppService collectorAppService;
     private final WebCollectSourceAppService sourceAppService;
+    private final ConfigRepository configRepository;
 
     @Value("${crawler.callback.api-key:}")
     private String callbackApiKey;
+
+    /** 认证失败时返回 true，成功时返回 false */
+    private boolean authRequired(String callbackKey) {
+        if (callbackApiKey == null || callbackApiKey.isBlank()) {
+            return false;
+        }
+        return !callbackApiKey.equals(callbackKey);
+    }
 
     @PostMapping("/callback")
     public Result<Void> handleCallback(
             @RequestHeader(value = "X-Callback-Key", required = false) String callbackKey,
             @RequestBody Map<String, Object> payload) {
 
-        if (callbackApiKey == null || callbackApiKey.isBlank() || !callbackApiKey.equals(callbackKey)) {
-            log.warn("[Callback] Unauthorized: apiKey is {}configured, requestKey={}",
-                    (callbackApiKey == null || callbackApiKey.isBlank()) ? "not " : "", callbackKey);
+        if (authRequired(callbackKey)) {
+            log.warn("[Callback] Unauthorized: requestKey={}", callbackKey);
             return Result.error(403, "Invalid callback key");
         }
 
@@ -56,11 +67,32 @@ public class InternalCallbackController {
     @GetMapping("/sources")
     public Result<List<SourceDTO>> listActiveSources(
             @RequestHeader(value = "X-Callback-Key", required = false) String callbackKey) {
-        if (callbackApiKey == null || callbackApiKey.isBlank() || !callbackApiKey.equals(callbackKey)) {
-            log.warn("[Sources] Unauthorized: apiKey is {}configured, requestKey={}",
-                    (callbackApiKey == null || callbackApiKey.isBlank()) ? "not " : "", callbackKey);
+        if (authRequired(callbackKey)) {
+            log.warn("[Sources] Unauthorized: requestKey={}", callbackKey);
             return Result.error(403, "Invalid callback key");
         }
         return Result.success(sourceAppService.listActive());
+    }
+
+    /**
+     * 获取爬虫服务配置（供 Python 服务启动时拉取/刷新）
+     */
+    @GetMapping("/config")
+    public Result<Map<String, String>> getCrawlerConfig(
+            @RequestHeader(value = "X-Callback-Key", required = false) String callbackKey) {
+        if (authRequired(callbackKey)) {
+            log.warn("[Config] Unauthorized: requestKey={}", callbackKey);
+            return Result.error(403, "Invalid callback key");
+        }
+
+        Map<String, String> configMap = configRepository.findByGroup("crawler").stream()
+                .collect(Collectors.toMap(
+                        c -> c.getConfigKey().replace("crawler.", ""),
+                        c -> c.getConfigValue() != null ? c.getConfigValue() : "",
+                        (a, b) -> b,
+                        LinkedHashMap::new));
+
+        log.info("[Config] Returning {} crawler configs", configMap.size());
+        return Result.success(configMap);
     }
 }

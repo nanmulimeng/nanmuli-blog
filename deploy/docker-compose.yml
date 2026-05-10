@@ -59,6 +59,19 @@ services:
       - MAX_DEPTH_LIMIT=3
       - REQUEST_TIMEOUT=60
       - LOG_LEVEL=INFO
+      # AI 配置
+      - AI_ENABLED=${AI_ENABLED:-false}
+      - AI_API_KEY=${DASH_SCOPE_API_KEY:-}
+      - AI_BASE_URL=${AI_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+      - AI_MODEL=${AI_MODEL:-qwen-plus}
+      # 日报配置
+      - DIGEST_ENABLED=${DIGEST_ENABLED:-false}
+      - STANDALONE=true
+      - PROXY_URL=${PROXY_URL:-http://host.docker.internal:7890}
+      # 回调相关
+      - JAVA_API_URL=${JAVA_API_URL:-http://host.docker.internal:8081}
+      - CALLBACK_API_KEY=${CALLBACK_API_KEY:-}
+      - CALLBACK_URL=${CALLBACK_URL:-http://host.docker.internal:8081/api/internal/collector/callback}
     ports:
       - "8500:8500"
     networks:

@@ -2,20 +2,13 @@
 # 基于微软 Playwright 官方镜像，已预装 Chromium
 # 支持双模式部署：纯 API 模式 / 独立模式
 
-# Builder: install Python dependencies
-FROM mcr.microsoft.com/playwright/python:v1.59.0-jammy AS builder
-
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
-
-# Runtime: minimal layer
 FROM mcr.microsoft.com/playwright/python:v1.59.0-jammy
 
 WORKDIR /app
 
-# Copy installed packages
-COPY --from=builder /install /usr/local
+# Install Python dependencies directly
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY main.py config.py ./

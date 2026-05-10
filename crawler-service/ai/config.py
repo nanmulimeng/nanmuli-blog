@@ -24,6 +24,17 @@ class AiSettings:
             raise AttributeError(name)
         if name in self._overrides:
             return self._overrides[name]
+
+        # 优先从后端动态配置读取（AI key 等可运行时变更的配置）
+        if name in ("ai_enabled", "ai_api_key", "ai_model"):
+            try:
+                from standalone.backend_config import get as _get
+                val = _get(name.replace("_", "."))
+                if val:
+                    return val
+            except Exception:
+                pass
+
         return getattr(settings, name)
 
     @property
