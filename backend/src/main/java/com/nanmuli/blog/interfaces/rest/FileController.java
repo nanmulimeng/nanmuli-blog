@@ -3,6 +3,8 @@ package com.nanmuli.blog.interfaces.rest;
 import com.nanmuli.blog.application.file.FileAppService;
 import com.nanmuli.blog.application.file.command.UploadFileCommand;
 import com.nanmuli.blog.application.file.dto.FileDTO;
+import com.nanmuli.blog.application.file.query.FilePageQuery;
+import com.nanmuli.blog.shared.result.PageResult;
 import com.nanmuli.blog.shared.result.Result;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +31,17 @@ public class FileController {
             return Result.error(400, "文件读取失败");
         }
         return Result.success(fileAppService.upload(command));
+    }
+
+    @GetMapping("/admin/file/list")
+    public Result<PageResult<FileDTO>> list(FilePageQuery query) {
+        return Result.success(fileAppService.list(query));
+    }
+
+    @DeleteMapping("/admin/file/{id}")
+    public Result<Void> delete(@PathVariable Long id) {
+        fileAppService.delete(id);
+        return Result.success();
     }
 
     @GetMapping("/file/{id}")

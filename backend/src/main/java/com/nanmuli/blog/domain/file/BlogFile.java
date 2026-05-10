@@ -23,6 +23,7 @@ public class BlogFile extends BaseAggregateRoot<Long> {
     private String md5;
     private Integer width;
     private Integer height;
+    private String thumbnailUrl;
     private Long userId;
     private String storageType;
     private String usageType;

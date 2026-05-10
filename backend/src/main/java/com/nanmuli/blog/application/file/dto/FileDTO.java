@@ -27,6 +27,21 @@ public class FileDTO {
     private String fileUrl;
 
     /**
+     * 缩略图URL
+     */
+    private String thumbnailUrl;
+
+    /**
+     * 图片宽度
+     */
+    private Integer width;
+
+    /**
+     * 图片高度
+     */
+    private Integer height;
+
+    /**
      * 文件大小（字节）
      */
     private Long fileSize;

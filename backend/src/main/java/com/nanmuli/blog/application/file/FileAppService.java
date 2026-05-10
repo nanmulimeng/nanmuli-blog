@@ -1,11 +1,15 @@
 package com.nanmuli.blog.application.file;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.springframework.util.DigestUtils;
 import com.nanmuli.blog.application.file.command.UploadFileCommand;
 import com.nanmuli.blog.application.file.dto.FileDTO;
+import com.nanmuli.blog.application.file.query.FilePageQuery;
 import com.nanmuli.blog.domain.file.BlogFile;
 import com.nanmuli.blog.domain.file.FileRepository;
 import com.nanmuli.blog.shared.exception.BusinessException;
+import com.nanmuli.blog.shared.result.PageResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -16,6 +20,7 @@ import org.springframework.util.StringUtils;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
@@ -38,6 +43,7 @@ public class FileAppService {
     );
 
     private final FileRepository fileRepository;
+    private final ImageThumbnailService imageThumbnailService;
 
     @Value("${blog.file.upload-path:./uploads}")
     private String uploadPath;
@@ -126,6 +132,10 @@ public class FileAppService {
             throw new BusinessException("文件保存失败");
         }
 
+        // 生成缩略图（仅图片类型）
+        ImageThumbnailService.ThumbnailResult thumbResult =
+                imageThumbnailService.generate(command.getContent(), contentType, fileName, targetDir, accessUrl);
+
         BlogFile blogFile = new BlogFile();
         blogFile.setOriginalName(originalName);
         blogFile.setFileName(fileName);
@@ -136,6 +146,11 @@ public class FileAppService {
         blogFile.setFileType(contentType);
         blogFile.setMd5(md5);
         blogFile.setStorageType(storageType);
+        if (thumbResult != null) {
+            blogFile.setWidth(thumbResult.width());
+            blogFile.setHeight(thumbResult.height());
+            blogFile.setThumbnailUrl(thumbResult.thumbnailUrl());
+        }
         fileRepository.save(blogFile);
 
         log.info("文件上传成功, fileName={}, md5={}, size={}", fileName, md5, command.getFileSize());
@@ -178,11 +193,30 @@ public class FileAppService {
                 .orElseThrow(() -> new BusinessException("文件不存在"));
     }
 
+    @Transactional(readOnly = true)
+    public PageResult<FileDTO> list(FilePageQuery query) {
+        IPage<BlogFile> page = new Page<>(query.getCurrent(), query.getSize());
+        IPage<BlogFile> result = fileRepository.findPage(page, query.getKeyword(), query.getFileType());
+        List<FileDTO> records = result.getRecords().stream().map(this::convertToDTO).toList();
+        return new PageResult<>(result.getTotal(), result.getCurrent(), result.getSize(), records);
+    }
+
+    @Transactional
+    public void delete(Long id) {
+        BlogFile file = fileRepository.findById(id)
+                .orElseThrow(() -> new BusinessException("文件不存在"));
+        fileRepository.deleteById(id);
+        // 逻辑删除不删物理文件，保留数据安全性
+    }
+
     private FileDTO convertToDTO(BlogFile blogFile) {
         FileDTO dto = new FileDTO();
         dto.setId(blogFile.getId());
         dto.setOriginalName(blogFile.getOriginalName());
         dto.setFileUrl(blogFile.getFileUrl());
+        dto.setThumbnailUrl(blogFile.getThumbnailUrl());
+        dto.setWidth(blogFile.getWidth());
+        dto.setHeight(blogFile.getHeight());
         dto.setFileSize(blogFile.getFileSize());
         dto.setMimeType(blogFile.getMimeType());
         dto.setStorageType(blogFile.getStorageType());
