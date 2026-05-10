@@ -46,22 +46,20 @@ public class ProjectAppService {
         // 防御纵深：后端再次校验URL协议
         validateUrls(command);
 
+        // 检查slug唯一性（save之前）
+        if (command.getSlug() != null && !command.getSlug().isEmpty()
+                && projectRepository.existsBySlug(command.getSlug())) {
+            throw new BusinessException("项目标识已存在");
+        }
+
         Project project = new Project();
         BeanUtils.copyProperties(command, project);
-        // 将列表转换为逗号分隔的字符串
-        project.setScreenshots(parseListToString(command.getScreenshots()));
-        project.setTechStack(parseListToString(command.getTechStack()));
         projectRepository.save(project);
 
         // 如果没有提供slug，使用ID自动生成
         if (project.getSlug() == null || project.getSlug().isEmpty()) {
             project.setSlug(String.valueOf(project.getId()));
             projectRepository.save(project);
-        } else {
-            // 检查slug唯一性
-            if (projectRepository.existsBySlug(project.getSlug())) {
-                throw new BusinessException("项目标识已存在");
-            }
         }
 
         return project.getId();
@@ -83,9 +81,6 @@ public class ProjectAppService {
         }
 
         BeanUtils.copyProperties(command, project);
-        // 将列表转换为逗号分隔的字符串
-        project.setScreenshots(parseListToString(command.getScreenshots()));
-        project.setTechStack(parseListToString(command.getTechStack()));
         project.setId(id);
         projectRepository.save(project);
     }
@@ -119,29 +114,8 @@ public class ProjectAppService {
         // 显式映射时间字段（字段名不一致）
         dto.setCreateTime(project.getCreatedAt());
         dto.setUpdateTime(project.getUpdatedAt());
-        // 将逗号分隔的字符串转换为列表
-        dto.setScreenshots(parseStringToList(project.getScreenshots()));
-        dto.setTechStack(parseStringToList(project.getTechStack()));
+        dto.setScreenshots(project.getScreenshots());
+        dto.setTechStack(project.getTechStack());
         return dto;
-    }
-
-    /**
-     * 将逗号分隔的字符串转换为列表
-     */
-    private List<String> parseStringToList(String str) {
-        if (str == null || str.isEmpty()) {
-            return java.util.Collections.emptyList();
-        }
-        return java.util.Arrays.asList(str.split(","));
-    }
-
-    /**
-     * 将列表转换为逗号分隔的字符串
-     */
-    private String parseListToString(List<String> list) {
-        if (list == null || list.isEmpty()) {
-            return "";
-        }
-        return String.join(",", list);
     }
 }

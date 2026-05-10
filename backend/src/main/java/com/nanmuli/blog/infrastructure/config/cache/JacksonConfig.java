@@ -31,7 +31,7 @@ public class JacksonConfig {
 
     /**
      * Redis 序列化专用 ObjectMapper
-     * 启用多态类型信息，确保 Redis 中的 JSON 可正确反序列化为原始类型
+     * 启用多态类型信息（WRAPPER_ARRAY 格式），确保 Redis 中的 JSON 可正确反序列化
      */
     @Bean
     @Qualifier("redisObjectMapper")
@@ -42,7 +42,7 @@ public class JacksonConfig {
         mapper.activateDefaultTyping(
                 mapper.getPolymorphicTypeValidator(),
                 ObjectMapper.DefaultTyping.NON_FINAL,
-                JsonTypeInfo.As.PROPERTY
+                JsonTypeInfo.As.WRAPPER_ARRAY
         );
         return mapper;
     }

@@ -41,6 +41,7 @@ sa-token:
 
 # MyBatis-Plus
 mybatis-plus:
+  type-handlers-package: com.nanmuli.blog.infrastructure.config.db
   configuration:
     log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
     map-underscore-to-camel-case: true
@@ -57,6 +58,6 @@ blog:
   file:
     upload-path: ./uploads
     access-url: /uploads/
-    max-size: 10MB
+    max-size: 10485760
     allowed-extensions: jpg,jpeg,png,gif,webp,svg,txt,md,pdf,zip,rar,7z
     storage-type: local

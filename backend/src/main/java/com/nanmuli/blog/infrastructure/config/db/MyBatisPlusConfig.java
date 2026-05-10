@@ -6,6 +6,8 @@ import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.OptimisticLockerInnerInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
 import org.apache.ibatis.reflection.MetaObject;
+import org.apache.ibatis.session.SqlSessionFactory;
+import org.apache.ibatis.type.TypeHandlerRegistry;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -13,6 +15,11 @@ import java.time.LocalDateTime;
 
 @Configuration
 public class MyBatisPlusConfig {
+
+    @Bean
+    public JsonbTypeHandler jsonbTypeHandler() {
+        return new JsonbTypeHandler();
+    }
 
     @Bean
     public MybatisPlusInterceptor mybatisPlusInterceptor() {
