@@ -14,7 +14,7 @@ export function sanitize(html: string): string {
       'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'br', 'hr',
       'div', 'span', 'blockquote', 'pre', 'code',
       'ul', 'ol', 'li', 'table', 'thead', 'tbody', 'tr', 'th', 'td',
-      'a', 'strong', 'em', 'del', 's', 'img',
+      'a', 'strong', 'em', 'del', 's', 'img', 'mark',
       'input', 'details', 'summary', 'sup', 'sub',
     ],
     ALLOWED_ATTR: [

@@ -195,6 +195,12 @@ const adminRoutes: RouteRecordRaw[] = [
     component: () => import('@/views/admin/config/Index.vue'),
     meta: { layout: AdminLayout, title: '系统配置', requiresAuth: true },
   },
+  {
+    path: '/admin/file',
+    name: 'AdminFile',
+    component: () => import('@/views/admin/file/Index.vue'),
+    meta: { layout: AdminLayout, title: '文件管理', requiresAuth: true },
+  },
 ]
 
 /**

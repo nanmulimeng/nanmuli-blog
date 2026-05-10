@@ -15,7 +15,8 @@ export interface Article {
   categoryName?: string  // 从category中提取
   category?: Category    // 完整分类信息
   categoryPath?: Category[]  // 分类层级路径（如：后端开发 > Java）
-  viewCount: number
+  visitorCount: number  // UV：独立访客数
+  visitCount: number    // PV：总访问次数
   likeCount: number
   wordCount: number
   readingTime: number
