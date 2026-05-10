@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { getProjectList } from '@/api/project'
+import SrcImage from '@/components/common/SrcImage.vue'
+import CoverPlaceholder from '@/components/common/CoverPlaceholder.vue'
 import type { Project } from '@/types/project'
 import { OfficeBuilding, Link, Document, Calendar } from '@element-plus/icons-vue'
 
@@ -108,15 +110,14 @@ function openProjectDetail(project: Project): void {
           >
             <!-- Cover -->
             <div class="aspect-video bg-surface-primary relative overflow-hidden">
-              <img
+              <SrcImage
                 v-if="project.cover"
                 :src="project.cover"
                 :alt="project.name"
-                class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-              >
-              <div v-else class="w-full h-full flex items-center justify-center text-content-tertiary/50">
-                <el-icon :size="48"><OfficeBuilding /></el-icon>
-              </div>
+                aspect-ratio="16/9"
+                class="transition-transform duration-300 group-hover:scale-105"
+              />
+              <CoverPlaceholder v-else :title="project.name" />
               <!-- Status Badge -->
               <div class="absolute top-3 right-3">
                 <span
@@ -214,15 +215,14 @@ function openProjectDetail(project: Project): void {
       <div v-if="selectedProject" class="space-y-6">
         <!-- Cover -->
         <div class="aspect-video rounded-xl overflow-hidden bg-surface-secondary">
-          <img
+          <SrcImage
             v-if="selectedProject.cover"
             :src="selectedProject.cover"
             :alt="selectedProject.name"
-            class="w-full h-full object-cover"
-          >
-          <div v-else class="w-full h-full flex items-center justify-center text-content-tertiary/50">
-            <el-icon :size="64"><OfficeBuilding /></el-icon>
-          </div>
+            aspect-ratio="16/9"
+            :lazy="false"
+          />
+          <CoverPlaceholder v-else :title="selectedProject.name" />
         </div>
 
         <!-- Meta Info -->
@@ -270,7 +270,7 @@ function openProjectDetail(project: Project): void {
               class="aspect-video rounded-lg overflow-hidden bg-surface-secondary cursor-pointer hover:ring-2 hover:ring-primary transition-all"
               @click="openScreenshot(screenshot)"
             >
-              <img :src="screenshot" class="w-full h-full object-cover" :alt="`截图 ${index + 1}`">
+              <SrcImage :src="screenshot" :alt="`截图 ${index + 1}`" aspect-ratio="16/9" />
             </div>
           </div>
         </div>

@@ -126,7 +126,8 @@ onMounted(fetchData)
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="viewCount" label="浏览量" width="100" />
+      <el-table-column prop="visitorCount" label="UV访客" width="90" />
+      <el-table-column prop="visitCount" label="PV访问" width="90" />
       <el-table-column label="发布时间" width="180">
         <template #default="{ row }">
           {{ formatDateCN(row.publishTime) }}

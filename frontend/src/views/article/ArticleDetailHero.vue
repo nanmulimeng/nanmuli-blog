@@ -10,13 +10,13 @@ defineProps<{
 </script>
 
 <template>
-  <section class="relative pt-32 pb-16 overflow-hidden">
+  <section class="relative pt-20 pb-12 overflow-hidden">
     <!-- Background Decoration -->
     <div class="absolute inset-0 bg-gradient-to-b from-primary/10 via-transparent to-transparent" />
 
     <div class="relative mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
       <!-- Breadcrumb -->
-      <nav class="mb-8 flex items-center gap-2 text-sm text-content-tertiary">
+      <nav class="mb-4 flex items-center gap-2 text-sm text-content-tertiary">
         <router-link to="/" class="hover:text-primary transition-colors">
           首页
         </router-link>
@@ -31,7 +31,7 @@ defineProps<{
       </nav>
 
       <!-- Category Badge -->
-      <div class="mb-6">
+      <div class="mb-4">
         <div v-if="article.categoryPath?.length" class="flex items-center gap-2 flex-wrap">
           <span
             v-for="(cat, index) in article.categoryPath"
@@ -108,7 +108,7 @@ defineProps<{
           <div class="flex h-8 w-8 items-center justify-center rounded-full bg-info/10">
             <el-icon class="text-info"><View /></el-icon>
           </div>
-          {{ article.viewCount }} 人阅读
+          {{ article.visitorCount || 0 }} 人阅读
         </span>
         <span class="flex items-center gap-2 text-content-tertiary">
           <div class="flex h-8 w-8 items-center justify-center rounded-full bg-warning/10">

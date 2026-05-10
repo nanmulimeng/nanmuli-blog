@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Skill } from '@/types/skill'
+import SrcImage from '@/components/common/SrcImage.vue'
 
 defineProps<{
   skill: Skill
@@ -18,7 +19,7 @@ export default {
       class="flex h-12 w-12 items-center justify-center rounded-lg"
       :style="{ backgroundColor: skill.color + '20' }"
     >
-      <img :src="skill.icon" :alt="skill.name" class="h-8 w-8" />
+      <SrcImage :src="skill.icon" :alt="skill.name" :width="32" :height="32" fit="contain" />
     </div>
     <div v-else class="flex h-12 w-12 items-center justify-center rounded-lg bg-surface-tertiary">
       <span class="text-xl text-content-primary">{{ skill.name.charAt(0) }}</span>

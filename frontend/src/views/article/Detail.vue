@@ -99,10 +99,19 @@ function processContent(): void {
     }
   })
 
-  // 2. 图片懒加载 + 占位符 + 淡入动画
+  // 2. 图片懒加载 + 解码优化 + 占位符 + 淡入动画
   contentRef.value.querySelectorAll('img').forEach((img) => {
     if (!img.hasAttribute('loading')) {
       img.setAttribute('loading', 'lazy')
+    }
+    if (!img.hasAttribute('decoding')) {
+      img.setAttribute('decoding', 'async')
+    }
+    // 从 width/height 属性计算 aspect-ratio 防止 CLS
+    const w = img.getAttribute('width')
+    const h = img.getAttribute('height')
+    if (w && h) {
+      img.style.aspectRatio = `${w} / ${h}`
     }
     // 添加骨架屏背景作为占位
     img.style.backgroundColor = 'var(--surface-tertiary, #f0f0f0)'
@@ -110,9 +119,15 @@ function processContent(): void {
 
     // 添加淡入动画
     img.style.opacity = '0'
-    img.style.transition = 'opacity 0.3s ease'
+    img.style.transition = 'opacity 0.4s ease'
     img.onload = () => {
       img.style.opacity = '1'
+    }
+    img.onerror = () => {
+      img.style.opacity = '1'
+      img.style.minHeight = '0'
+      img.style.padding = '2rem'
+      img.style.backgroundColor = 'var(--surface-tertiary, #f0f0f0)'
     }
 
     // 添加点击放大功能
@@ -205,12 +220,35 @@ async function fetchArticle(): Promise<void> {
 
 async function fetchRelatedArticles(categoryId: string, excludeId: string): Promise<void> {
   try {
+    // Level 1: 同分类文章（按热度排序，优先展示同分类热门文章）
     const res = await getArticleList({
       current: 1,
       size: PAGE_SIZE.RELATED_ARTICLES,
-      categoryId
+      categoryId,
+      sort: 'popular'
     })
-    relatedArticles.value = res.records.filter((a: Article) => a.id !== excludeId).slice(0, 3)
+    const sameCategory = res.records.filter((a: Article) => a.id !== excludeId)
+
+    if (sameCategory.length >= 3) {
+      relatedArticles.value = sameCategory.slice(0, 3)
+      return
+    }
+
+    // Level 2: 不足3篇时，用全站热门文章补齐
+    const existingIds = new Set([excludeId, ...sameCategory.map((a: Article) => a.id)])
+    const needed = 3 - sameCategory.length
+
+    const res2 = await getArticleList({
+      current: 1,
+      size: needed + 1,
+      sort: 'popular'
+    })
+
+    const fillArticles = res2.records
+      .filter((a: Article) => !existingIds.has(a.id))
+      .slice(0, needed)
+
+    relatedArticles.value = [...sameCategory, ...fillArticles]
   } catch {
     // ignore
   }

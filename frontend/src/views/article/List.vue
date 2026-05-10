@@ -4,6 +4,8 @@ import { useRouter, useRoute } from 'vue-router'
 import { getArticleList } from '@/api/article'
 import { getCategoryList, getLeafCategoryList } from '@/api/category'
 import { formatDateCN } from '@/utils/format'
+import SrcImage from '@/components/common/SrcImage.vue'
+import CoverPlaceholder from '@/components/common/CoverPlaceholder.vue'
 import type { Article } from '@/types/article'
 import type { Category } from '@/types/category'
 import { PAGE_SIZE, DELAY } from '@/constants/api'
@@ -28,9 +30,6 @@ const sortBy = ref('newest')
 let fetchTimeout: ReturnType<typeof setTimeout> | null = null
 // 请求取消控制器
 let abortController: AbortController | null = null
-
-// 图片加载状态
-const imageLoaded = ref<Record<string, boolean>>({})
 
 const sortOptions = [
   { value: 'newest', label: '最新发布', icon: 'Calendar' },
@@ -144,9 +143,24 @@ function handlePageChange(page: number): void {
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
+function handleSearch(): void {
+  router.replace({
+    path: '/article',
+    query: {
+      ...route.query,
+      keyword: searchKeyword.value || undefined
+    }
+  })
+  debouncedFetchArticles()
+}
+
 function clearSearch(): void {
   searchKeyword.value = ''
-  fetchArticles()
+  router.replace({
+    path: '/article',
+    query: { ...route.query, keyword: undefined }
+  })
+  debouncedFetchArticles()
 }
 
 onMounted(() => {
@@ -178,7 +192,7 @@ onUnmounted(() => {
 
       <div class="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <!-- Breadcrumb -->
-        <nav class="mb-6 flex items-center gap-2 text-sm text-content-tertiary">
+        <nav class="mb-4 flex items-center gap-2 text-sm text-content-tertiary">
           <router-link to="/" class="hover:text-primary transition-colors">
             首页
           </router-link>
@@ -204,7 +218,7 @@ onUnmounted(() => {
               type="text"
               placeholder="搜索文章..."
               class="input-glass w-full sm:w-80 pr-24 pl-4 py-3 rounded-xl"
-              @keyup.enter="debouncedFetchArticles"
+              @keyup.enter="handleSearch"
             />
             <div class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
               <button
@@ -216,7 +230,7 @@ onUnmounted(() => {
               </button>
               <button
                 class="px-3 py-1.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors"
-                @click="fetchArticles"
+                @click="handleSearch"
               >
                 搜索
               </button>
@@ -280,7 +294,10 @@ onUnmounted(() => {
         <!-- Search Result Info -->
         <div v-if="searchKeyword" class="mb-6 flex items-center gap-2">
           <span class="text-content-secondary">
-            搜索 "<span class="text-primary font-medium">{{ searchKeyword }}</span>" 的结果
+            搜索 "<span class="text-primary font-medium">{{ searchKeyword }}</span>"
+          </span>
+          <span class="text-sm text-content-tertiary">
+            共找到 {{ total }} 篇文章
           </span>
           <button
             class="text-sm text-content-tertiary hover:text-content-secondary"
@@ -325,26 +342,17 @@ onUnmounted(() => {
           >
             <!-- Cover Image -->
             <div class="relative aspect-[16/10] overflow-hidden bg-surface-tertiary">
-              <img
+              <SrcImage
                 v-if="article.cover"
                 :src="article.cover"
                 :alt="article.title"
-                class="h-full w-full object-cover transition-all duration-500"
-                :class="{ 'opacity-0': !imageLoaded[article.id], 'group-hover:scale-110': imageLoaded[article.id] }"
-                @load="imageLoaded[article.id] = true"
+                aspect-ratio="16/10"
+                class="group-hover:scale-110 transition-transform duration-500"
               />
-              <div
-                v-if="!imageLoaded[article.id] && article.cover"
-                class="absolute inset-0 skeleton-loading"
-              />
-              <div
+              <CoverPlaceholder
                 v-if="!article.cover"
-                class="flex h-full w-full items-center justify-center bg-gradient-to-br from-blue-400/20 to-cyan-300/20 dark:from-cyan-500/20 dark:to-blue-400/20"
-              >
-                <el-icon class="text-5xl text-primary/50">
-                  <Document />
-                </el-icon>
-              </div>
+                :title="article.title"
+              />
 
               <!-- Top Badge -->
               <div v-if="article.isTop" class="absolute left-4 top-4">
@@ -415,7 +423,11 @@ onUnmounted(() => {
                   </span>
                   <span class="flex items-center gap-1">
                     <el-icon><View /></el-icon>
-                    {{ article.viewCount }} 人
+                    {{ article.visitCount || 0 }} 次阅读
+                  </span>
+                  <span class="flex items-center gap-1">
+                    <el-icon><User /></el-icon>
+                    {{ article.visitorCount || 0 }} 人
                   </span>
                 </div>
 
@@ -472,15 +484,4 @@ onUnmounted(() => {
   display: none;
 }
 
-/* 骨架屏动画 */
-.skeleton-loading {
-  background: linear-gradient(90deg, var(--surface-tertiary, #f0f0f0) 25%, var(--surface-secondary, #e0e0e0) 50%, var(--surface-tertiary, #f0f0f0) 75%);
-  background-size: 200% 100%;
-  animation: skeleton 1.5s infinite;
-}
-
-@keyframes skeleton {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
 </style>

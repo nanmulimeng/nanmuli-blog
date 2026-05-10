@@ -80,7 +80,7 @@ function handleClick(): void {
     </p>
 
     <div class="flex items-center gap-4 text-sm text-content-tertiary">
-      <span>{{ article.viewCount }} 人阅读</span>
+      <span>{{ article.visitCount || 0 }} 次阅读 · {{ article.visitorCount || 0 }} 人</span>
       <span>点赞 {{ article.likeCount }}</span>
     </div>
   </article>

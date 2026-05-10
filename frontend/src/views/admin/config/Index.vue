@@ -1,34 +1,22 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
+import { RefreshRight } from '@element-plus/icons-vue'
 import { getAdminConfigList, updateConfig } from '@/api/config'
-import { testAiConnection } from '@/api/ai'
 import type { Config } from '@/types/config'
+import FileUpload from '@/components/common/FileUpload.vue'
 
 const loading = ref(false)
-const aiTesting = ref(false)
+const savingGroup = ref<string | null>(null)
 const configs = ref<Config[]>([])
-const formData = ref<Record<string, string | number>>({})
-// AI 提供商预设
-const aiProviders = [
-  { label: 'DeepSeek', value: 'deepseek', defaultUrl: 'https://api.deepseek.com/v1', defaultModel: 'deepseek-chat' },
-  { label: '阿里云 DashScope (Qwen)', value: 'dashscope', defaultUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', defaultModel: 'qwen-turbo' },
-  { label: 'OpenAI', value: 'openai', defaultUrl: 'https://api.openai.com/v1', defaultModel: 'gpt-3.5-turbo' },
-  { label: '自定义', value: 'custom', defaultUrl: '', defaultModel: '' },
-]
+const formData = ref<Record<string, string>>({})
 
 async function fetchData(): Promise<void> {
   loading.value = true
   try {
     configs.value = await getAdminConfigList()
     configs.value.forEach((config) => {
-      const numKeys = ['ai.temperature', 'ai.connect_timeout_seconds', 'ai.read_timeout_seconds']
-      if (numKeys.includes(config.configKey)) {
-        const n = Number(config.configValue)
-        formData.value[config.configKey] = isNaN(n) ? 0 : n
-      } else {
-        formData.value[config.configKey] = config.configValue
-      }
+      formData.value[config.configKey] = config.configValue ?? ''
     })
   } finally {
     loading.value = false
@@ -36,86 +24,55 @@ async function fetchData(): Promise<void> {
 }
 
 async function handleSave(key: string): Promise<void> {
+  const value = formData.value[key]
+  if (value === undefined) return
   try {
-    const value = formData.value[key]
-    if (value === undefined) return
-    await updateConfig(key, String(value))
+    await updateConfig(key, value)
     ElMessage.success('保存成功')
   } catch {
     ElMessage.error('保存失败')
   }
 }
 
-async function handleSaveAiGroup(): Promise<void> {
-  const aiKeys = configs.value
-    .filter(c => c.groupName === 'ai')
-    .map(c => c.configKey)
+async function handleSaveGroup(group: string): Promise<void> {
+  const keys = configs.value
+    .filter((c) => c.groupName === group)
+    .map((c) => c.configKey)
 
+  if (keys.length === 0) return
+
+  savingGroup.value = group
   try {
-    for (const key of aiKeys) {
+    for (const key of keys) {
       const value = formData.value[key]
       if (value !== undefined) {
-        await updateConfig(key, String(value))
+        await updateConfig(key, value)
       }
     }
-    ElMessage.success('AI 配置保存成功')
+    ElMessage.success('保存成功')
   } catch {
-    ElMessage.error('AI 配置保存失败')
-  }
-}
-
-async function handleAiTest(): Promise<void> {
-  aiTesting.value = true
-  try {
-    const result = await testAiConnection()
-    if (result.available) {
-      ElMessageBox.alert(
-        `提供商：${result.provider || '未知'}\n模型：${result.model || '未知'}\n连接成功！`,
-        'AI 连接测试',
-        { type: 'success' }
-      )
-    } else {
-      ElMessageBox.alert(
-        result.reason || '连接失败',
-        'AI 连接测试',
-        { type: 'warning' }
-      )
-    }
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : '未知错误'
-    ElMessage.error('测试失败：' + msg)
+    ElMessage.error('保存失败')
   } finally {
-    aiTesting.value = false
+    savingGroup.value = null
   }
 }
 
-function onProviderChange(provider: string): Promise<void> {
-  const preset = aiProviders.find(p => p.value === provider)
-  if (!preset) return Promise.resolve()
-
-  // 自动填充默认值（仅当当前值为空或与旧默认值匹配时）
-  const baseUrl = String(formData.value['ai.base_url'] || '')
-  const modelVal = String(formData.value['ai.model'] || '')
-  if (preset.defaultUrl && (!baseUrl || isDefaultUrl(baseUrl))) {
-    formData.value['ai.base_url'] = preset.defaultUrl
+function handleReset(key: string, defaultValue?: string): void {
+  if (defaultValue !== undefined) {
+    formData.value[key] = defaultValue
   }
-  if (preset.defaultModel && (!modelVal || isDefaultModel(modelVal))) {
-    formData.value['ai.model'] = preset.defaultModel
-  }
-  return Promise.resolve()
-}
-
-function isDefaultUrl(url: string): boolean {
-  return aiProviders.some(p => p.defaultUrl === url)
-}
-
-function isDefaultModel(model: string): boolean {
-  return aiProviders.some(p => p.defaultModel === model)
 }
 
 const groupNames: Record<string, string> = {
   site: '站点配置',
   ai: 'AI 配置',
+  crawler: '爬虫配置',
+}
+
+const groupDescriptions: Record<string, string> = {
+  site: '配置网站基本信息、联系方式与页面内容',
+  ai: '控制 AI 辅助功能的开关与模型参数',
+  crawler: '控制 Python 爬虫服务的 AI 整理、日报生成与代理设置',
 }
 
 const groupedConfigs = computed(() => {
@@ -130,166 +87,180 @@ const groupedConfigs = computed(() => {
   return groups
 })
 
+// 配置项渲染类型判断
+function getInputType(configKey: string): 'text' | 'textarea' | 'switch' | 'image' | 'password' {
+  if (configKey.endsWith('.enabled') || configKey.endsWith('.autoTags') || configKey.endsWith('.autoSummary')) {
+    return 'switch'
+  }
+  if (['site.logo', 'site.favicon', 'site.avatar'].includes(configKey)) {
+    return 'image'
+  }
+  if (['site.about', 'site.footer', 'site.description'].includes(configKey)) {
+    return 'textarea'
+  }
+  if (configKey.endsWith('.api_key') || configKey.endsWith('.secret')) {
+    return 'password'
+  }
+  return 'text'
+}
+
+// 获取配置项的简短标签（去除前缀）
+function getShortLabel(configKey: string): string {
+  const parts = configKey.split('.')
+  return parts.length > 1 ? parts.slice(1).join('.') : configKey
+}
+
+function handleImageChange(configKey: string, url: string): void {
+  formData.value[configKey] = url
+  handleSave(configKey)
+}
+
 onMounted(fetchData)
 </script>
 
 <template>
   <div>
-    <h2 class="mb-6 text-xl font-bold text-content-primary">系统配置</h2>
+    <div class="mb-6 flex items-center justify-between">
+      <div>
+        <h2 class="text-xl font-bold text-content-primary">系统配置</h2>
+        <p class="mt-1 text-sm text-content-tertiary">
+          管理网站公开配置项，修改后前台页面将实时生效
+        </p>
+      </div>
+      <el-button type="primary" :icon="RefreshRight" :loading="loading" @click="fetchData">
+        刷新
+      </el-button>
+    </div>
 
-    <div v-for="(items, group) in groupedConfigs" :key="group" class="mb-8">
-      <h3 class="mb-4 text-lg font-semibold text-content-secondary">
-        {{ groupNames[group] || group }}
-      </h3>
-
-      <!-- AI 配置专用面板 -->
-      <template v-if="group === 'ai'">
-        <div class="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-          <!-- 启用开关 -->
-          <div class="mb-6 flex items-center justify-between">
-            <div>
-              <span class="font-medium text-content-primary">启用 AI 内容整理</span>
-              <p class="mt-1 text-sm text-content-tertiary">
-                开启后，爬虫任务爬取完成将自动调用 AI 进行内容整理
-              </p>
-            </div>
-            <el-switch
-              v-model="formData['ai.enabled']"
-              active-value="true"
-              inactive-value="false"
-              @change="handleSave('ai.enabled')"
-            />
-          </div>
-
-          <el-divider />
-
-          <!-- 提供商选择 -->
-          <div class="mb-4">
-            <label class="mb-2 block text-sm font-medium text-content-primary">AI 提供商</label>
-            <el-select
-              v-model="formData['ai.provider']"
-              style="width: 280px"
-              @change="onProviderChange"
-            >
-              <el-option
-                v-for="p in aiProviders"
-                :key="p.value"
-                :label="p.label"
-                :value="p.value"
-              />
-            </el-select>
-          </div>
-
-          <!-- API 密钥 -->
-          <div class="mb-4">
-            <label class="mb-2 block text-sm font-medium text-content-primary">API 密钥</label>
-            <div class="flex gap-3">
-              <el-input
-                v-model="formData['ai.api_key']"
-                placeholder="输入 API 密钥"
-                style="width: 400px"
-                show-password
-              />
-            </div>
-          </div>
-
-          <!-- Base URL -->
-          <div class="mb-4">
-            <label class="mb-2 block text-sm font-medium text-content-primary">Base URL</label>
-            <el-input
-              v-model="formData['ai.base_url']"
-              placeholder="https://api.example.com/v1"
-              style="width: 480px"
-            />
-          </div>
-
-          <!-- 模型名称 -->
-          <div class="mb-4">
-            <label class="mb-2 block text-sm font-medium text-content-primary">模型名称</label>
-            <el-input
-              v-model="formData['ai.model']"
-              placeholder="deepseek-chat / qwen-turbo / gpt-3.5-turbo"
-              style="width: 320px"
-            />
-          </div>
-
-          <!-- 温度系数 -->
-          <div class="mb-6">
-            <label class="mb-2 block text-sm font-medium text-content-primary">
-              温度系数: {{ formData['ai.temperature'] !== undefined ? formData['ai.temperature'] : '0.3' }}
-            </label>
-            <el-slider
-              :model-value="Number(formData['ai.temperature'] ?? 0.3)"
-              :min="0"
-              :max="2"
-              :step="0.1"
-              style="width: 320px"
-              @update:model-value="(v: number | number[] | undefined) => formData['ai.temperature'] = Number(Array.isArray(v) ? v[0] : (v ?? 0.3))"
-            />
-            <p class="mt-1 text-xs text-content-tertiary">
-              越低越严谨（0），越高越创意（2）。建议技术文章使用 0.2-0.5
+    <div v-loading="loading" class="space-y-8">
+      <div v-for="(items, group) in groupedConfigs" :key="group">
+        <!-- Group Header -->
+        <div class="mb-4 flex items-center justify-between">
+          <div>
+            <h3 class="text-lg font-semibold text-content-primary">
+              {{ groupNames[group] || group }}
+            </h3>
+            <p class="mt-0.5 text-xs text-content-tertiary">
+              {{ groupDescriptions[group] || '' }}
             </p>
           </div>
+          <el-button
+            type="primary"
+            size="small"
+            :loading="savingGroup === group"
+            @click="handleSaveGroup(group)"
+          >
+            保存全部
+          </el-button>
+        </div>
 
-          <!-- 超时配置 -->
-          <div class="mb-6 flex gap-6">
-            <div>
-              <label class="mb-1 block text-sm font-medium text-content-primary">连接超时（秒）</label>
-              <el-input-number
-                :model-value="Number(formData['ai.connect_timeout_seconds'] || 10)"
-                :min="1"
-                :max="60"
-                @update:model-value="(v: number | number[] | undefined) => formData['ai.connect_timeout_seconds'] = Number(Array.isArray(v) ? v[0] : (v ?? 10))"
-              />
-            </div>
-            <div>
-              <label class="mb-1 block text-sm font-medium text-content-primary">读取超时（秒）</label>
-              <el-input-number
-                :model-value="Number(formData['ai.read_timeout_seconds'] || 90)"
-                :min="1"
-                :max="300"
-                @update:model-value="(v: number | number[] | undefined) => formData['ai.read_timeout_seconds'] = Number(Array.isArray(v) ? v[0] : (v ?? 90))"
-              />
-            </div>
-          </div>
+        <!-- Config Card -->
+        <div class="rounded-2xl border border-border bg-surface-secondary p-6 shadow-sm">
+          <div class="space-y-6">
+            <div
+              v-for="config in items"
+              :key="config.configKey"
+              class="flex flex-col gap-3 sm:flex-row sm:items-start"
+            >
+              <!-- Label -->
+              <div class="w-full sm:w-40 flex-shrink-0 pt-2">
+                <label class="text-sm font-medium text-content-primary">
+                  {{ config.description || getShortLabel(config.configKey) }}
+                </label>
+                <p class="mt-0.5 text-xs text-content-tertiary font-mono">
+                  {{ config.configKey }}
+                </p>
+              </div>
 
-          <!-- 操作按钮 -->
-          <div class="flex gap-4">
-            <el-button type="primary" @click="handleSaveAiGroup">
-              保存 AI 配置
-            </el-button>
-            <el-button :loading="aiTesting" @click="handleAiTest">
-              测试连接
-            </el-button>
+              <!-- Input Area -->
+              <div class="flex-1 min-w-0">
+                <!-- Switch -->
+                <template v-if="getInputType(config.configKey) === 'switch'">
+                  <el-switch
+                    v-model="formData[config.configKey]"
+                    active-value="true"
+                    inactive-value="false"
+                    @change="handleSave(config.configKey)"
+                  />
+                  <span class="ml-3 text-sm text-content-secondary">
+                    {{ formData[config.configKey] === 'true' ? '已启用' : '已禁用' }}
+                  </span>
+                </template>
+
+                <!-- Image Upload -->
+                <template v-else-if="getInputType(config.configKey) === 'image'">
+                  <FileUpload
+                    :model-value="formData[config.configKey] || ''"
+                    placeholder="输入图片 URL 或点击上传"
+                    @update:model-value="(url) => handleImageChange(config.configKey, url)"
+                  />
+                </template>
+
+                <!-- Textarea -->
+                <template v-else-if="getInputType(config.configKey) === 'textarea'">
+                  <el-input
+                    v-model="formData[config.configKey]"
+                    type="textarea"
+                    :rows="config.configKey === 'site.about' ? 6 : 3"
+                    :placeholder="`输入${config.description || getShortLabel(config.configKey)}`"
+                    @blur="handleSave(config.configKey)"
+                  />
+                </template>
+
+                <!-- Password Input -->
+                <template v-else-if="getInputType(config.configKey) === 'password'">
+                  <el-input
+                    v-model="formData[config.configKey]"
+                    type="password"
+                    show-password
+                    :placeholder="`输入${config.description || getShortLabel(config.configKey)}`"
+                    @blur="handleSave(config.configKey)"
+                  />
+                </template>
+
+                <!-- Text Input -->
+                <template v-else>
+                  <el-input
+                    v-model="formData[config.configKey]"
+                    :placeholder="`输入${config.description || getShortLabel(config.configKey)}`"
+                    clearable
+                    @blur="handleSave(config.configKey)"
+                  />
+                </template>
+
+                <!-- Default Value Hint -->
+                <div v-if="config.defaultValue" class="mt-1.5 flex items-center gap-2">
+                  <span class="text-xs text-content-tertiary">
+                    默认值: {{ config.defaultValue }}
+                  </span>
+                  <el-button
+                    v-if="formData[config.configKey] !== config.defaultValue"
+                    link
+                    type="primary"
+                    size="small"
+                    class="text-xs"
+                    @click="handleReset(config.configKey, config.defaultValue)"
+                  >
+                    恢复默认
+                  </el-button>
+                </div>
+
+                <!-- Sensitive Warning -->
+                <div v-if="config.sensitive" class="mt-1.5">
+                  <el-tag type="warning" size="small" effect="plain">
+                    敏感配置 - 公开接口将脱敏显示
+                  </el-tag>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-      </template>
+      </div>
 
-      <!-- 普通配置 -->
-      <template v-else>
-        <el-form label-width="120px">
-          <el-form-item
-            v-for="config in items"
-            :key="config.configKey"
-            :label="config.description || config.configKey"
-          >
-            <div class="flex gap-4">
-              <el-input
-                v-model="formData[config.configKey]"
-                style="width: 400px"
-              />
-              <el-button type="primary" @click="handleSave(config.configKey)">
-                保存
-              </el-button>
-            </div>
-            <template v-if="config.defaultValue">
-              <p class="mt-1 text-xs text-content-tertiary">
-                默认值: {{ config.defaultValue }}
-              </p>
-            </template>
-          </el-form-item>
-        </el-form>
-      </template>
+      <!-- Empty State -->
+      <div v-if="!loading && configs.length === 0" class="py-20 text-center">
+        <el-empty description="暂无配置数据" />
+      </div>
     </div>
   </div>
 </template>

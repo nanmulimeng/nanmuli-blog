@@ -5,6 +5,7 @@ import { ElMessage } from 'element-plus'
 import { getArticleById, updateArticle } from '@/api/article'
 import { getLeafCategoryList } from '@/api/category'
 import MarkdownEditor from '@/components/editor/MarkdownEditor.vue'
+import FileUpload from '@/components/common/FileUpload.vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import type { Article } from '@/types/article'
 import type { Category } from '@/types/category'
@@ -30,7 +31,7 @@ const form = reactive<Partial<Article>>({
 })
 
 // 使用 useAutoSave 替代手动草稿保存逻辑
-const { clearDraft, markSaved } = useAutoSave(form as Record<string, unknown>, {
+const { clearDraft, markSaved, ready } = useAutoSave(form as Record<string, unknown>, {
   draftKey: `article_draft_edit_${articleId}`,
 })
 
@@ -89,12 +90,14 @@ async function handleSubmit(): Promise<void> {
 }
 
 function handleCancel(): void {
+  clearDraft()
   router.back()
 }
 
 onMounted(async () => {
   await fetchCategories()
   await fetchArticle()
+  ready() // 数据加载完成后启用变化监听，避免 fetch 数据误触发未保存提示
 })
 </script>
 
@@ -146,7 +149,7 @@ onMounted(async () => {
       </el-form-item>
 
       <el-form-item label="封面图">
-        <el-input v-model="form.cover" placeholder="封面图URL" maxlength="500" />
+        <FileUpload v-model="form.cover" mode="cover" placeholder="封面图URL" />
       </el-form-item>
 
       <el-form-item label="内容" prop="content">

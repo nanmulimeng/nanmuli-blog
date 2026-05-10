@@ -5,6 +5,7 @@ import { sanitize } from '@/utils/sanitize'
 import { getSkillList } from '@/api/skill'
 import type { Skill } from '@/types/skill'
 import { UserFilled, Promotion, Message, Monitor, Collection, DataLine, Ship, Cpu, Lock } from '@element-plus/icons-vue'
+import SrcImage from '@/components/common/SrcImage.vue'
 
 const configStore = useConfigStore()
 const skills = ref<Skill[]>([])
@@ -41,12 +42,13 @@ onMounted(() => {
         <!-- Avatar -->
         <div class="relative inline-block">
           <div class="w-28 h-28 md:w-32 md:h-32 rounded-full overflow-hidden border-4 border-surface-secondary shadow-lg bg-primary-100 flex items-center justify-center">
-            <img
+            <SrcImage
               v-if="configStore.siteAvatar"
               :src="configStore.siteAvatar"
               alt="Avatar"
-              class="w-full h-full object-cover"
-            >
+              aspect-ratio="1/1"
+              :lazy="false"
+            />
             <el-icon v-else :size="48" class="text-primary-600"><UserFilled /></el-icon>
           </div>
         </div>
@@ -104,7 +106,7 @@ onMounted(() => {
                 :key="skill.id"
                 class="flex items-center gap-3 bg-surface-primary rounded-lg p-3 border border-border"
               >
-                <img v-if="skill.icon" :src="skill.icon" class="w-6 h-6" :alt="skill.name">
+                <SrcImage v-if="skill.icon" :src="skill.icon" :alt="skill.name" :width="24" :height="24" fit="contain" />
                 <span class="flex-1 font-medium text-content-primary">{{ skill.name }}</span>
 
                 <div class="flex gap-1">

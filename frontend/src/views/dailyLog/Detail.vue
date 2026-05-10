@@ -39,15 +39,29 @@ async function fetchLog(): Promise<void> {
   }
 }
 
-// 获取相关日志（相近日期或相同心情）
+// 获取相关日志：按心情+日期相近度+同分类评分排序
 async function fetchRelatedLogs(currentId?: string): Promise<void> {
-  const excludeId = currentId || log.value?.id
-  if (!excludeId) return
+  const current = log.value
+  const excludeId = currentId || current?.id
+  if (!excludeId || !current) return
   try {
-    const res = await getDailyLogList({ current: 1, size: 5 })
-    relatedLogs.value = res.records
-      .filter((l: DailyLog) => l.id !== excludeId)
-      .slice(0, 3)
+    // 拉取足够大的候选池用于评分筛选
+    const res = await getDailyLogList({ current: 1, size: 20 })
+    const candidates = res.records.filter((l: DailyLog) => l.id !== excludeId)
+
+    const currentDate = new Date(current.logDate)
+    const scored = candidates.map((l) => {
+      let score = 0
+      if (l.mood === current.mood) score += 3
+      if (l.categoryId && l.categoryId === current.categoryId) score += 2
+      const diffDays = Math.abs(new Date(l.logDate).getTime() - currentDate.getTime()) / 86400000
+      if (diffDays <= 3) score += 2
+      else if (diffDays <= 7) score += 1
+      return { log: l, score }
+    })
+
+    scored.sort((a, b) => b.score - a.score)
+    relatedLogs.value = scored.slice(0, 3).map((s) => s.log)
   } catch {
     // ignore
   }

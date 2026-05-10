@@ -6,6 +6,8 @@ import { useTheme } from '@/composables/useTheme'
 import { getArticleList } from '@/api/article'
 import type { Article } from '@/types/article'
 import ThemeSwitcher from './ThemeSwitcher.vue'
+import SrcImage from '@/components/common/SrcImage.vue'
+import CoverPlaceholder from '@/components/common/CoverPlaceholder.vue'
 import {
   HomeFilled, Document, OfficeBuilding, Timer, UserFilled, TrendCharts,
   Search, Menu, Close, ArrowRight, Loading, Calendar, View, DocumentDelete, Setting
@@ -378,20 +380,38 @@ onUnmounted(() => {
                   <div class="flex items-start gap-3">
                     <!-- Article Cover or Icon -->
                     <div class="w-12 h-12 rounded-lg bg-surface-tertiary flex-shrink-0 overflow-hidden">
-                      <img
+                      <SrcImage
                         v-if="article.cover"
                         :src="article.cover"
-                        class="w-full h-full object-cover"
                         alt=""
+                        :width="48"
+                        :height="48"
+                        :lazy="false"
                       />
-                      <div v-else class="w-full h-full flex items-center justify-center">
-                        <el-icon class="text-content-tertiary"><Document /></el-icon>
-                      </div>
+                      <CoverPlaceholder v-else :title="article.title" size="sm" />
                     </div>
                     <!-- Article Info -->
                     <div class="flex-1 min-w-0">
-                      <h4 class="font-medium text-content-primary truncate" v-html="sanitize(highlightKeyword(article.title, searchQuery))">
-                      </h4>
+                      <div class="flex items-center gap-2">
+                        <h4 class="font-medium text-content-primary truncate" v-html="sanitize(highlightKeyword(article.title, searchQuery))">
+                        </h4>
+                        <span
+                          v-if="article.category"
+                          class="px-1.5 py-0.5 rounded text-xs font-medium flex-shrink-0"
+                          :style="{
+                            backgroundColor: article.category.color ? article.category.color + '20' : 'var(--surface-tertiary)',
+                            color: article.category.color || 'var(--content-secondary)'
+                          }"
+                        >
+                          {{ article.category.name }}
+                        </span>
+                        <span
+                          v-else-if="article.categoryName"
+                          class="px-1.5 py-0.5 rounded text-xs font-medium bg-surface-tertiary text-content-secondary flex-shrink-0"
+                        >
+                          {{ article.categoryName }}
+                        </span>
+                      </div>
                       <p class="mt-1 text-sm text-content-secondary line-clamp-1" v-html="sanitize(highlightKeyword(article.summary || '暂无摘要', searchQuery))">
                       </p>
                       <div class="mt-1.5 flex items-center gap-3 text-xs text-content-tertiary">
@@ -401,7 +421,7 @@ onUnmounted(() => {
                         </span>
                         <span class="flex items-center gap-1">
                           <el-icon class="text-xs"><View /></el-icon>
-                          {{ article.viewCount }} 阅读
+                          {{ article.visitorCount || 0 }} 人阅读
                         </span>
                       </div>
                     </div>

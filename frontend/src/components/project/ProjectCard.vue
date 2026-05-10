@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Project } from '@/types/project'
+import SrcImage from '@/components/common/SrcImage.vue'
 
 const props = defineProps<{
   project: Project
@@ -36,10 +37,11 @@ function isSafeUrl(url: string | undefined): boolean {
       class="h-48 overflow-hidden bg-surface-tertiary"
       @click="handleClick"
     >
-      <img
+      <SrcImage
         :src="project.cover"
         :alt="project.name"
-        class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+        aspect-ratio="16/9"
+        class="transition-transform duration-300 group-hover:scale-105"
       />
     </div>
 

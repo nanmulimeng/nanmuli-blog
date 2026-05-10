@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
+import SrcImage from '@/components/common/SrcImage.vue'
+import CoverPlaceholder from '@/components/common/CoverPlaceholder.vue'
 import { useConfigStore } from '@/stores/modules/config'
 import { getArticleList } from '@/api/article'
 import { getHomeAggregated } from '@/api/home'
@@ -377,9 +379,9 @@ watch(experience, (newVal) => {
     </section>
 
     <!-- Featured Articles Section -->
-    <section class="mx-auto max-w-7xl px-4 py-24 sm:px-6 lg:px-8">
+    <section class="mx-auto max-w-7xl px-4 pt-12 pb-16 sm:px-6 lg:px-8">
       <!-- Section Header -->
-      <div class="mb-12 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
+      <div class="mb-6 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 class="text-3xl font-bold text-content-primary sm:text-4xl">
             最新文章
@@ -427,16 +429,14 @@ watch(experience, (newVal) => {
         >
           <!-- 封面图 -->
           <div class="relative aspect-video overflow-hidden">
-            <img
+            <SrcImage
               v-if="article.cover"
               :src="article.cover"
               :alt="article.title"
-              v-img-fallback
-              class="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
+              aspect-ratio="16/9"
+              class="transition-transform duration-700 group-hover:scale-110"
             />
-            <div v-else class="flex h-full w-full items-center justify-center bg-gradient-to-br from-blue-400/20 to-cyan-300/20 dark:from-cyan-500/20 dark:to-blue-400/20">
-              <el-icon class="text-4xl text-primary/50"><Document /></el-icon>
-            </div>
+            <CoverPlaceholder v-else :title="article.title" />
 
             <!-- 置顶标签 -->
             <div v-if="article.isTop" class="absolute left-4 top-4">
@@ -504,7 +504,7 @@ watch(experience, (newVal) => {
               </span>
               <span class="flex items-center gap-1">
                 <el-icon><View /></el-icon>
-                {{ article.viewCount }}
+                {{ article.visitorCount || 0 }}
               </span>
             </div>
           </div>
@@ -530,12 +530,12 @@ watch(experience, (newVal) => {
     </section>
 
     <!-- Categories Section -->
-    <section class="relative overflow-hidden py-24">
+    <section class="relative overflow-hidden py-12">
       <!-- 背景装饰 -->
       <div class="absolute inset-0 bg-gradient-to-b from-transparent via-primary/5 to-transparent" />
 
       <div class="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div class="mb-12 text-center">
+        <div class="mb-6 text-center">
           <h2 class="text-3xl font-bold text-content-primary sm:text-4xl">
             探索分类
           </h2>
