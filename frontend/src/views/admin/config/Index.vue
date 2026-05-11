@@ -44,7 +44,12 @@ async function handleSaveGroup(group: string): Promise<void> {
   savingGroup.value = group
   try {
     for (const key of keys) {
+      const config = configs.value.find((c) => c.configKey === key)
       const value = formData.value[key]
+      // 跳过敏感配置的遮罩值，防止 ******** 覆盖真实密钥
+      if (config?.sensitive && value === '********') {
+        continue
+      }
       if (value !== undefined) {
         await updateConfig(key, value)
       }
@@ -54,12 +59,6 @@ async function handleSaveGroup(group: string): Promise<void> {
     ElMessage.error('保存失败')
   } finally {
     savingGroup.value = null
-  }
-}
-
-function handleReset(key: string, defaultValue?: string): void {
-  if (defaultValue !== undefined) {
-    formData.value[key] = defaultValue
   }
 }
 
@@ -87,19 +86,11 @@ const groupedConfigs = computed(() => {
   return groups
 })
 
-// 配置项渲染类型判断
-function getInputType(configKey: string): 'text' | 'textarea' | 'switch' | 'image' | 'password' {
-  if (configKey.endsWith('.enabled') || configKey.endsWith('.autoTags') || configKey.endsWith('.autoSummary')) {
-    return 'switch'
-  }
-  if (['site.logo', 'site.favicon', 'site.avatar'].includes(configKey)) {
-    return 'image'
-  }
-  if (['site.about', 'site.footer', 'site.description'].includes(configKey)) {
-    return 'textarea'
-  }
-  if (configKey.endsWith('.api_key') || configKey.endsWith('.secret')) {
-    return 'password'
+// 配置项渲染类型判断（优先使用 DB 中的 inputType）
+function getInputType(config: { inputType?: string; configKey: string }): 'text' | 'textarea' | 'switch' | 'image' | 'password' {
+  const type = config.inputType || 'text'
+  if (['text', 'textarea', 'switch', 'image', 'password'].includes(type)) {
+    return type as 'text' | 'textarea' | 'switch' | 'image' | 'password'
   }
   return 'text'
 }
@@ -175,7 +166,7 @@ onMounted(fetchData)
               <!-- Input Area -->
               <div class="flex-1 min-w-0">
                 <!-- Switch -->
-                <template v-if="getInputType(config.configKey) === 'switch'">
+                <template v-if="getInputType(config) === 'switch'">
                   <el-switch
                     v-model="formData[config.configKey]"
                     active-value="true"
@@ -188,7 +179,7 @@ onMounted(fetchData)
                 </template>
 
                 <!-- Image Upload -->
-                <template v-else-if="getInputType(config.configKey) === 'image'">
+                <template v-else-if="getInputType(config) === 'image'">
                   <FileUpload
                     :model-value="formData[config.configKey] || ''"
                     placeholder="输入图片 URL 或点击上传"
@@ -197,7 +188,7 @@ onMounted(fetchData)
                 </template>
 
                 <!-- Textarea -->
-                <template v-else-if="getInputType(config.configKey) === 'textarea'">
+                <template v-else-if="getInputType(config) === 'textarea'">
                   <el-input
                     v-model="formData[config.configKey]"
                     type="textarea"
@@ -208,7 +199,7 @@ onMounted(fetchData)
                 </template>
 
                 <!-- Password Input -->
-                <template v-else-if="getInputType(config.configKey) === 'password'">
+                <template v-else-if="getInputType(config) === 'password'">
                   <el-input
                     v-model="formData[config.configKey]"
                     type="password"
@@ -227,23 +218,6 @@ onMounted(fetchData)
                     @blur="handleSave(config.configKey)"
                   />
                 </template>
-
-                <!-- Default Value Hint -->
-                <div v-if="config.defaultValue" class="mt-1.5 flex items-center gap-2">
-                  <span class="text-xs text-content-tertiary">
-                    默认值: {{ config.defaultValue }}
-                  </span>
-                  <el-button
-                    v-if="formData[config.configKey] !== config.defaultValue"
-                    link
-                    type="primary"
-                    size="small"
-                    class="text-xs"
-                    @click="handleReset(config.configKey, config.defaultValue)"
-                  >
-                    恢复默认
-                  </el-button>
-                </div>
 
                 <!-- Sensitive Warning -->
                 <div v-if="config.sensitive" class="mt-1.5">

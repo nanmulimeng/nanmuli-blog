@@ -48,6 +48,7 @@ onMounted(() => {
               alt="Avatar"
               aspect-ratio="1/1"
               :lazy="false"
+              :lightbox="true"
             />
             <el-icon v-else :size="48" class="text-primary-600"><UserFilled /></el-icon>
           </div>

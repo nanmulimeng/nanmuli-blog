@@ -434,6 +434,7 @@ watch(experience, (newVal) => {
               :src="article.cover"
               :alt="article.title"
               aspect-ratio="16/9"
+              :lightbox="true"
               class="transition-transform duration-700 group-hover:scale-110"
             />
             <CoverPlaceholder v-else :title="article.title" />

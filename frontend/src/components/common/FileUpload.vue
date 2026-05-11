@@ -81,8 +81,7 @@ async function handleUpload(options: { file: File }): Promise<void> {
 <template>
   <div class="file-upload">
     <!-- Cover Mode: 已有图片时显示预览卡片 -->
-    <template v-if="mode === 'cover' && isImage">
-      <div class="cover-preview rounded-xl overflow-hidden border border-border bg-surface-tertiary">
+    <div v-show="mode === 'cover' && isImage && !uploading" class="cover-preview rounded-xl overflow-hidden border border-border bg-surface-tertiary">
         <div class="relative aspect-[16/9] overflow-hidden">
           <img
             :src="modelValue || previewUrl"
@@ -115,12 +114,10 @@ async function handleUpload(options: { file: File }): Promise<void> {
             </el-button>
           </el-upload>
         </div>
-      </div>
-    </template>
+    </div>
 
     <!-- Default Mode / Cover Mode 未选择图片 -->
-    <template v-else>
-      <div class="upload-area">
+    <div v-show="!(mode === 'cover' && isImage && !uploading)" class="upload-area">
         <!-- 拖拽上传区域 -->
         <el-upload
           drag
@@ -164,7 +161,6 @@ async function handleUpload(options: { file: File }): Promise<void> {
           @clear="handleRemove"
         />
       </div>
-    </template>
   </div>
 </template>
 

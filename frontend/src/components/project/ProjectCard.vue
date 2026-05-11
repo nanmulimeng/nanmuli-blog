@@ -41,6 +41,7 @@ function isSafeUrl(url: string | undefined): boolean {
         :src="project.cover"
         :alt="project.name"
         aspect-ratio="16/9"
+        :lightbox="true"
         class="transition-transform duration-300 group-hover:scale-105"
       />
     </div>

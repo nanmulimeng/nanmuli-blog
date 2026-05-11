@@ -149,6 +149,7 @@ onMounted(fetchData)
               :width="48"
               :height="48"
               :lazy="false"
+              :lightbox="true"
             />
           </div>
           <div v-else class="flex h-12 w-12 mx-auto items-center justify-center rounded-lg bg-surface-tertiary">

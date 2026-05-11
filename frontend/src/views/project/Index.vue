@@ -115,6 +115,7 @@ function openProjectDetail(project: Project): void {
                 :src="project.cover"
                 :alt="project.name"
                 aspect-ratio="16/9"
+                :lightbox="true"
                 class="transition-transform duration-300 group-hover:scale-105"
               />
               <CoverPlaceholder v-else :title="project.name" />
@@ -221,6 +222,7 @@ function openProjectDetail(project: Project): void {
             :alt="selectedProject.name"
             aspect-ratio="16/9"
             :lazy="false"
+            :lightbox="true"
           />
           <CoverPlaceholder v-else :title="selectedProject.name" />
         </div>
@@ -270,7 +272,7 @@ function openProjectDetail(project: Project): void {
               class="aspect-video rounded-lg overflow-hidden bg-surface-secondary cursor-pointer hover:ring-2 hover:ring-primary transition-all"
               @click="openScreenshot(screenshot)"
             >
-              <SrcImage :src="screenshot" :alt="`截图 ${index + 1}`" aspect-ratio="16/9" />
+              <SrcImage :src="screenshot" :alt="`截图 ${index + 1}`" aspect-ratio="16/9" :lightbox="true" />
             </div>
           </div>
         </div>

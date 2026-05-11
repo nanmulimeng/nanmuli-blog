@@ -43,8 +43,10 @@ function onError() {
   error.value = true
 }
 
-function onClick() {
+function onClick(e: MouseEvent) {
   if (props.lightbox) {
+    e.stopPropagation()
+    e.preventDefault()
     lightboxVisible.value = true
   }
 }
@@ -59,7 +61,7 @@ defineExpose({ imgRef })
 <template>
   <div
     class="src-image-container"
-    :class="{ 'src-image-loaded': resolved }"
+    :class="{ 'src-image-loaded': resolved, 'src-image-lightbox-enabled': lightbox }"
     :style="aspectStyle"
   >
     <!-- 骨架屏 -->
@@ -79,7 +81,7 @@ defineExpose({ imgRef })
         :class="['src-image-img', `src-image-fit-${fit}`]"
         @load="onLoad"
         @error="onError"
-        @click="onClick"
+        @click="onClick($event)"
       />
     </picture>
 
@@ -96,7 +98,7 @@ defineExpose({ imgRef })
       :class="['src-image-img', `src-image-fit-${fit}`]"
       @load="onLoad"
       @error="onError"
-      @click="onClick"
+      @click="onClick($event)"
     />
 
     <!-- 错误兜底 -->
@@ -145,6 +147,10 @@ defineExpose({ imgRef })
 
 .src-image-loaded .src-image-img {
   opacity: 1;
+}
+
+.src-image-lightbox-enabled .src-image-img {
+  cursor: zoom-in;
 }
 
 .src-image-fit-cover { object-fit: cover; }

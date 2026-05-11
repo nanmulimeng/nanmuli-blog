@@ -3,9 +3,9 @@ export interface Config {
   id: string
   configKey: string
   configValue: string
-  defaultValue: string
   description: string
   groupName: string
   isPublic: boolean
   sensitive?: boolean
+  inputType?: string
 }

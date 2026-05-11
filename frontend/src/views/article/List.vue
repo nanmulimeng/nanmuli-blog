@@ -347,6 +347,7 @@ onUnmounted(() => {
                 :src="article.cover"
                 :alt="article.title"
                 aspect-ratio="16/10"
+                :lightbox="true"
                 class="group-hover:scale-110 transition-transform duration-500"
               />
               <CoverPlaceholder
