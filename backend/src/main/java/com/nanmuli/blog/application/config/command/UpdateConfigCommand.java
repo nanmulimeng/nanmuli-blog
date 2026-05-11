@@ -1,6 +1,6 @@
 package com.nanmuli.blog.application.config.command;
 
-import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -9,6 +9,6 @@ import java.io.Serializable;
 public class UpdateConfigCommand implements Serializable {
     private static final long serialVersionUID = 1L;
 
-    @NotBlank(message = "配置值不能为空")
+    @NotNull(message = "配置值不能为null")
     private String value;
 }

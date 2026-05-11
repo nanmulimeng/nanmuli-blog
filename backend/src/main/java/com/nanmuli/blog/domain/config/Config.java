@@ -15,8 +15,8 @@ public class Config extends BaseAggregateRoot<Long> {
 
     private String configKey;
     private String configValue;
-    private String defaultValue;
     private String description;
     private String groupName;
     private Boolean isPublic;
+    private String inputType;
 }

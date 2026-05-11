@@ -4,6 +4,7 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.nanmuli.blog.application.config.dto.ConfigDTO;
 import com.nanmuli.blog.domain.config.Config;
 import com.nanmuli.blog.domain.config.ConfigRepository;
+import com.nanmuli.blog.infrastructure.config.security.AesEncryptor;
 import com.nanmuli.blog.shared.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
@@ -22,15 +23,19 @@ import java.util.stream.Collectors;
 public class ConfigAppService {
 
     private final ConfigRepository configRepository;
+    private final AesEncryptor aesEncryptor;
 
-    // 敏感配置关键词列表
+    private static final String MASK_SENTINEL = "********";
     private static final List<String> SENSITIVE_KEYWORDS = Arrays.asList(
             "key", "secret", "password", "token", "credential", "private", "apikey"
     );
 
-    /**
-     * 获取公开配置（仅返回isPublic=true的配置，敏感值脱敏）
-     */
+    @Transactional(readOnly = true)
+    public Map<String, String> getPublicConfigs() {
+        return configRepository.findAllPublic().stream()
+                .collect(Collectors.toMap(Config::getConfigKey, Config::getConfigValue));
+    }
+
     @Transactional(readOnly = true)
     public List<ConfigDTO> getPublicConfigsForList() {
         return configRepository.findAllPublic().stream()
@@ -38,25 +43,15 @@ public class ConfigAppService {
                 .collect(Collectors.toList());
     }
 
-    /**
-     * 获取所有配置（需管理员权限，敏感值脱敏显示）
-     */
+    @Cacheable(value = "config:admin:list")
     @Transactional(readOnly = true)
     public List<ConfigDTO> getAllConfigsForAdmin() {
-        // 校验管理员权限
         if (!StpUtil.isLogin()) {
             throw new BusinessException(401, "未登录，请先登录");
         }
-
         return configRepository.findAll().stream()
                 .map(this::toAdminDTO)
                 .collect(Collectors.toList());
-    }
-
-    @Transactional(readOnly = true)
-    public Map<String, String> getPublicConfigs() {
-        return configRepository.findAllPublic().stream()
-                .collect(Collectors.toMap(Config::getConfigKey, Config::getConfigValue));
     }
 
     @Cacheable(value = "config", key = "#key")
@@ -67,52 +62,45 @@ public class ConfigAppService {
         return toDTO(config);
     }
 
-    @CacheEvict(value = "config", key = "#key")
+    @CacheEvict(value = {"config", "config:admin:list"}, allEntries = true)
     @Transactional
     public void update(String key, String value) {
+        // 拒绝遮罩值覆盖真实敏感数据
+        if (MASK_SENTINEL.equals(value) && isSensitiveConfig(key)) {
+            throw new BusinessException("不能使用脱敏值覆盖敏感配置，请修改其他字段后重试");
+        }
         Config config = configRepository.findByKey(key)
                 .orElseThrow(() -> new BusinessException("配置不存在"));
-        config.setConfigValue(value);
+        // 敏感值加密存储
+        String storeValue = isSensitiveConfig(key) ? aesEncryptor.encrypt(value) : value;
+        config.setConfigValue(storeValue);
         configRepository.save(config);
     }
 
-    @CacheEvict(value = "config", allEntries = true)
+    @CacheEvict(value = {"config", "config:admin:list"}, allEntries = true)
     public void refreshCache() {
-        // 清除所有配置缓存
     }
 
-    /**
-     * 转换为公开DTO（敏感值脱敏）
-     */
     private ConfigDTO toPublicDTO(Config config) {
         ConfigDTO dto = new ConfigDTO();
         BeanUtils.copyProperties(config, dto);
         dto.setId(config.getId());
-
-        // 敏感配置值脱敏
         if (isSensitiveConfig(config.getConfigKey())) {
             dto.setConfigValue(maskSensitiveValue(config.getConfigValue()));
-            dto.setDefaultValue(maskSensitiveValue(config.getDefaultValue()));
         }
-
         return dto;
     }
 
-    /**
-     * 转换为管理员DTO（敏感值脱敏显示，但标记为可查看）
-     */
     private ConfigDTO toAdminDTO(Config config) {
         ConfigDTO dto = new ConfigDTO();
         BeanUtils.copyProperties(config, dto);
         dto.setId(config.getId());
-
-        // 敏感配置值脱敏显示
         if (isSensitiveConfig(config.getConfigKey())) {
-            dto.setConfigValue(maskSensitiveValue(config.getConfigValue()));
-            dto.setDefaultValue(maskSensitiveValue(config.getDefaultValue()));
+            // 解密存储值用于管理端回显
+            String decrypted = aesEncryptor.decrypt(config.getConfigValue());
+            dto.setConfigValue(maskSensitiveValue(decrypted));
             dto.setSensitive(true);
         }
-
         return dto;
     }
 
@@ -123,24 +111,14 @@ public class ConfigAppService {
         return dto;
     }
 
-    /**
-     * 检测是否为敏感配置
-     */
     private boolean isSensitiveConfig(String configKey) {
-        if (configKey == null) {
-            return false;
-        }
+        if (configKey == null) return false;
         String lowerKey = configKey.toLowerCase();
         return SENSITIVE_KEYWORDS.stream().anyMatch(lowerKey::contains);
     }
 
-    /**
-     * 敏感值脱敏处理
-     */
     private String maskSensitiveValue(String value) {
-        if (value == null || value.isEmpty()) {
-            return value;
-        }
-        return "********";
+        if (value == null || value.isEmpty()) return value;
+        return MASK_SENTINEL;
     }
 }
