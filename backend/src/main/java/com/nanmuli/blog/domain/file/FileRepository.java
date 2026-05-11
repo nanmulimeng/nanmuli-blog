@@ -2,6 +2,7 @@ package com.nanmuli.blog.domain.file;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 
+import java.util.List;
 import java.util.Optional;
 
 public interface FileRepository {
@@ -10,6 +11,8 @@ public interface FileRepository {
     Optional<BlogFile> findById(Long id);
 
     Optional<BlogFile> findByMd5(String md5);
+
+    List<BlogFile> findAll();
 
     void deleteById(Long id);
 

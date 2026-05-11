@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 import org.springframework.util.StringUtils;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -37,6 +38,11 @@ public class FileRepositoryImpl implements FileRepository {
         LambdaQueryWrapper<BlogFile> wrapper = Wrappers.lambdaQuery();
         wrapper.eq(BlogFile::getMd5, md5);
         return Optional.ofNullable(blogFileMapper.selectOne(wrapper));
+    }
+
+    @Override
+    public List<BlogFile> findAll() {
+        return blogFileMapper.selectList(Wrappers.emptyWrapper());
     }
 
     @Override

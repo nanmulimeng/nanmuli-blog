@@ -201,6 +201,43 @@ public class FileAppService {
         return new PageResult<>(result.getTotal(), result.getCurrent(), result.getSize(), records);
     }
 
+    /**
+     * 为已有文件重新生成缩略图（用于后补历史数据）
+     */
+    @Transactional
+    public int regenerateMissingThumbnails() {
+        List<BlogFile> allFiles = fileRepository.findAll();
+        int count = 0;
+        for (BlogFile file : allFiles) {
+            String mimeType = file.getMimeType();
+            if (mimeType == null || !mimeType.startsWith("image/")) continue;
+            if (file.getThumbnailUrl() != null && file.getWidth() != null) continue;
+
+            Path filePath = Paths.get(file.getFilePath());
+            if (!Files.exists(filePath)) {
+                log.warn("文件不存在, 跳过缩略图生成: {}", file.getFilePath());
+                continue;
+            }
+            try {
+                byte[] fileData = Files.readAllBytes(filePath);
+                String baseFileName = file.getFileName();
+                ImageThumbnailService.ThumbnailResult result =
+                        imageThumbnailService.generate(fileData, mimeType, baseFileName, Paths.get(uploadPath), accessUrl);
+                if (result != null) {
+                    file.setWidth(result.width());
+                    file.setHeight(result.height());
+                    file.setThumbnailUrl(result.thumbnailUrl());
+                    fileRepository.save(file);
+                    count++;
+                }
+            } catch (Exception e) {
+                log.error("缩略图重新生成失败, fileId={}", file.getId(), e);
+            }
+        }
+        log.info("缩略图后补完成, 共处理 {} 个文件", count);
+        return count;
+    }
+
     @Transactional
     public void delete(Long id) {
         BlogFile file = fileRepository.findById(id)

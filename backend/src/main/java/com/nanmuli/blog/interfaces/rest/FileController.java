@@ -48,4 +48,9 @@ public class FileController {
     public Result<FileDTO> getById(@PathVariable Long id) {
         return Result.success(fileAppService.getById(id));
     }
+
+    @PostMapping("/admin/file/regenerate-thumbnails")
+    public Result<Integer> regenerateThumbnails() {
+        return Result.success(fileAppService.regenerateMissingThumbnails());
+    }
 }
