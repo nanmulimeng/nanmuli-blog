@@ -2,14 +2,17 @@
 import { ref, onMounted, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { RefreshRight } from '@element-plus/icons-vue'
-import { getAdminConfigList, updateConfig } from '@/api/config'
-import type { Config } from '@/types/config'
+import { getAdminConfigList, updateConfig, getProxyStatus } from '@/api/config'
+import type { Config, ProxyStatus } from '@/types/config'
 import FileUpload from '@/components/common/FileUpload.vue'
 
 const loading = ref(false)
 const savingGroup = ref<string | null>(null)
 const configs = ref<Config[]>([])
 const formData = ref<Record<string, string>>({})
+
+// 代理状态概览
+const proxyStatus = ref<ProxyStatus | null>(null)
 
 async function fetchData(): Promise<void> {
   loading.value = true
@@ -18,8 +21,17 @@ async function fetchData(): Promise<void> {
     configs.value.forEach((config) => {
       formData.value[config.configKey] = config.configValue ?? ''
     })
+    await fetchProxyStatus()
   } finally {
     loading.value = false
+  }
+}
+
+async function fetchProxyStatus(): Promise<void> {
+  try {
+    proxyStatus.value = await getProxyStatus()
+  } catch {
+    proxyStatus.value = null
   }
 }
 
@@ -29,6 +41,10 @@ async function handleSave(key: string): Promise<void> {
   try {
     await updateConfig(key, value)
     ElMessage.success('保存成功')
+    // 保存代理相关配置后刷新代理状态
+    if (key === 'crawler.proxy.enabled' || key === 'crawler.proxy.url') {
+      await fetchProxyStatus()
+    }
   } catch {
     ElMessage.error('保存失败')
   }
@@ -46,7 +62,6 @@ async function handleSaveGroup(group: string): Promise<void> {
     for (const key of keys) {
       const config = configs.value.find((c) => c.configKey === key)
       const value = formData.value[key]
-      // 跳过敏感配置的遮罩值，防止 ******** 覆盖真实密钥
       if (config?.sensitive && value === '********') {
         continue
       }
@@ -55,6 +70,10 @@ async function handleSaveGroup(group: string): Promise<void> {
       }
     }
     ElMessage.success('保存成功')
+    // 保存爬虫组后刷新代理状态
+    if (group === 'crawler') {
+      await fetchProxyStatus()
+    }
   } catch {
     ElMessage.error('保存失败')
   } finally {
@@ -86,7 +105,6 @@ const groupedConfigs = computed(() => {
   return groups
 })
 
-// 配置项渲染类型判断（优先使用 DB 中的 inputType）
 function getInputType(config: { inputType?: string; configKey: string }): 'text' | 'textarea' | 'switch' | 'image' | 'password' {
   const type = config.inputType || 'text'
   if (['text', 'textarea', 'switch', 'image', 'password'].includes(type)) {
@@ -95,7 +113,6 @@ function getInputType(config: { inputType?: string; configKey: string }): 'text'
   return 'text'
 }
 
-// 获取配置项的简短标签（去除前缀）
 function getShortLabel(configKey: string): string {
   const parts = configKey.split('.')
   return parts.length > 1 ? parts.slice(1).join('.') : configKey
@@ -227,6 +244,48 @@ onMounted(fetchData)
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- 代理概览卡片（仅爬虫配置组） -->
+        <div v-if="group === 'crawler'" class="mt-4 rounded-2xl border border-border bg-surface-secondary p-5 shadow-sm">
+          <div class="flex items-center justify-between mb-3">
+            <h4 class="text-sm font-semibold text-content-primary">代理状态</h4>
+            <router-link to="/admin/proxy" class="text-xs text-primary hover:underline">
+              前往代理管理 →
+            </router-link>
+          </div>
+
+          <div v-if="proxyStatus" class="grid grid-cols-3 gap-4">
+            <div class="flex flex-col gap-1">
+              <span class="text-xs text-content-tertiary">启用</span>
+              <span class="text-sm font-medium" :class="proxyStatus.enabled ? 'text-green-600' : 'text-content-tertiary'">
+                {{ proxyStatus.enabled ? '已启用' : '未启用' }}
+              </span>
+            </div>
+            <div class="flex flex-col gap-1">
+              <span class="text-xs text-content-tertiary">Mihomo</span>
+              <span class="text-sm font-medium inline-flex items-center gap-1.5"
+                :class="proxyStatus.mihomoReachable ? 'text-green-600' : 'text-red-500'">
+                <span class="inline-block w-2 h-2 rounded-full"
+                  :class="proxyStatus.mihomoReachable ? 'bg-green-500' : 'bg-red-500'" />
+                {{ proxyStatus.mihomoReachable ? '可达' : '不可达' }}
+              </span>
+            </div>
+            <div class="flex flex-col gap-1">
+              <span class="text-xs text-content-tertiary">订阅</span>
+              <span class="text-sm font-medium" :class="proxyStatus.subscriptionUrl ? 'text-green-600' : 'text-content-tertiary'">
+                {{ proxyStatus.subscriptionUrl ? '已配置' : '未配置' }}
+              </span>
+            </div>
+          </div>
+
+          <div v-if="proxyStatus?.message && !proxyStatus.mihomoReachable" class="mt-3">
+            <el-alert :title="proxyStatus.message" type="warning" :closable="false" show-icon />
+          </div>
+
+          <div v-if="!proxyStatus && !loading" class="text-sm text-content-tertiary">
+            代理状态暂不可用
           </div>
         </div>
       </div>

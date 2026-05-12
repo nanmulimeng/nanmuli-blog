@@ -196,6 +196,12 @@ const adminRoutes: RouteRecordRaw[] = [
     meta: { layout: AdminLayout, title: '系统配置', requiresAuth: true },
   },
   {
+    path: '/admin/proxy',
+    name: 'AdminProxy',
+    component: () => import('@/views/admin/proxy/Index.vue'),
+    meta: { layout: AdminLayout, title: '代理管理', requiresAuth: true },
+  },
+  {
     path: '/admin/file',
     name: 'AdminFile',
     component: () => import('@/views/admin/file/Index.vue'),

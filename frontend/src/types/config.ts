@@ -9,3 +9,31 @@ export interface Config {
   sensitive?: boolean
   inputType?: string
 }
+
+export interface ProxyStatus {
+  enabled: boolean
+  url: string
+  mihomoReachable: boolean
+  latencyMs?: number
+  message?: string
+  subscriptionUrl: string
+}
+
+export interface ProxyNode {
+  name: string
+  type: string
+  delay?: number // ms, undefined=未测试
+}
+
+export interface ProxyGroup {
+  name: string
+  type: string
+  now: string // 当前选中节点
+  nodes: ProxyNode[]
+}
+
+export interface NodeDelay {
+  nodeName: string
+  delay: number
+  reachable: boolean
+}
