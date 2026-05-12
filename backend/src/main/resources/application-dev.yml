@@ -63,6 +63,11 @@ crawler:
       max-total: 20
       max-per-route: 10
 
+# Mihomo (Clash Meta) REST API — 仅服务器可用，本地 Clash Verge 锁定 external-controller
+mihomo:
+  api:
+    url: http://127.0.0.1:9090
+
 logging:
   level:
     root: info

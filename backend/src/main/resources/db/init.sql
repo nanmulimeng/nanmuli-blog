@@ -935,7 +935,9 @@ VALUES
     ('crawler.ai.api_key', '', 'AI API密钥（DashScope）', 'crawler', FALSE, 'password'),
     ('crawler.ai.model', 'qwen-plus', 'AI模型名称', 'crawler', FALSE, 'text'),
     ('crawler.digest.enabled', 'false', '定时日报生成开关', 'crawler', FALSE, 'switch'),
-    ('crawler.proxy.url', '', 'HTTP代理地址', 'crawler', FALSE, 'text')
+    ('crawler.proxy.enabled', 'false', '是否启用代理', 'crawler', FALSE, 'switch'),
+    ('crawler.proxy.url', '', 'HTTP代理地址', 'crawler', FALSE, 'text'),
+    ('crawler.proxy.subscription_url', '', '代理订阅地址', 'crawler', FALSE, 'text')
 ON CONFLICT (config_key) DO NOTHING;
 
 -- 插入示例技能

@@ -49,11 +49,11 @@ public class ConfigController {
                                @Valid @RequestBody UpdateConfigCommand command) {
         configAppService.update(key, command.getValue());
 
-        // 如果修改的是爬虫相关配置，通知 Python 服务刷新
         if (key.startsWith("crawler.")) {
             crawlerTaskClient.refreshConfig();
         }
 
         return Result.success();
     }
+
 }

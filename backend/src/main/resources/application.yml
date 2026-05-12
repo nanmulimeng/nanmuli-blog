@@ -26,7 +26,7 @@ server:
 sa-token:
   token-name: satoken
   timeout: 2592000
-  active-timeout: 1800      # 30分钟无活动过期（从-1改为1800秒）
+  active-timeout: -1            # 无活动超时限制（个人博客无需强制登出）
   is-concurrent: false      # 单点登录（从true改为false）
   is-share: false
   token-style: uuid
