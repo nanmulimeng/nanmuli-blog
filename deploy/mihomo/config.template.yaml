@@ -1,0 +1,97 @@
+# ============================================
+# Mihomo (Clash Meta) 代理配置
+# 由 deploy/mihomo/install.sh 生成
+# ============================================
+
+# 混合端口：HTTP + SOCKS5 共用（爬虫通过 http://127.0.0.1:7890 连接）
+mixed-port: 7890
+
+# 仅监听本地，不对外暴露
+allow-lan: false
+bind-address: "127.0.0.1"
+
+mode: rule
+log-level: warning
+
+# 内存在 2GB 服务器上需精简
+ipv6: false
+geodata-mode: true
+geodata-loader: standard
+
+# API 控制端口（仅本地）
+external-controller: 127.0.0.1:9090
+
+profile:
+  store-selected: true
+  store-fake-ip: true
+
+# ============================================
+# DNS
+# ============================================
+dns:
+  enable: true
+  listen: 127.0.0.1:1053
+  ipv6: false
+  enhanced-mode: fake-ip
+  fake-ip-range: 198.18.0.1/16
+  fake-ip-filter:
+    - "*.lan"
+    - "*.local"
+    - "ntp.*"
+  default-nameserver:
+    - 223.5.5.5
+    - 119.29.29.29
+  nameserver:
+    - https://doh.pub/dns-query
+    - 223.5.5.5
+  fallback:
+    - tls://1.1.1.1:853
+    - tls://8.8.8.8:853
+  fallback-filter:
+    geoip: true
+    geoip-code: CN
+
+# ============================================
+# 代理提供者 — 从订阅 URL 拉取节点
+# 若使用静态节点，手动替换此段
+# ============================================
+proxy-providers:
+  sub:
+    type: http
+    url: "{{SUBSCRIPTION_URL}}"
+    interval: 3600
+    path: ./providers/sub.yaml
+    health-check:
+      enable: true
+      url: https://www.gstatic.com/generate_204
+      interval: 300
+
+# ============================================
+# 代理组
+# ============================================
+proxy-groups:
+  - name: PROXY
+    type: select
+    use:
+      - sub
+    proxies:
+      - DIRECT
+
+  - name: AUTO
+    type: url-test
+    use:
+      - sub
+    url: https://www.gstatic.com/generate_204
+    interval: 300
+    tolerance: 50
+
+# ============================================
+# 规则
+# ============================================
+rules:
+  - GEOSITE,private,DIRECT
+  - GEOSITE,cn,DIRECT
+  - GEOIP,CN,DIRECT
+  - DOMAIN-SUFFIX,cn,DIRECT
+  - DOMAIN-SUFFIX,baidu.com,DIRECT
+  - MATCH,PROXY
