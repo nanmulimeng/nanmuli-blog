@@ -11,6 +11,7 @@ from typing import Optional
 
 from crawl4ai import AsyncWebCrawler
 
+from config import settings
 from .config import get_browser_config, get_crawler_run_config, RunParams, extract_markdown
 from .metadata import extract_metadata
 from .utils import count_words
@@ -82,10 +83,12 @@ async def crawl_single_page(
 
         logger.info("[Single] Crawling: %s", url)
 
-        browser_config = get_browser_config(text_mode=params.text_mode, light_mode=params.light_mode)
+        browser_config = get_browser_config(text_mode=params.text_mode, light_mode=params.light_mode, proxy=settings.proxy_url)
         run_config = get_crawler_run_config(
             word_count_threshold=params.word_count_threshold,
             excluded_tags=params.excluded_tags,
+            excluded_selector=params.excluded_selector,
+            prune_threshold=params.prune_threshold,
             wait_until=params.wait_until,
             page_timeout=params.page_timeout,
             remove_overlay_elements=params.remove_overlay_elements

@@ -28,6 +28,9 @@ os.environ.setdefault("PYTHONUTF8", "1")
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    # 强制 Rich 使用 UTF-8 模式，避免 legacy Windows GBK 编码崩溃
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+    os.environ.setdefault("TERM", "xterm-256color")
 
 from config import settings
 

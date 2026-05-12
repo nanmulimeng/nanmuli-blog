@@ -84,15 +84,26 @@ class TestRunParams:
 
 class TestGetBrowserConfig:
     @patch("crawler.config.BrowserConfig")
-    def test_proxy_injection(self, MockBrowserConfig):
+    @patch("crawler.config.get_effective_proxy", return_value="http://127.0.0.1:7890")
+    def test_proxy_injection(self, mock_eff_proxy, MockBrowserConfig):
         get_browser_config(text_mode=True, proxy="http://127.0.0.1:7890")
         call_kwargs = MockBrowserConfig.call_args[1]
         extra_args = call_kwargs["extra_args"]
         assert any("--proxy-server=http://127.0.0.1:7890" in a for a in extra_args)
 
     @patch("crawler.config.BrowserConfig")
-    def test_no_proxy_no_proxy_arg(self, MockBrowserConfig):
+    @patch("crawler.config.get_effective_proxy", return_value="")
+    def test_no_proxy_no_proxy_arg(self, mock_eff_proxy, MockBrowserConfig):
         get_browser_config(text_mode=True, proxy="")
+        call_kwargs = MockBrowserConfig.call_args[1]
+        extra_args = call_kwargs["extra_args"]
+        assert not any("--proxy-server=" in a for a in extra_args)
+
+    @patch("crawler.config.BrowserConfig")
+    @patch("crawler.config.get_effective_proxy", return_value="")
+    def test_proxy_unreachable_fallback(self, mock_eff_proxy, MockBrowserConfig):
+        """代理不可达时自动降级直连"""
+        get_browser_config(text_mode=True, proxy="http://127.0.0.1:9999")
         call_kwargs = MockBrowserConfig.call_args[1]
         extra_args = call_kwargs["extra_args"]
         assert not any("--proxy-server=" in a for a in extra_args)

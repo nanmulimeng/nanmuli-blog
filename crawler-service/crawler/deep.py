@@ -13,6 +13,7 @@ from crawl4ai import AsyncWebCrawler
 from crawl4ai.deep_crawling import BFSDeepCrawlStrategy
 from crawl4ai.deep_crawling.filters import FilterChain, DomainFilter
 
+from config import settings
 from .config import get_browser_config, get_crawler_run_config, RunParams, extract_markdown
 from .metadata import extract_metadata
 from .single import CrawlResult
@@ -60,7 +61,7 @@ async def crawl_deep_pages(
 
         logger.info("[Deep] Starting BFS crawl: %s, depth=%s, max_pages=%s, domain=%s", url, max_depth, max_pages, base_domain)
 
-        browser_config = get_browser_config(text_mode=params.text_mode, light_mode=params.light_mode)
+        browser_config = get_browser_config(text_mode=params.text_mode, light_mode=params.light_mode, proxy=settings.proxy_url)
         run_config = get_crawler_run_config(
             word_count_threshold=params.word_count_threshold,
             excluded_tags=params.excluded_tags,

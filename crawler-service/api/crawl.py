@@ -28,10 +28,12 @@ class CrawlConfig(BaseModel):
         }
     })
 
-    word_count_threshold: int = Field(default=15, ge=0)
+    word_count_threshold: int = Field(default=10, ge=0)
     excluded_tags: list[str] = Field(default=["nav", "footer", "aside", "script", "style", "noscript", "iframe"])
+    excluded_selector: str = Field(default=".sidebar,.nav-links,.footer-links,.related-posts,.recommendations,#sidebar,#comments,.comment-list", description="CSS selector for blocks to exclude from markdown extraction")
+    prune_threshold: float = Field(default=0.5, ge=0.1, le=1.0, description="PruningContentFilter threshold (higher = more aggressive noise removal)")
     remove_overlay_elements: bool = Field(default=True)
-    wait_until: str = Field(default="networkidle")
+    wait_until: str = Field(default="load")
     page_timeout: int = Field(default=60000, ge=5000, le=120000)
     text_mode: bool = Field(default=True)
     light_mode: bool = Field(default=False)

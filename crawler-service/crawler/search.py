@@ -15,7 +15,7 @@ import httpx
 from bs4 import BeautifulSoup
 from crawl4ai import AsyncWebCrawler
 
-from .config import RunParams, get_browser_config, get_search_run_config
+from .config import RunParams, get_browser_config, get_search_run_config, get_effective_proxy
 from config import settings
 from .dedup import dedup_results
 from .filters import has_excluded_keywords, is_excluded_domain
@@ -261,8 +261,9 @@ async def _fetch_search_html(
     if fallback_headers:
         try:
             client_kwargs = {"follow_redirects": True, "timeout": settings.search_httpx_fallback_timeout}
-            if settings.proxy_url:
-                client_kwargs["proxy"] = settings.proxy_url
+            effective_proxy = get_effective_proxy(settings.proxy_url)
+            if effective_proxy:
+                client_kwargs["proxy"] = effective_proxy
             async with httpx.AsyncClient(**client_kwargs) as client:
                 resp = await client.get(search_url, headers=fallback_headers)
                 resp.raise_for_status()
@@ -458,8 +459,9 @@ async def _get_search_results(keyword: str, engine: str, max_results: int, time_
 
     # 共享 httpx client（非 google 引擎）和浏览器实例（google）
     client_kwargs = {"follow_redirects": True, "timeout": settings.search_client_timeout}
-    if settings.proxy_url:
-        client_kwargs["proxy"] = settings.proxy_url
+    effective_proxy = get_effective_proxy(settings.proxy_url)
+    if effective_proxy:
+        client_kwargs["proxy"] = effective_proxy
     is_google = engine == "google"
 
     if is_google:
