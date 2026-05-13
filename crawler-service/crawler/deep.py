@@ -21,6 +21,12 @@ from .utils import count_words
 
 logger = logging.getLogger(__name__)
 
+# JS Challenge 检测阈值：成功但字数低于此值视为可能被拦截
+_JS_CHALLENGE_MIN_WORDS = 20
+# JS Challenge 重试参数：等待正文元素出现 + 额外延迟
+_JS_CHALLENGE_DELAY = 3.0
+_JS_CHALLENGE_WAIT_FOR = "article, main, .post-content, .entry-content, .content, #content, .article"
+
 
 async def crawl_deep_pages(
     url: str,
@@ -46,6 +52,12 @@ async def crawl_deep_pages(
     results = []
     crawled_urls = set()
 
+    # 参数校验
+    if max_depth < 1:
+        raise ValueError(f"max_depth must be >= 1, got {max_depth}")
+    if max_pages < 1:
+        raise ValueError(f"max_pages must be >= 1, got {max_pages}")
+
     try:
         params = RunParams(config)
 
@@ -65,9 +77,16 @@ async def crawl_deep_pages(
         run_config = get_crawler_run_config(
             word_count_threshold=params.word_count_threshold,
             excluded_tags=params.excluded_tags,
+            excluded_selector=params.excluded_selector,
+            prune_threshold=params.prune_threshold,
             wait_until=params.wait_until,
             page_timeout=params.page_timeout,
-            remove_overlay_elements=params.remove_overlay_elements
+            remove_overlay_elements=params.remove_overlay_elements,
+            max_retries=params.max_retries,
+            mean_delay=params.mean_delay,
+            max_range=params.max_range,
+            delay_before_return_html=params.delay_before_return_html,
+            remove_consent_popups=params.remove_consent_popups,
         )
 
         # 配置深度爬取策略
@@ -80,23 +99,66 @@ async def crawl_deep_pages(
             ])
         )
 
-        # 获取爬取结果（复用或新建浏览器）
+        # 获取爬取结果（复用或新建浏览器），保留活跃 crawler 引用供重试
+        active_crawler = None
         if crawler is None:
             async with AsyncWebCrawler(config=browser_config) as c:
+                active_crawler = c
                 results_raw = await c.arun(url=url, config=run_config)
         else:
+            active_crawler = crawler
             results_raw = await crawler.arun(url=url, config=run_config)
 
         # Crawl4AI 0.8.x: arun 返回 list（非 AsyncGenerator）
         page_count = 0
         for result in results_raw:
+            # 上层 URL 去重保护（防御 BFSDeepCrawlStrategy 去重失效）
+            if result.url in crawled_urls:
+                logger.debug("[Deep] Skipping duplicate URL: %s", result.url)
+                continue
+            crawled_urls.add(result.url)
+
             page_count += 1
 
             if result.success:
-                # 智能提取 markdown：fit_markdown 优先，过度裁剪时自动回退 raw_markdown
                 markdown = extract_markdown(result)
-
                 word_count = count_words(markdown) if markdown else 0
+
+                # JS Challenge 检测：成功但字数异常低，对该 URL 单独重试
+                if word_count < _JS_CHALLENGE_MIN_WORDS and active_crawler is not None:
+                    logger.warning(
+                        "[Deep] Low word count (%s) on %s, possible JS challenge, retrying",
+                        word_count, result.url
+                    )
+                    try:
+                        single_config = get_crawler_run_config(
+                            word_count_threshold=params.word_count_threshold,
+                            excluded_tags=params.excluded_tags,
+                            excluded_selector=params.excluded_selector,
+                            prune_threshold=params.prune_threshold,
+                            wait_until=params.wait_until,
+                            page_timeout=params.page_timeout,
+                            remove_overlay_elements=params.remove_overlay_elements,
+                            max_retries=params.max_retries,
+                            mean_delay=params.mean_delay,
+                            max_range=params.max_range,
+                            delay_before_return_html=_JS_CHALLENGE_DELAY,
+                            remove_consent_popups=params.remove_consent_popups,
+                            wait_for=_JS_CHALLENGE_WAIT_FOR,
+                            wait_for_timeout=5000,
+                        )
+                        retry_results = await active_crawler.arun(url=result.url, config=single_config)
+                        if retry_results and isinstance(retry_results, list):
+                            retry = retry_results[0]
+                        else:
+                            retry = retry_results
+                        if retry and getattr(retry, 'success', False):
+                            markdown = extract_markdown(retry)
+                            word_count = count_words(markdown) if markdown else 0
+                            result = retry  # 使用重试结果
+                            logger.info("[Deep] JS challenge retry succeeded: %s, words=%s", result.url, word_count)
+                    except Exception as retry_err:
+                        logger.warning("[Deep] JS challenge retry failed for %s: %s, keeping original", result.url, retry_err)
 
                 # 获取深度信息（Crawl4AI 0.8.x: depth 在 metadata 中）
                 depth = getattr(result, 'depth', None)
@@ -132,7 +194,6 @@ async def crawl_deep_pages(
                     depth=depth
                 )
                 results.append(crawl_result)
-                crawled_urls.add(result.url)
 
                 logger.info("[Deep] Page %s/%s: %s (depth=%s, words=%s)", page_count, max_pages, result.url, depth, word_count)
 

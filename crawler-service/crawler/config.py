@@ -98,7 +98,10 @@ def get_effective_proxy(proxy_url: str) -> str:
 class RunParams:
     """从 Pydantic/dict config 提取的运行参数"""
     __slots__ = ('text_mode', 'light_mode', 'word_count_threshold', 'excluded_tags',
-                 'excluded_selector', 'prune_threshold', 'wait_until', 'page_timeout', 'remove_overlay_elements')
+                 'excluded_selector', 'prune_threshold', 'wait_until', 'page_timeout',
+                 'remove_overlay_elements', 'max_retries', 'wait_for',
+                 'delay_before_return_html', 'mean_delay', 'max_range',
+                 'remove_consent_popups')
 
     def __init__(self, config: Optional[object] = None):
         if config is None:
@@ -106,19 +109,33 @@ class RunParams:
             self.light_mode = False
             self.word_count_threshold = 10
             self.excluded_tags = DEFAULT_EXCLUDED_TAGS.copy()
-            self.excluded_selector = ".sidebar,.nav-links,.footer-links,.related-posts,.recommendations,#sidebar,#comments,.comment-list"
+            self.excluded_selector = ".sidebar,.nav-links,.footer-links,.related-posts,.recommendations,#sidebar,#comments,.comment-list,.sidebar-block,.left-sidebar,#left-sidebar,.right-sidebar,#right-sidebar,.side-navigator-wrap,.side-navigator,.breadcrumb,.breadcrumbs,.cookie-banner,.cookie-consent,.newsletter-signup,.newsletter,.social-share,.share-buttons,.pagination,.page-nav,.copyright,.site-footer,.site-footer--copyright,.site-footer--nav,.feedback-widget,.read-more,.related-articles,.author-bio,.toc,.table-of-contents,.ad-container,.advertisement,.s-sidebarwidget,.entry-footer,.download-app,.download-popover,.global-component-box,.top-banners-container,[role='complementary'],[role='contentinfo'],[aria-label='Cookie notice'],[aria-label='Cookie banner']"
             self.prune_threshold = 0.5
-            self.wait_until = "load"
+            self.wait_until = "networkidle"
             self.page_timeout = 60000
             self.remove_overlay_elements = True
+            self.max_retries = 2
+            self.wait_for = None
+            self.delay_before_return_html = 1.0
+            self.mean_delay = 0.5
+            self.max_range = 0.5
+            self.remove_consent_popups = True
         else:
             self.text_mode = getattr(config, 'text_mode', True)
             self.light_mode = getattr(config, 'light_mode', False)
             self.word_count_threshold = getattr(config, 'word_count_threshold', 10)
             self.excluded_tags = getattr(config, 'excluded_tags', DEFAULT_EXCLUDED_TAGS.copy())
-            self.excluded_selector = getattr(config, 'excluded_selector', ".sidebar,.nav-links,.footer-links,.related-posts,.recommendations,#sidebar,#comments,.comment-list")
+            self.excluded_selector = getattr(config, 'excluded_selector', ".sidebar,.nav-links,.footer-links,.related-posts,.recommendations,#sidebar,#comments,.comment-list,.sidebar-block,.left-sidebar,#left-sidebar,.right-sidebar,#right-sidebar,.side-navigator-wrap,.side-navigator,.breadcrumb,.breadcrumbs,.cookie-banner,.cookie-consent,.newsletter-signup,.newsletter,.social-share,.share-buttons,.pagination,.page-nav,.copyright,.site-footer,.site-footer--copyright,.site-footer--nav,.feedback-widget,.read-more,.related-articles,.author-bio,.toc,.table-of-contents,.ad-container,.advertisement,.s-sidebarwidget,.entry-footer,.download-app,.download-popover,.global-component-box,.top-banners-container,[role='complementary'],[role='contentinfo'],[aria-label='Cookie notice'],[aria-label='Cookie banner']")
             self.prune_threshold = getattr(config, 'prune_threshold', 0.5)
-            self.wait_until = getattr(config, 'wait_until', "load")
+            self.wait_until = getattr(config, 'wait_until', "networkidle")
+            self.page_timeout = getattr(config, 'page_timeout', 60000)
+            self.remove_overlay_elements = getattr(config, 'remove_overlay_elements', True)
+            self.max_retries = getattr(config, 'max_retries', 2)
+            self.wait_for = getattr(config, 'wait_for', None)
+            self.delay_before_return_html = getattr(config, 'delay_before_return_html', 1.0)
+            self.mean_delay = getattr(config, 'mean_delay', 0.5)
+            self.max_range = getattr(config, 'max_range', 0.5)
+            self.remove_consent_popups = getattr(config, 'remove_consent_popups', True)
             self.page_timeout = getattr(config, 'page_timeout', 60000)
             self.remove_overlay_elements = getattr(config, 'remove_overlay_elements', True)
 
@@ -145,7 +162,6 @@ def get_browser_config(text_mode: bool = True, light_mode: bool = False,
         "--disable-blink-features=AutomationControlled",
         "--disable-features=IsolateOrigins,site-per-process",
         "--disable-site-isolation-trials",
-        "--disable-web-security",
         "--disable-features=BlockInsecurePrivateNetworkRequests",
     ]
 
@@ -160,11 +176,17 @@ def get_browser_config(text_mode: bool = True, light_mode: bool = False,
         text_mode=text_mode,
         light_mode=light_mode,
         java_script_enabled=True,
-        viewport_width=1280,
-        viewport_height=720,
-        enable_stealth=True,       # 启用 stealth 模式反检测
-        avoid_ads=True,            # 阻止广告/追踪域名请求
-        ignore_https_errors=True,  # 忽略 HTTPS 证书错误
+        viewport_width=1920,
+        viewport_height=1080,
+        user_agent_mode="random",
+        headers={
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "Sec-CH-UA": '"Chromium";v="130", "Google Chrome";v="130", "Not?A_Brand";v="99"',
+            "Sec-CH-UA-Platform": '"Windows"',
+        },
+        enable_stealth=True,
+        avoid_ads=True,
+        ignore_https_errors=True,
         extra_args=extra_args
     )
 
@@ -174,9 +196,16 @@ def get_crawler_run_config(
     excluded_tags: list[str] = None,
     excluded_selector: str = "",
     prune_threshold: float = 0.5,
-    wait_until: str = "load",
+    wait_until: str = "networkidle",
     page_timeout: int = 60000,
-    remove_overlay_elements: bool = True
+    remove_overlay_elements: bool = True,
+    max_retries: int = 2,
+    mean_delay: float = 0.5,
+    max_range: float = 0.5,
+    delay_before_return_html: float = 1.0,
+    remove_consent_popups: bool = True,
+    wait_for: str = None,
+    wait_for_timeout: int = None,
 ) -> CrawlerRunConfig:
     """
     获取爬虫运行配置
@@ -189,6 +218,11 @@ def get_crawler_run_config(
         wait_until: 页面加载完成条件
         page_timeout: 页面加载超时时间（毫秒）
         remove_overlay_elements: 是否移除弹窗/覆盖层元素
+        max_retries: 爬取失败自动重试次数
+        mean_delay: BFS 请求间平均延迟（秒）
+        max_range: BFS 请求延迟随机范围（秒）
+        delay_before_return_html: 返回 HTML 前额外等待时间（秒）
+        remove_consent_popups: 是否自动移除 GDPR/Cookie 弹窗
 
     Returns:
         CrawlerRunConfig 实例
@@ -207,10 +241,17 @@ def get_crawler_run_config(
         wait_until=wait_until,
         page_timeout=page_timeout,
         magic=True,
-        simulate_user=True,        # 模拟人类交互（鼠标移动等）
-        override_navigator=True,   # 伪造 navigator 属性绕过检测
+        simulate_user=True,
+        override_navigator=True,
         scan_full_page=True,
         scroll_delay=0.5,
+        max_retries=max_retries,
+        mean_delay=mean_delay,
+        max_range=max_range,
+        delay_before_return_html=delay_before_return_html,
+        remove_consent_popups=remove_consent_popups,
+        wait_for=wait_for,
+        wait_for_timeout=wait_for_timeout,
         markdown_generator=DefaultMarkdownGenerator(
             content_filter=PruningContentFilter(
                 threshold=prune_threshold,
@@ -220,7 +261,7 @@ def get_crawler_run_config(
     )
 
 
-def get_search_run_config(page_timeout: int = 15000) -> CrawlerRunConfig:
+def get_search_run_config(page_timeout: int = 15000, delay_before_return_html: float = 0.5) -> CrawlerRunConfig:
     """
     获取搜索引擎结果页专用的轻量爬虫配置。
 
@@ -229,6 +270,7 @@ def get_search_run_config(page_timeout: int = 15000) -> CrawlerRunConfig:
     - 无需 magic 模式
     - 只需 DOM 加载完成即可解析（domcontentloaded）
     - 不生成 markdown，只取 raw HTML
+    - 小延迟等待 JS 渲染搜索结果
     """
     return CrawlerRunConfig(
         cache_mode=CacheMode.BYPASS,
@@ -239,6 +281,7 @@ def get_search_run_config(page_timeout: int = 15000) -> CrawlerRunConfig:
         exclude_external_links=True,
         wait_until="domcontentloaded",
         page_timeout=page_timeout,
+        delay_before_return_html=delay_before_return_html,
         magic=False,
         simulate_user=False,
         override_navigator=True,
@@ -272,34 +315,67 @@ def _link_text_ratio(block: str) -> float:
     return link_len / clean_len
 
 
+# 内联导航最小链接数：单行包含≥此数的 markdown 链接视为导航
+_MIN_INLINE_LINKS = 3
+# 内联导航链接密度阈值：链接文本占行文本比超过此值视为导航
+_MAX_INLINE_RATIO = 0.7
+# 小导航组最小链接行数（3-7项，密度 > 此阈值时触发过滤）
+_MIN_SMALL_NAV_LINES = 3
+_MAX_SMALL_NAV_RATIO = 0.80
+
+
+def _is_inline_nav(line: str) -> bool:
+    """检测管道/逗号分隔的内联导航行
+
+    如: [Home](/) | [Blog](/b) | [About](/a)
+    """
+    import re
+    s = line.strip()
+    links = re.findall(r'\[([^\]]*)\]\([^)]+\)', s)
+    if len(links) < _MIN_INLINE_LINKS:
+        return False
+    # 先将 [text](url) 替换为纯文本，再计算链接密度
+    clean = re.sub(r'\[([^\]]*)\]\([^)]+\)', r'\1', s)
+    clean = re.sub(r'[#*>\-\[\]\(\)\!`|~\s]', '', clean)
+    if len(clean) == 0:
+        return False
+    link_len = sum(len(l) for l in links)
+    return link_len / len(clean) > _MAX_INLINE_RATIO
+
+
 def _filter_nav_noise(markdown: str) -> str:
     """过滤导航/侧边栏噪音：移除高链接密度的连续性列表行"""
     import re
     lines = markdown.split('\n')
-    if len(lines) < _MIN_NAV_BLOCK_LINES:
+    if not markdown.strip():
         return markdown
 
-    # 标记每行是否为"链接型列表行"
+    # 标记每行是否为"链接型列表行"（含编号列表）
     def _is_link_bullet(line: str) -> bool:
         s = line.strip()
         if not s:
             return False
-        # 以 - * + 开头 + 包含 markdown 链接
-        return bool(re.match(r'^[-*+]', s)) and '[' in s and '](' in s
+        # - * + 或 1. 2) 3) 等编号格式
+        return bool(re.match(r'^([-*+]|\d+[.)]\s)', s)) and '[' in s and '](' in s
 
     # 扫描连续链接行组
     to_remove = set()
     i = 0
     while i < len(lines):
+        # 跳过单独的内联导航行
+        if _is_inline_nav(lines[i]):
+            to_remove.add(i)
+            logger.debug("[Filter] Dropped inline nav line %d", i)
+            i += 1
+            continue
+
         if _is_link_bullet(lines[i]):
             start = i
             while i < len(lines) and (_is_link_bullet(lines[i]) or lines[i].strip() == ''):
                 i += 1
             group = lines[start:i]
-            # 计算组内非空链接行数
             link_lines = [l for l in group if _is_link_bullet(l)]
             if len(link_lines) >= _MIN_NAV_BLOCK_LINES:
-                # 验证链接密度
                 group_text = '\n'.join(group)
                 ratio = _link_text_ratio(group_text)
                 if ratio > _MAX_LINK_RATIO:
@@ -307,6 +383,17 @@ def _filter_nav_noise(markdown: str) -> str:
                         to_remove.add(j)
                     logger.debug(
                         "[Filter] Dropped nav group: %d link lines, ratio=%.2f",
+                        len(link_lines), ratio
+                    )
+            elif len(link_lines) >= _MIN_SMALL_NAV_LINES:
+                # 小导航组（3-7项）用更高密度阈值
+                group_text = '\n'.join(group)
+                ratio = _link_text_ratio(group_text)
+                if ratio > _MAX_SMALL_NAV_RATIO:
+                    for j in range(start, i):
+                        to_remove.add(j)
+                    logger.debug(
+                        "[Filter] Dropped small nav group: %d link lines, ratio=%.2f",
                         len(link_lines), ratio
                     )
         else:
@@ -318,14 +405,85 @@ def _filter_nav_noise(markdown: str) -> str:
     return markdown
 
 
+_BOILERPLATE_PATTERNS = [
+    (r'(?i)^.*\b(we use cookies|accept cookies|cookie policy|privacy policy|'
+     r'cookie consent|this site uses cookies|consent preferences)\b.*$', 'cookie'),
+    (r'(?i)^.*\b(subscribe to|newsletter|sign up for|email updates|'
+     r'join our mailing|get notified|never miss a post)\b.*$', 'newsletter'),
+    (r'(?i)^.*\b(share on|share this|follow us on|tweet this|'
+     r'pin this|share this post|share this article)\b.*$', 'social'),
+    (r'(?i)^.*\b(copyright\s+\d{4}|all rights reserved|\(c\)|©)\b.*$', 'copyright'),
+    (r'(?i)^.*\b(page \d+ of \d+|previous page|next page|pagination|'
+     r'load more|show more)\b.*$', 'pagination'),
+]
+
+
+def _filter_boilerplate(markdown: str) -> str:
+    """移除常见文案噪音：Cookie/Newsletter/社交分享/版权/分页"""
+    import re
+    lines = markdown.split('\n')
+    kept = []
+    for line in lines:
+        is_boilerplate = False
+        for pattern, _tag in _BOILERPLATE_PATTERNS:
+            if re.match(pattern, line):
+                is_boilerplate = True
+                logger.debug("[Filter] Dropped boilerplate (%s): %s", _tag, line[:80])
+                break
+        if not is_boilerplate:
+            kept.append(line)
+    return '\n'.join(kept)
+
+
+def _filter_breadcrumbs(markdown: str) -> str:
+    """移除面包屑导航行
+
+    模式: [Home](/) > [Blog](/b) > [Post](/p)
+          Home / Blog / Post
+          Home > Blog > Post
+    """
+    import re
+    lines = markdown.split('\n')
+    kept = []
+    for line in lines:
+        s = line.strip()
+        skip = False
+
+        # 检测 markdown 链接形式的面包屑: [text](url) [>/>] [text](url) ...
+        links = re.findall(r'\[([^\]]*)\]\([^)]+\)', s)
+        if len(links) >= 2:
+            separators = re.findall(r'\s*[>\/]\s*', s)
+            if len(separators) >= len(links) - 1:
+                # 先将 [text](url) 替换为纯文本，再计算链接密度
+                clean = re.sub(r'\[([^\]]*)\]\([^)]+\)', r'\1', s)
+                clean = re.sub(r'[#*>\-\[\]\(\)\!`|~\s]', '', clean)
+                if len(clean) > 0:
+                    link_total = sum(len(l) for l in links)
+                    if link_total / len(clean) > 0.85:
+                        logger.debug("[Filter] Dropped breadcrumbs: %s", s[:80])
+                        skip = True
+        elif len(links) == 0:
+            # 检测纯文本面包屑: Home / Blog / Current Post
+            parts = re.split(r'\s*[>\/]\s*', s)
+            if len(parts) >= 3 and all(len(p.strip()) < 30 for p in parts):
+                clean_parts = ''.join(p.strip() for p in parts)
+                clean_line = re.sub(r'[>\/\s]', '', s)
+                if len(clean_line) > 0 and len(clean_parts) / len(clean_line) > 0.85:
+                    logger.debug("[Filter] Dropped text breadcrumbs: %s", s[:80])
+                    skip = True
+
+        if not skip:
+            kept.append(line)
+    return '\n'.join(kept)
+
+
 def extract_markdown(crawl4ai_result) -> str:
     """
-    从 Crawl4AI 结果中提取 markdown，带智能回退和导航噪音过滤：
+    从 Crawl4AI 结果中提取 markdown，带智能回退和噪音过滤：
 
     1. 优先 fit_markdown（PruningContentFilter 去噪后）
     2. 当 fit_markdown 不足 raw_markdown 的 30% 时回退 raw_markdown
-       （说明 Pruning 过度裁剪）
-    3. 对结果应用导航噪音过滤（移除高链接密度区块）
+    3. 过滤面包屑 / 文案噪音 / 导航区块
     4. 最终 fallback 到 str(result.markdown)
     """
     md_obj = getattr(crawl4ai_result, 'markdown', None)
@@ -345,12 +503,28 @@ def extract_markdown(crawl4ai_result) -> str:
     if fit and raw:
         ratio = len(fit) / len(raw) if len(raw) > 0 else 1.0
         if ratio < _FIT_MIN_RATIO:
-            logger.info(
-                "[Markdown] fit/raw ratio=%.1f%% < %s, "
-                "falling back to raw_markdown (fit=%s, raw=%s)",
-                ratio * 100, _FIT_MIN_RATIO, len(fit), len(raw)
-            )
-            selected = raw
+            # Progressive fallback: 先过滤 raw 再比较，避免直接使用未过滤 raw
+            raw_filtered = _filter_breadcrumbs(raw)
+            raw_filtered = _filter_boilerplate(raw_filtered)
+            raw_filtered = _filter_nav_noise(raw_filtered)
+            if raw_filtered and len(fit) / max(len(raw_filtered), 1) >= _FIT_MIN_RATIO:
+                # 过滤后 fit 与 raw_filtered 已接近，fit 质量更优
+                logger.info(
+                    "[Markdown] fit/raw=%.1f%% but fit/raw_filtered=%.1f%%, "
+                    "keeping fit (fit=%s, raw=%s, raw_filtered=%s)",
+                    ratio * 100, len(fit) / max(len(raw_filtered), 1) * 100,
+                    len(fit), len(raw), len(raw_filtered)
+                )
+                selected = fit
+            else:
+                logger.info(
+                    "[Markdown] fit/raw=%.1f%%, using filtered raw "
+                    "(fit=%s, raw=%s, raw_filtered=%s)",
+                    ratio * 100, len(fit), len(raw), len(raw_filtered)
+                )
+                selected = raw_filtered if raw_filtered else raw
+                # raw_filtered 已过滤，直接返回
+                return selected
         else:
             selected = fit
     elif fit:
@@ -358,6 +532,12 @@ def extract_markdown(crawl4ai_result) -> str:
     elif raw:
         selected = raw
     else:
-        selected = str(md_obj) if md_obj else ""
+        selected = ""
 
-    return _filter_nav_noise(selected) if selected else ""
+    if not selected:
+        return ""
+
+    # 噪音过滤链：面包屑 → 文案噪音 → 导航区块
+    selected = _filter_breadcrumbs(selected)
+    selected = _filter_boilerplate(selected)
+    return _filter_nav_noise(selected)

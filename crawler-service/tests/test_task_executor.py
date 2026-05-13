@@ -206,7 +206,7 @@ class TestSingleTask:
              patch("crawl4ai.AsyncWebCrawler", return_value=_mock_crawler()), \
              patch("ai.content_organizer._settings", MagicMock(is_configured=True)), \
              patch("ai.content_organizer.organize", new_callable=AsyncMock, return_value=make_organizer_result()), \
-             patch.object(TaskExecutor, "_filter_low_quality", staticmethod(lambda results: results)):
+             patch.object(TaskExecutor, "_filter_low_quality", staticmethod(lambda results, task_type=None: results)):
 
             await tx._execute(tid)
 
@@ -236,7 +236,7 @@ class TestSingleTask:
              patch("crawl4ai.AsyncWebCrawler", return_value=_mock_crawler()), \
              patch("ai.content_organizer._settings", MagicMock(is_configured=True)), \
              patch("ai.content_organizer.organize", new_callable=AsyncMock, side_effect=Exception("AI timeout")), \
-             patch.object(TaskExecutor, "_filter_low_quality", staticmethod(lambda results: results)):
+             patch.object(TaskExecutor, "_filter_low_quality", staticmethod(lambda results, task_type=None: results)):
 
             await tx._execute(tid)
 
@@ -252,7 +252,7 @@ class TestSingleTask:
              patch("crawler.config.get_browser_config", return_value=MagicMock()), \
              patch("crawl4ai.AsyncWebCrawler", return_value=_mock_crawler()), \
              patch("ai.content_organizer._settings", MagicMock(is_configured=False)), \
-             patch.object(TaskExecutor, "_filter_low_quality", staticmethod(lambda results: results)):
+             patch.object(TaskExecutor, "_filter_low_quality", staticmethod(lambda results, task_type=None: results)):
 
             await tx._execute(tid)
 
@@ -282,7 +282,7 @@ class TestStateTransitions:
              patch("crawl4ai.AsyncWebCrawler", return_value=_mock_crawler()), \
              patch("ai.content_organizer._settings", MagicMock(is_configured=True)), \
              patch("ai.content_organizer.organize", new_callable=AsyncMock, return_value=make_organizer_result()), \
-             patch.object(TaskExecutor, "_filter_low_quality", staticmethod(lambda results: results)):
+             patch.object(TaskExecutor, "_filter_low_quality", staticmethod(lambda results, task_type=None: results)):
 
             await tx._execute(tid)
 
@@ -304,7 +304,7 @@ class TestKeywordTask:
         with patch("standalone.task_executor.repo", mock_db), \
              patch("crawler.search.crawl_by_keyword", new_callable=AsyncMock, return_value=results), \
              patch("ai.content_organizer._settings", MagicMock(is_configured=False)), \
-             patch.object(TaskExecutor, "_filter_low_quality", staticmethod(lambda results: results)):
+             patch.object(TaskExecutor, "_filter_low_quality", staticmethod(lambda results, task_type=None: results)):
 
             await tx._execute(tid)
 
@@ -371,7 +371,7 @@ class TestConcurrency:
              patch("crawler.config.get_browser_config", return_value=MagicMock()), \
              patch("crawl4ai.AsyncWebCrawler", return_value=_mock_crawler()), \
              patch("ai.content_organizer._settings", MagicMock(is_configured=False)), \
-             patch.object(TaskExecutor, "_filter_low_quality", staticmethod(lambda results: results)):
+             patch.object(TaskExecutor, "_filter_low_quality", staticmethod(lambda results, task_type=None: results)):
 
             await asyncio.gather(tx._execute_with_semaphore(tid1, "test-eid-1"), tx._execute_with_semaphore(tid2, "test-eid-2"))
 

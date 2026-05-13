@@ -46,24 +46,24 @@ SEARCH_ENGINES = {
         "result_selector": "li.b_algo",
         "title_selector": "h2 a",
         "link_selector": "h2 a",
-        "snippet_selector": "p",
+        "snippet_selector": "p.b_lineclamp2, p.b_caption, .b_caption p, p",
         "fallback_selectors": ["#b_results li", "ol#b_results > li"],
         "selector_version": "2026-05",
     },
     "baidu": {
-        "result_selector": ".result",
+        "result_selector": ".result.c-container",
         "title_selector": "h3 a",
         "link_selector": "h3 a",
-        "snippet_selector": ".content-right, .c-abstract",
-        "fallback_selectors": [".c-container"],
+        "snippet_selector": ".c-abstract, .content-right",
+        "fallback_selectors": [".c-container", ".result"],
         "selector_version": "2026-05",
     },
     "google": {
-        "result_selector": "div.g",
+        "result_selector": "div.tF2Cxc",
         "title_selector": "h3",
-        "link_selector": "a",
-        "snippet_selector": ".VwiC3b, .s3v94d",
-        "fallback_selectors": ["div[data-sokoban-container]", "div.tF2Cxc"],
+        "link_selector": "div.yuRUbf a",
+        "snippet_selector": ".VwiC3b, .s3v94d, span.aCOpRe",
+        "fallback_selectors": ["div[data-sokoban-container]", "div.g"],
         "selector_version": "2026-05",
     },
 }
@@ -95,11 +95,11 @@ TIME_FILTER_PARAMS = {
 }
 
 
-def _build_headers() -> dict:
+def _build_headers(is_cjk: bool = False) -> dict:
     return {
         "User-Agent": random.choice(USER_AGENTS),
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.5",
+        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8" if is_cjk else "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.5",
         "Accept-Encoding": "gzip, deflate, br",
         "Connection": "keep-alive",
         "Sec-Ch-Ua": '"Chromium";v="136", "Google Chrome";v="136"',
@@ -115,6 +115,13 @@ def _build_headers() -> dict:
 
 
 MIN_WORD_COUNT = settings.search_min_word_count
+
+
+def _backoff_delay(attempt: int, base: float = 0.5, max_delay: float = 8.0) -> float:
+    """指数退避延迟，带随机抖动"""
+    delay = min(base * (2 ** attempt), max_delay)
+    jitter = delay * 0.3 * (random.random() * 2 - 1)
+    return max(0.1, delay + jitter)
 
 
 def _extract_keyword_parts(keyword: str) -> list[str]:
@@ -240,7 +247,7 @@ async def _fetch_search_html(
 ) -> Optional[str]:
     """获取搜索页 HTML，浏览器失败时降级为 httpx 直接获取"""
     try:
-        run_config = get_search_run_config(page_timeout=settings.search_browser_fetch_timeout_ms)
+        run_config = get_search_run_config(page_timeout=settings.search_browser_fetch_timeout_ms, delay_before_return_html=0.5)
         if crawler is not None:
             result = await crawler.arun(url=search_url, config=run_config)
         else:
@@ -281,19 +288,29 @@ async def _decode_baidu_redirect(href: str, search_url: str, headers: dict, clie
         "Referer": search_url,
         "User-Agent": headers["User-Agent"],
     }
-    resolved_href = None
+    max_retries = 2
 
-    resp = await client.head(href, headers=link_headers, follow_redirects=True)
-    candidate = str(resp.url)
-    if resp.status_code < 400 and "baidu.com/link?url=" not in candidate:
-        resolved_href = candidate
-    else:
-        resp = await client.get(href, headers=link_headers, follow_redirects=True)
-        candidate = str(resp.url)
-        if resp.status_code < 400 and "baidu.com/link?url=" not in candidate:
-            resolved_href = candidate
+    for attempt in range(max_retries + 1):
+        try:
+            resp = await client.head(href, headers=link_headers, follow_redirects=True)
+            candidate = str(resp.url)
+            if resp.status_code < 400 and "baidu.com/link?url=" not in candidate:
+                return candidate
+        except Exception as head_err:
+            logger.debug("[Search] Baidu redirect HEAD attempt %s failed: %s", attempt + 1, head_err)
 
-    return resolved_href
+        try:
+            resp = await client.get(href, headers=link_headers, follow_redirects=True)
+            candidate = str(resp.url)
+            if resp.status_code < 400 and "baidu.com/link?url=" not in candidate:
+                return candidate
+        except Exception as get_err:
+            logger.debug("[Search] Baidu redirect GET attempt %s failed: %s", attempt + 1, get_err)
+
+        if attempt < max_retries:
+            await asyncio.sleep(_backoff_delay(attempt, base=0.3, max_delay=2.0))
+
+    return None
 
 
 async def _parse_search_results(
@@ -366,6 +383,8 @@ async def _parse_search_results(
                             # 跳过解码后仍指向 bing.com 的 URL
                             if "bing.com" not in decoded:
                                 href = decoded
+                        else:
+                            logger.debug("[Search] Bing ck/a unknown prefix '%s', keeping original href", encoded[:4])
                     except Exception as exc:
                         logger.debug("[Search] Bing ck/a base64 decode failed: %s", exc)
         elif engine == "google" and href.startswith("/url?"):
@@ -440,7 +459,8 @@ async def _get_search_results(keyword: str, engine: str, max_results: int, time_
         raise ValueError(f"Unsupported search engine: {engine}. Supported: {list(SEARCH_ENGINES.keys())}")
 
     config = SEARCH_ENGINES[engine]
-    headers = _build_headers()
+    is_cjk = any('一' <= c <= '鿿' for c in keyword)
+    headers = _build_headers(is_cjk=is_cjk)
     if engine == "sogou":
         headers["Referer"] = "https://www.sogou.com/"
 
@@ -476,12 +496,14 @@ async def _get_search_results(keyword: str, engine: str, max_results: int, time_
         while len(urls) < max_results and page < settings.search_max_pages_per_engine:
             if engine == "bing":
                 first = page * 10 + 1
-                search_url = f"https://www.bing.com/search?q={quote_plus(keyword)}&setmkt=en-US&setlang=en&first={first}{time_filter}"
+                market = "zh-CN" if is_cjk else "en-US"
+                search_url = f"https://www.bing.com/search?q={quote_plus(keyword)}&setmkt={market}&setlang=en&first={first}{time_filter}"
             elif engine == "sogou":
                 search_url = f"https://www.sogou.com/web?query={quote_plus(keyword)}&page={page + 1}{time_filter}"
             elif engine == "google":
                 start = page * 10
-                search_url = f"https://www.google.com/search?q={quote_plus(keyword)}&num=10&start={start}&hl=en{time_filter}"
+                hl = "zh-CN" if is_cjk else "en"
+                search_url = f"https://www.google.com/search?q={quote_plus(keyword)}&num=10&start={start}&hl={hl}{time_filter}"
             elif engine == "baidu":
                 pn = page * 10
                 search_url = f"https://www.baidu.com/s?wd={quote_plus(keyword)}&pn={pn}{time_filter}"
@@ -496,7 +518,7 @@ async def _get_search_results(keyword: str, engine: str, max_results: int, time_
                         if html is not None:
                             break
                         if attempt < SEARCH_PAGE_RETRIES - 1:
-                            await asyncio.sleep(random.uniform(1.0, 2.0))
+                            await asyncio.sleep(_backoff_delay(attempt, base=1.0))
                     if html is None:
                         break
                     raw_count, page_new = await _parse_search_results(
@@ -518,25 +540,15 @@ async def _get_search_results(keyword: str, engine: str, max_results: int, time_
                             await asyncio.sleep(0.5)
                         except Exception:
                             pass
-                    response = await shared_client.get(search_url, headers=headers)
-                    response.raise_for_status()
-                    raw_count, page_new = await _parse_search_results(
-                        html=response.text,
-                        engine=engine,
-                        config=config,
-                        keyword=keyword,
-                        max_results=max_results,
-                        seen_domains=seen_domains,
-                        urls=urls,
-                        search_url=search_url,
-                        headers=headers,
-                        client=shared_client,
-                    )
-                else:
                     last_exc = None
                     for attempt in range(SEARCH_PAGE_RETRIES):
                         try:
                             response = await shared_client.get(search_url, headers=headers)
+                            if response.status_code in (403, 429):
+                                raise RuntimeError(
+                                    f"Engine '{engine}' returned {response.status_code} "
+                                    f"(likely blocked/rate-limited)"
+                                )
                             if response.status_code >= 500:
                                 response.raise_for_status()
                             raw_count, page_new = await _parse_search_results(
@@ -556,7 +568,39 @@ async def _get_search_results(keyword: str, engine: str, max_results: int, time_
                         except Exception as exc:
                             last_exc = exc
                             if attempt < SEARCH_PAGE_RETRIES - 1:
-                                await asyncio.sleep(random.uniform(0.5, 1.5))
+                                await asyncio.sleep(_backoff_delay(attempt, base=0.5))
+                            else:
+                                raise last_exc
+                else:
+                    last_exc = None
+                    for attempt in range(SEARCH_PAGE_RETRIES):
+                        try:
+                            response = await shared_client.get(search_url, headers=headers)
+                            if response.status_code in (403, 429):
+                                raise RuntimeError(
+                                    f"Engine '{engine}' returned {response.status_code} "
+                                    f"(likely blocked/rate-limited)"
+                                )
+                            if response.status_code >= 500:
+                                response.raise_for_status()
+                            raw_count, page_new = await _parse_search_results(
+                                html=response.text,
+                                engine=engine,
+                                config=config,
+                                keyword=keyword,
+                                max_results=max_results,
+                                seen_domains=seen_domains,
+                                urls=urls,
+                                search_url=search_url,
+                                headers=headers,
+                                client=shared_client,
+                            )
+                            last_exc = None
+                            break
+                        except Exception as exc:
+                            last_exc = exc
+                            if attempt < SEARCH_PAGE_RETRIES - 1:
+                                await asyncio.sleep(_backoff_delay(attempt, base=0.5))
                             else:
                                 raise last_exc
 
@@ -648,7 +692,8 @@ async def crawl_by_keyword(
         raise ValueError(f"Invalid time_range '{time_range}'. Must be one of: {valid_time_ranges}")
 
     start_time = time.time()
-    logger.info("[Search] Keyword: '%s', engine: %s, max_results=%s, time_range=%s", keyword, engine, max_results, time_range)
+    deadline = settings.search_crawl_deadline_seconds
+    logger.info("[Search] Keyword: '%s', engine: %s, max_results=%s, time_range=%s, deadline=%ss", keyword, engine, max_results, time_range, deadline)
 
     engines_to_try = [engine]
     for current in ENGINE_PRIORITY:
@@ -659,60 +704,80 @@ async def crawl_by_keyword(
     all_search_urls = []
     url_source_map = {}
     tried_engines = []
+    results = []
 
-    for idx, current_engine in enumerate(engines_to_try):
-        try:
-            logger.info("[Search] Trying engine '%s' for keyword: '%s'", current_engine, keyword)
-            search_urls = await _get_search_results(keyword=keyword, engine=current_engine, max_results=max_results, time_range=time_range)
-            tried_engines.append(current_engine)
+    try:
+        async with asyncio.timeout(deadline):
+            for idx, current_engine in enumerate(engines_to_try):
+                try:
+                    logger.info("[Search] Trying engine '%s' for keyword: '%s'", current_engine, keyword)
+                    search_urls = await _get_search_results(keyword=keyword, engine=current_engine, max_results=max_results, time_range=time_range)
+                    tried_engines.append(current_engine)
 
-            if search_urls:
-                new_urls = [url for url in search_urls if url not in url_set]
-                for url in new_urls:
-                    url_set.add(url)
-                    url_source_map[url] = current_engine
-                all_search_urls.extend(new_urls)
-                logger.info(
-                    "[Search] Engine '%s' returned %s URLs (%s new, total unique=%s)",
-                    current_engine,
-                    len(search_urls),
-                    len(new_urls),
-                    len(all_search_urls),
-                )
-                if len(all_search_urls) >= max_results:
-                    break
-            else:
-                logger.warning("[Search] Engine '%s' returned 0 results for '%s'", current_engine, keyword)
-        except Exception as exc:
-            logger.warning("[Search] Engine '%s' failed for '%s': %s", current_engine, keyword, exc)
-            tried_engines.append(current_engine)
+                    if search_urls:
+                        new_urls = [url for url in search_urls if url not in url_set]
+                        for url in new_urls:
+                            url_set.add(url)
+                            url_source_map[url] = current_engine
+                        all_search_urls.extend(new_urls)
+                        logger.info(
+                            "[Search] Engine '%s' returned %s URLs (%s new, total unique=%s)",
+                            current_engine,
+                            len(search_urls),
+                            len(new_urls),
+                            len(all_search_urls),
+                        )
+                        if len(all_search_urls) >= max_results:
+                            break
+                    else:
+                        logger.warning("[Search] Engine '%s' returned 0 results for '%s'", current_engine, keyword)
+                except Exception as exc:
+                    logger.warning("[Search] Engine '%s' failed for '%s': %s", current_engine, keyword, exc)
+                    tried_engines.append(current_engine)
 
-        if idx < len(engines_to_try) - 1:
-            await asyncio.sleep(random.uniform(settings.search_engine_switch_delay_min, settings.search_engine_switch_delay_max))
+                if idx < len(engines_to_try) - 1:
+                    await asyncio.sleep(random.uniform(settings.search_engine_switch_delay_min, settings.search_engine_switch_delay_max))
 
-    if not all_search_urls:
-        logger.error("[Search] All engines failed for keyword: '%s'. Tried: %s", keyword, tried_engines)
-        return [
-            CrawlResult(
-                success=False,
-                url="",
-                error_message=f"No search results found for keyword: '{keyword}' (tried engines: {', '.join(tried_engines)})",
+            if not all_search_urls:
+                logger.error("[Search] All engines failed for keyword: '%s'. Tried: %s", keyword, tried_engines)
+                return [
+                    CrawlResult(
+                        success=False,
+                        url="",
+                        error_message=f"No search results found for keyword: '{keyword}' (tried engines: {', '.join(tried_engines)})",
+                    )
+                ]
+
+            all_search_urls = all_search_urls[:max_results]
+            logger.info("[Search] Total %s unique URLs from %s engine(s) for '%s'", len(all_search_urls), len(tried_engines), keyword)
+
+            params = RunParams(config)
+            browser_config = get_browser_config(text_mode=params.text_mode, light_mode=params.light_mode, proxy=settings.proxy_url)
+            results = await _crawl_urls_with_shared_browser(
+                urls=all_search_urls,
+                keyword=keyword,
+                url_source_map=url_source_map,
+                config=config,
+                browser_config=browser_config,
+                external_crawler=crawler,
             )
-        ]
-
-    all_search_urls = all_search_urls[:max_results]
-    logger.info("[Search] Total %s unique URLs from %s engine(s) for '%s'", len(all_search_urls), len(tried_engines), keyword)
-
-    params = RunParams(config)
-    browser_config = get_browser_config(text_mode=params.text_mode, light_mode=params.light_mode, proxy=settings.proxy_url)
-    results = await _crawl_urls_with_shared_browser(
-        urls=all_search_urls,
-        keyword=keyword,
-        url_source_map=url_source_map,
-        config=config,
-        browser_config=browser_config,
-        external_crawler=crawler,
-    )
+    except asyncio.TimeoutError:
+        elapsed = int((time.time() - start_time))
+        logger.warning(
+            "[Search] Deadline reached (%ss elapsed of %ss), returning partial results",
+            elapsed, deadline
+        )
+        # 超时时返回已收集但未爬取的 URL 的错误结果
+        for url in all_search_urls:
+            rank = list(url_source_map.keys()).index(url) + 1 if url in url_source_map else 0
+            results.append(CrawlResult(
+                success=False,
+                url=url,
+                error_message=f"Crawl deadline exceeded ({deadline}s), URL not crawled",
+                crawl_time_ms=0,
+                search_rank=rank,
+            ))
+        return results
 
     try:
         deduped = dedup_results(results)

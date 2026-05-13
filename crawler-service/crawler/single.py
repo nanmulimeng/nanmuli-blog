@@ -60,6 +60,11 @@ class CrawlResult:
         }
 
 
+_JS_CHALLENGE_MIN_WORDS = 20
+_JS_CHALLENGE_WAIT_FOR = "article, main, .post-content, .entry-content, .content, #content, .article"
+_JS_CHALLENGE_DELAY = 3.0
+
+
 async def crawl_single_page(
     url: str,
     config: Optional[object] = None,
@@ -91,14 +96,19 @@ async def crawl_single_page(
             prune_threshold=params.prune_threshold,
             wait_until=params.wait_until,
             page_timeout=params.page_timeout,
-            remove_overlay_elements=params.remove_overlay_elements
+            remove_overlay_elements=params.remove_overlay_elements,
+            max_retries=params.max_retries,
+            mean_delay=params.mean_delay,
+            max_range=params.max_range,
+            delay_before_return_html=params.delay_before_return_html,
+            remove_consent_popups=params.remove_consent_popups,
         )
 
         if crawler is None:
-            async with AsyncWebCrawler(config=browser_config) as crawler:
-                return await _run_crawl(crawler, url, run_config, start_time)
+            async with AsyncWebCrawler(config=browser_config) as c:
+                return await _run_crawl(c, url, run_config, start_time, params)
         else:
-            return await _run_crawl(crawler, url, run_config, start_time)
+            return await _run_crawl(crawler, url, run_config, start_time, params)
 
     except Exception as e:
         logger.error("[Single] Exception: %s, %s", url, str(e), exc_info=True)
@@ -111,16 +121,44 @@ async def crawl_single_page(
         )
 
 
-async def _run_crawl(crawler, url: str, run_config, start_time: float) -> CrawlResult:
-    """执行单次爬取（与 crawler 生命周期解耦）"""
+async def _run_crawl(crawler, url: str, run_config, start_time: float,
+                   params=None) -> CrawlResult:
+    """执行单次爬取（与 crawler 生命周期解耦），低字数时自动 JS Challenge 重试"""
     result = await crawler.arun(url=url, config=run_config)
 
     if result.success:
         markdown = extract_markdown(result)
         word_count = count_words(markdown) if markdown else 0
 
+        # JS Challenge 检测：成功但字数异常低，可能捕获了 interstitial
+        if word_count < _JS_CHALLENGE_MIN_WORDS and params is not None:
+            logger.warning(
+                "[Single] Low word count (%s), possible JS challenge interstitial, "
+                "retrying with wait_for", word_count
+            )
+            retry_config = get_crawler_run_config(
+                word_count_threshold=params.word_count_threshold,
+                excluded_tags=params.excluded_tags,
+                excluded_selector=params.excluded_selector,
+                prune_threshold=params.prune_threshold,
+                wait_until=params.wait_until,
+                page_timeout=params.page_timeout,
+                remove_overlay_elements=params.remove_overlay_elements,
+                max_retries=params.max_retries,
+                mean_delay=params.mean_delay,
+                max_range=params.max_range,
+                delay_before_return_html=_JS_CHALLENGE_DELAY,
+                remove_consent_popups=params.remove_consent_popups,
+                wait_for=_JS_CHALLENGE_WAIT_FOR,
+                wait_for_timeout=5000,
+            )
+            result = await crawler.arun(url=url, config=retry_config)
+            if result.success:
+                markdown = extract_markdown(result)
+                word_count = count_words(markdown) if markdown else 0
+
         metadata = extract_metadata(
-            html_content=result.html,
+            html_content=getattr(result, 'html', None) or '',
             base_url=url
         )
 

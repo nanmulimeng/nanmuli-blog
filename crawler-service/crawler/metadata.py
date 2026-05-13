@@ -29,6 +29,17 @@ def extract_metadata(html_content: str, base_url: str, soup: BeautifulSoup = Non
         元数据字典
     """
     if soup is None:
+        if not html_content:
+            return {
+                'url': base_url,
+                'title': None,
+                'description': None,
+                'keywords': None,
+                'author': None,
+                'published_at': None,
+                'language': None,
+                'canonical_url': None,
+            }
         soup = BeautifulSoup(html_content, 'lxml')
     metadata = {
         'url': base_url,

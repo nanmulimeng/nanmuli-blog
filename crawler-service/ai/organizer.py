@@ -65,44 +65,51 @@ DIGEST_CATEGORY_MAP = {
 
 # ============== Prompts (identical to Java) ==============
 
-SYSTEM_PROMPT = """你是一位资深技术内容编辑，擅长从网页原始内容中提取核心信息并重组为高质量中文技术文章。
+SYSTEM_PROMPT = """你是一位技术内容整理专家。你的核心职责是**整理和标注**网页原始内容，而非改写或创作新文章。
+
+## 核心原则（最高优先级）
+- **最大程度保留原文**：不要改写、扩写、缩略或润色原文内容。原文的结构、措辞、代码示例、配置参数应保持原样。
+- **你只做三件事**：① 过滤噪音（导航、广告、评论区等）；② 调整格式（统一 Markdown 层级、修复断裂的代码块）；③ 提取元数据（标题、摘要、要点、标签、分类）。
+- **禁止编造**：keyPoints 必须来自原文明确提到的内容。不要补充原文没有的"背景知识"、"最佳实践"或"延伸阅读"。
+
 ## 输出规则
 1. 严格输出 JSON，不要包裹在 markdown 代码块中
-2. fullContent 使用 Markdown 格式，代码块使用 ```language 标记，正文 1000-5000 字
-3. 保留原文中有价值的代码示例和技术细节，不要丢弃关键信息
-4. 英文内容翻译为中文，保留专有名词原文（如 React、Kubernetes、gRPC）
-5. tags 必须是具体技术关键词，3-7 个，避免\"技术\"\"编程\"等过泛标签
+2. fullContent 使用 Markdown 格式，代码块使用 ```language 标记。保留原文的长度和结构，不要为了凑字数扩写，也不要为了精简而删减
+3. **代码、配置、命令行示例必须原样保留**，包括注释和输出。不要修改代码风格或变量命名
+4. 原文是什么语言就保留什么语言。不要将英文翻译为中文，也不要将中文翻译为英文。专有名词保持原文
+5. tags 必须是原文中出现或明确讨论的具体技术关键词，3-7 个，避免\"技术\"\"编程\"等过泛标签
 6. category 必须是以下之一：后端开发、前端开发、移动开发、数据库、DevOps、云计算、AI与机器学习、安全、区块链、其他
 7. 如果输入不是有效技术内容（登录页、错误页、空白页、广告页），将 summary 设为"该页面不包含有效技术内容"，其他字段留空
 8. 忽略导航菜单、Cookie 提示、评论区、分享按钮、广告、侧边栏等与正文无关的内容
-9. keyPoints 应提炼可操作的技术要点，而非泛泛描述"""
+9. keyPoints 应提炼原文中**实际出现**的技术要点，每条应具体、可操作。不要编造原文未提及的内容"""
 
 OUTPUT_SCHEMA = """
 ## 输出格式（严格 JSON）
 {
-  "title": "中文标题，15-30字，突出核心主题",
-  "summary": "200-400字核心摘要，涵盖背景、方法、结论",
-  "keyPoints": ["技术要点1（具体可操作）", "技术要点2", "技术要点3", "..."],
-  "tags": ["具体技术关键词1", "关键词2"],
+  "title": "中文标题，15-30字，概括原文核心主题",
+  "summary": "100-300字原文摘要，用原文语言提炼核心内容，不补充原文没有的背景",
+  "keyPoints": ["原文中的技术要点1（具体可操作）", "技术要点2", "技术要点3", "..."],
+  "tags": ["原文涉及的技术关键词1", "关键词2"],
   "category": "后端开发|前端开发|移动开发|数据库|DevOps|云计算|AI与机器学习|安全|区块链|其他",
-  "fullContent": "完整 Markdown 格式技术文章（保留代码示例和关键配置）"
+  "fullContent": "原文内容的结构化整理（保留代码示例、配置参数、命令行输出原样，维持原文语言，仅过滤噪音和调整格式层级）"
 }"""
 
+
 FEW_SHOT_EXAMPLE = """
-## 输出示例
+## 输出示例（注意：fullContent 是原文的结构化整理，不是新写的文章）
 {
-  "title": "Spring Boot 3 优雅停机配置详解与实践",
-  "summary": "Spring Boot 3 引入了内置的优雅停机机制，通过 server.shutdown=graceful 配置即可让 Web 服务器在关闭时拒绝新请求并等待正在处理的请求完成。结合 SmartLifecycle 接口可实现线程池、数据库连接等资源的有序释放。在 Kubernetes 环境中，还需配合 terminationGracePeriodSeconds 和 preStop 钩子确保流量完全排空后才终止 Pod。",
+  "title": "Spring Boot 3 优雅停机配置说明",
+  "summary": "原文介绍了 Spring Boot 3 内置的优雅停机机制：通过 server.shutdown=graceful 配置让 Web 服务器在关闭时拒绝新请求并等待处理中的请求完成，结合 SmartLifecycle 接口实现资源有序释放，Kubernetes 环境下需配合 terminationGracePeriodSeconds 和 preStop 钩子。",
   "keyPoints": [
-    "通过 server.shutdown=graceful 开启优雅停机，默认等待 30s",
-    "实现 SmartLifecycle 接口自定义资源释放顺序（先关线程池再关连接）",
-    "Kubernetes 需配合 terminationGracePeriodSeconds 和 preStop hook",
-    "Spring Boot 3.2+ 支持 Adaptive	为不同 Web 服务器自动配置最优停机策略"
+    "server.shutdown=graceful 开启优雅停机，默认等待 30s",
+    "实现 SmartLifecycle 接口自定义资源释放顺序",
+    "Kubernetes 需配置 terminationGracePeriodSeconds 和 preStop hook"
   ],
-  "tags": ["Spring Boot 3", "优雅停机", "Kubernetes", "微服务部署"],
+  "tags": ["Spring Boot 3", "优雅停机", "Kubernetes"],
   "category": "后端开发",
-  "fullContent": "## Spring Boot 3 优雅停机\\n\\n### 开启优雅停机\\n\\n在 application.yml 中配置：\\n\\n```yaml\\nserver:\\n  shutdown: graceful\\nspring:\\n  lifecycle:\\n    timeout-per-shutdown-phase: 30s\\n```\\n\\n启用后，应用关闭时 Web 服务器会拒绝新的请求，并等待正在处理的请求完成。\\n\\n### 自定义资源释放\\n\\n实现 SmartLifecycle 接口，按顺序释放资源。"
+  "fullContent": "## 开启优雅停机\\n\\n在 application.yml 中配置：\\n\\n```yaml\\nserver:\\n  shutdown: graceful\\nspring:\\n  lifecycle:\\n    timeout-per-shutdown-phase: 30s\\n```\\n\\n启用后，应用关闭时 Web 服务器会拒绝新的请求，并等待正在处理的请求完成。\\n\\n## 自定义资源释放\\n\\n实现 SmartLifecycle 接口，按顺序释放资源。"
 }"""
+
 
 DIGEST_SYSTEM_PROMPT = """你是一位资深技术资讯编辑，负责生成每日技术日报。
 ## 任务
@@ -173,20 +180,20 @@ DIGEST_SYSTEM_PROMPT = """你是一位资深技术资讯编辑，负责生成每
 
 TEMPLATE_PROMPTS = {
     "tech_summary": {
-        "single": "请对以下网页内容进行深度阅读和结构化整理。\n重点：提炼核心技术要点，梳理逻辑脉络，补充必要的背景说明，输出一篇结构清晰、可直接用于技术博客的文章。",
-        "multi": "以下是从多个来源收集的技术内容，请综合分析后输出一篇结构化技术摘要。\n重点：提炼各来源的共识观点，合并重复信息，保留互补细节（如不同方案的代码示例），标注信息来源差异。",
+        "single": "请对以下网页内容进行整理和标注。\n重点：过滤噪音、调整格式层级、保留所有代码/配置/命令行示例原样。不要改写原文内容。",
+        "multi": "以下是从多个来源收集的内容，请整理为一份结构化技术摘要。\n重点：按主题归并各来源内容，保留各来源的代码示例和具体细节，标注每条信息的来源。不要合并或改写原文措辞。",
     },
     "tutorial": {
-        "single": "请将以下内容整理为循序渐进的实战教程。\n重点：拆解为可操作的步骤，每步包含：目标说明、代码/配置、预期结果、常见错误及解决方案。",
-        "multi": "以下是从多个来源收集的教程相关内容，请整合为一篇完整的 step-by-step 教程。\n重点：统一技术栈版本，补足各来源缺失的环节，去除重复说明，在关键步骤标注注意事项。",
+        "single": "请将以下内容整理为有序的步骤列表。\n重点：按原文已有的操作顺序编号，保留每步的代码/配置/命令行原样。如果原文没有的步骤不要编造。",
+        "multi": "以下是从多个来源收集的教程相关内容，请按主题归并整理。\n重点：保留各来源的代码示例原样，标注来源，去除重复内容。不要补充原文没有的步骤。",
     },
     "comparison": {
-        "single": "请对以下内容进行技术方案对比分析。\n重点：提取方案的核心差异、适用场景、性能指标，用表格或结构化列表呈现，最后给出选型建议。",
-        "multi": "以下是从多个来源收集的内容，请进行横向技术方案对比。\n重点：从性能、生态、学习曲线、社区活跃度等维度对比，标注各方案的优劣势和推荐场景，给出结论性建议。",
+        "single": "请对以下内容进行技术方案对比整理。\n重点：提取原文中提及的方案差异、适用场景、性能数据，用表格呈现。只使用原文中的数据，不要补充外部知识。",
+        "multi": "以下是从多个来源收集的内容，请整理为横向技术对比。\n重点：从原文中提取各方案的性能、生态、学习曲线等维度的数据，标注数据来源。只使用原文中的实际数据。",
     },
     "knowledge_report": {
-        "single": "请对以下网页内容进行深度阅读，生成一份技术知识报告。\n重点：包含技术背景、核心原理、关键实现细节、当前生态现状，输出可直接沉淀到知识库的内容。",
-        "multi": "以下是从多个来源收集的内容，请生成一份综合性技术知识报告。\n重点：包含背景概览、核心原理、实现方案对比、社区实践、趋势判断，标注关键参考来源。",
+        "single": "请对以下网页内容进行知识提炼和标注。\n重点：保留原文的技术背景、核心原理、实现细节，按知识库格式整理。不要补充原文没有的信息。",
+        "multi": "以下是从多个来源收集的内容，请整理为综合性技术知识条目。\n重点：保留各来源的核心原理和实现细节，标注参考来源。只整理原文中实际存在的信息。",
     },
 }
 
@@ -584,18 +591,30 @@ class ContentOrganizer:
         return content
 
     def _validate_organized(self, c: OrganizedContent):
+        min_s = _cfg_min_summary_length()
+        min_f = _cfg_min_full_content_length()
+
+        # 检测"非有效技术内容"模式（AI 按 system prompt 指示标记）
+        non_tech_marker = "该页面不包含有效技术内容"
+        if c.summary and non_tech_marker in c.summary:
+            raise InvalidOutputError("页面不包含有效技术内容（登录页/错误页/广告页等）")
+
         if not c.title:
             raise InvalidOutputError("Missing title")
-        if not c.summary or len(c.summary) < _cfg_min_summary_length():
-            raise InvalidOutputError("Summary too short")
-        if not c.full_content or len(c.full_content) < _cfg_min_full_content_length():
-            raise InvalidOutputError("fullContent too short")
+        if not c.summary:
+            raise InvalidOutputError("Missing summary")
+        if len(c.summary) < min_s:
+            raise InvalidOutputError(f"Summary too short (len={len(c.summary)}, min={min_s})")
+        if not c.full_content:
+            raise InvalidOutputError("Missing fullContent")
+        if len(c.full_content) < min_f:
+            raise InvalidOutputError(f"fullContent too short (len={len(c.full_content)}, min={min_f})")
         if not c.key_points:
-            raise InvalidOutputError("Missing keyPoints")
+            raise InvalidOutputError("Missing keyPoints (got empty array)")
         if not c.tags:
-            raise InvalidOutputError("Missing tags")
+            raise InvalidOutputError("Missing tags (got empty array)")
         if c.category not in ALLOWED_CATEGORIES:
-            raise InvalidOutputError(f"Invalid category: {c.category}")
+            raise InvalidOutputError(f"Invalid category '{c.category}', allowed: {', '.join(sorted(ALLOWED_CATEGORIES))}")
 
     def _parse_digest_content(self, response: str) -> DigestContent:
         raw = json.loads(_extract_json(response))
@@ -632,14 +651,21 @@ class ContentOrganizer:
         return content
 
     def _validate_digest(self, c: DigestContent):
+        min_s = _cfg_min_summary_length()
+        min_f = _cfg_min_full_content_length()
+
         if not c.title:
             raise InvalidOutputError("Digest missing title")
-        if not c.summary or len(c.summary) < _cfg_min_summary_length():
-            raise InvalidOutputError("Digest summary too short")
-        if not c.full_content or len(c.full_content) < _cfg_min_full_content_length():
-            raise InvalidOutputError("Digest fullContent too short")
+        if not c.summary:
+            raise InvalidOutputError("Digest missing summary")
+        if len(c.summary) < min_s:
+            raise InvalidOutputError(f"Digest summary too short (len={len(c.summary)}, min={min_s})")
+        if not c.full_content:
+            raise InvalidOutputError("Digest missing fullContent")
+        if len(c.full_content) < min_f:
+            raise InvalidOutputError(f"Digest fullContent too short (len={len(c.full_content)}, min={min_f})")
         if not c.tags:
-            raise InvalidOutputError("Digest missing tags")
+            raise InvalidOutputError("Digest missing tags (got empty array)")
 
         valid_categories = set(DIGEST_CATEGORY_MAP.keys())
         for sec in c.sections:

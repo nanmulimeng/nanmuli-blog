@@ -147,7 +147,7 @@ class TaskExecutor:
 
             # 质量过滤（日报跳过：来源已由搜索结果保证质量）
             if task["task_type"] != "digest":
-                results = self._filter_low_quality(results)
+                results = self._filter_low_quality(results, task["task_type"])
 
             # 保存爬取结果
             total_words = await repo.save_pages(task_id, results)
@@ -474,14 +474,16 @@ class TaskExecutor:
 
         if not organizer.is_available:
             logger.info("AI not configured, skipping organization for task %d", task_id)
-            await repo.save_ai_error(task_id, "AI not configured")
+            await repo.save_ai_error(task_id, "AI 未配置")
             return False
 
         task_type = task["task_type"]
         max_retries = settings.ai_max_retries
 
-        # 页面已由 repo.save_pages 持久化，从 DB 读回
         pages = await repo.get_pages_by_task(task_id)
+        if not pages or not any(p.get("crawl_status") == 2 and p.get("raw_markdown") for p in pages):
+            await repo.save_ai_error(task_id, "没有成功的页面可供 AI 整理")
+            return False
 
         for attempt in range(max_retries + 1):
             try:
@@ -494,9 +496,22 @@ class TaskExecutor:
                             task_id, result.title, result.duration_ms, result.tokens_used)
                 return True
 
-            except (TruncatedError, UnrecoverableError, InvalidOutputError) as e:
-                logger.warning("Task %d AI unrecoverable error: %s, skipping retry", task_id, e)
-                await repo.save_ai_error(task_id, str(e))
+            except TruncatedError as e:
+                msg = f"AI 输出被截断，请调整内容长度或增加 max_tokens：{e}"
+                logger.warning("Task %d AI truncated: %s, skipping retry", task_id, e)
+                await repo.save_ai_error(task_id, msg)
+                return False
+
+            except UnrecoverableError as e:
+                msg = f"AI API 请求被拒绝：{e}"
+                logger.warning("Task %d AI unrecoverable: %s, skipping retry", task_id, e)
+                await repo.save_ai_error(task_id, msg)
+                return False
+
+            except InvalidOutputError as e:
+                msg = f"AI 输出格式校验失败：{e}"
+                logger.warning("Task %d AI invalid output: %s, skipping retry", task_id, e)
+                await repo.save_ai_error(task_id, msg)
                 return False
 
             except RateLimitError as e:
@@ -505,6 +520,8 @@ class TaskExecutor:
                                task_id, backoff, attempt + 1, max_retries + 1)
                 if attempt < max_retries:
                     await asyncio.sleep(backoff)
+                    continue
+                await repo.save_ai_error(task_id, "AI API 频率限制，已重试仍失败，请稍后再试")
 
             except OrganizerError as e:
                 backoff = 2 ** attempt
@@ -512,13 +529,16 @@ class TaskExecutor:
                                task_id, backoff, attempt + 1, max_retries + 1, e)
                 if attempt < max_retries:
                     await asyncio.sleep(backoff)
+                    continue
+                await repo.save_ai_error(task_id, f"AI 整理失败 (已重试 {max_retries} 次)：{e}")
 
             except Exception as e:
                 logger.error("Task %d AI unexpected error: %s", task_id, e, exc_info=True)
                 if attempt < max_retries:
                     await asyncio.sleep(2 ** attempt)
+                    continue
+                await repo.save_ai_error(task_id, f"AI 整理异常：{e}")
 
-        await repo.save_ai_error(task_id, "AI organization failed after retries")
         return False
 
     def is_running(self, task_id: int) -> bool:
@@ -529,9 +549,17 @@ class TaskExecutor:
         return len(self._running)
 
     @staticmethod
-    def _filter_low_quality(results: list) -> list:
-        """过滤低质量/垃圾内容，避免浪费 AI token"""
+    def _filter_low_quality(results: list, task_type: str = None) -> list:
+        """过滤低质量/垃圾内容，避免浪费 AI token
+
+        深度爬取使用更宽松的阈值：用户主动选择了目标域名，域内页面默认可信，
+        仅过滤内容过短或明显为垃圾的页面。
+        """
         from crawler.quality import evaluate_content
+
+        is_deep = (task_type == "deep")
+        # 深度爬取：仅当综合分低于此值且来源为 spam 时才拒绝
+        deep_min_score = settings.deep_eval_review_threshold
 
         filtered = []
         for r in results:
@@ -544,7 +572,8 @@ class TaskExecutor:
             markdown = getattr(r, "markdown", "") or ""
 
             # 内容太短直接标记失败
-            if len(markdown) < settings.min_content_length:
+            min_content = settings.min_content_length if not is_deep else 20
+            if len(markdown) < min_content:
                 r.success = False
                 r.error_message = f"Content too short ({len(markdown)} chars)"
                 filtered.append(r)
@@ -552,17 +581,32 @@ class TaskExecutor:
 
             evaluation = evaluate_content(url, title, markdown)
             verdict = evaluation["verdict"]
+            final_score = evaluation["final_score"]
 
-            if verdict == "reject":
+            should_reject = False
+            if is_deep:
+                # 深度爬取宽松模式：仅当来源为 spam 且内容分极低时才拒绝
+                source_level = evaluation["source"]["level"]
+                if source_level == "spam" and final_score < deep_min_score:
+                    should_reject = True
+                elif final_score < (deep_min_score - 10) and source_level != "official":
+                    # 极低分 + 非官方来源 → 仍然拒绝
+                    should_reject = True
+            else:
+                should_reject = (verdict == "reject")
+
+            if should_reject:
                 r.success = False
-                r.error_message = f"Low quality content (score={evaluation['final_score']:.0f}, verdict={verdict})"
+                r.error_message = f"Low quality content (score={final_score:.0f}, verdict={verdict})"
                 logger.info("Filtered low-quality: %s (score=%.0f, reason=%s)",
-                            url, evaluation["final_score"], evaluation["source"]["reason"])
+                            url, final_score, evaluation["source"]["reason"])
             else:
                 # 附加评估信息到 metadata
                 metadata = getattr(r, "metadata", {}) or {}
-                metadata["quality_score"] = evaluation["final_score"]
-                metadata["quality_verdict"] = verdict
+                metadata["quality_score"] = final_score
+                metadata["quality_verdict"] = verdict if not is_deep else (
+                    "pass" if verdict == "pass" else "review"
+                )
                 r.metadata = metadata
 
             filtered.append(r)

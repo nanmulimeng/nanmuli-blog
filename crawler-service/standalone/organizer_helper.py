@@ -65,23 +65,58 @@ def serialize_digest_sections(result) -> list[dict]:
     ]
 
 
-def _build_keyword_context(task: dict) -> str | None:
-    """从 ai_search_metadata 提取关键词上下文（用于 AI 整理）"""
+def _build_task_context(task: dict, pages: list[dict] | None = None) -> str | None:
+    """构建 AI 整理的搜索上下文，引导 AI 聚焦用户意图。
+
+    优先级：ai_search_metadata (keyword) > source_url (single/deep) > 页面标题
+    """
+    parts = []
+
+    # 1. 关键词任务：从 ai_search_metadata 提取
     raw = task.get("ai_search_metadata")
-    if not raw:
-        return None
-    try:
-        meta = json.loads(raw) if isinstance(raw, str) else raw
-        parts = []
-        if meta.get("originalKeyword"):
-            parts.append(f"原始关键词：{meta['originalKeyword']}")
-        if meta.get("optimizedKeyword") and meta["optimizedKeyword"] != meta.get("originalKeyword"):
-            parts.append(f"优化关键词：{meta['optimizedKeyword']}")
-        if meta.get("searchVariants"):
-            parts.append(f"实际搜索词变体：{' | '.join(meta['searchVariants'])}")
-        return "\n".join(parts) if parts else None
-    except Exception:
-        return None
+    if raw:
+        try:
+            meta = json.loads(raw) if isinstance(raw, str) else raw
+            if meta.get("originalKeyword"):
+                parts.append(f"原始关键词：{meta['originalKeyword']}")
+            if meta.get("optimizedKeyword") and meta["optimizedKeyword"] != meta.get("originalKeyword"):
+                parts.append(f"优化关键词：{meta['optimizedKeyword']}")
+            if meta.get("searchVariants"):
+                parts.append(f"实际搜索词变体：{' | '.join(meta['searchVariants'])}")
+        except Exception:
+            pass
+
+    # 2. single/deep 任务：从 source_url 构建来源上下文
+    task_type = task.get("task_type", "")
+    source_url = task.get("source_url", "")
+    if not parts and source_url:
+        from urllib.parse import urlparse
+        try:
+            parsed = urlparse(source_url)
+            domain = parsed.netloc or parsed.path.split("/")[0] if parsed.path else ""
+            if domain.startswith("www."):
+                domain = domain[4:]
+            path = parsed.path.strip("/") or ""
+            if task_type == "deep":
+                parts.append(f"深度爬取目标站点：{domain}")
+                if path:
+                    parts.append(f"起始路径：/{path}")
+                parts.append("以上内容来自同一站点的多个页面，请综合分析并围绕站点主题组织内容。")
+            else:
+                parts.append(f"爬取来源：{domain}")
+                if path:
+                    parts.append(f"页面路径：/{path}")
+                parts.append("请围绕以上来源页面的实际主题组织内容，避免被页面中无关的导航、广告等噪音带偏。")
+        except Exception:
+            pass
+
+    # 3. 从成功页面标题中提取主题线索（补充）
+    if not parts and pages:
+        titles = [p.get("page_title", "") for p in pages if p.get("page_title")]
+        if titles:
+            parts.append(f"页面标题：{' | '.join(titles[:5])}")
+
+    return "\n".join(parts) if parts else None
 
 
 async def organize_content_and_save(
@@ -93,12 +128,12 @@ async def organize_content_and_save(
         raise ValueError("没有成功的页面可整理")
 
     template = task.get("ai_template", "tech_summary")
-    keyword_context = _build_keyword_context(task)
+    keyword_context = _build_task_context(task, pages)
 
     if len(page_contents) == 1:
         result = await organizer.organize(page_contents[0].markdown, template, keyword_context)
     else:
-        result = await organizer.organize_multiple(page_contents, template)
+        result = await organizer.organize_multiple(page_contents, template, keyword_context=keyword_context)
 
     await repo.save_ai_results(
         task_id,

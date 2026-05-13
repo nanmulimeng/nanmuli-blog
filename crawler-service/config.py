@@ -62,6 +62,8 @@ class Settings(BaseSettings):
     search_engine_switch_delay_max: float = 5.0
     search_page_delay_min: float = 0.8
     search_page_delay_max: float = 2.0
+    search_crawl_deadline_seconds: int = 300     # 整体爬取超时（秒），超时返回部分结果
+    search_progressive_fallback_enabled: bool = True  # Progressive fit/raw 回退
     optimization_round_delay_min: float = 2.0
     optimization_round_delay_max: float = 4.0
 
@@ -72,6 +74,7 @@ class Settings(BaseSettings):
     quality_review_threshold: int = 50         # 质量推荐：审查阈值
     eval_pass_threshold: int = 65              # 综合评分：通过阈值
     eval_review_threshold: int = 45            # 综合评分：审查阈值
+    deep_eval_review_threshold: int = 25       # 深度爬取综合评分：审查阈值（更宽松，域内页面默认可信）
 
     # 评估维度权重
     eval_weight_angle: float = 0.25
