@@ -111,7 +111,9 @@ def register_error_handlers(app: FastAPI):
     async def global_exception_handler(request: Request, exc: Exception):
         rid = _get_request_id(request)
         logger.error("Unhandled exception [%s]: %s %s", rid, request.method, request.url.path, exc_info=True)
-        content = {"success": False, "code": "INTERNAL_ERROR", "message": "Internal server error"}
+        # 生产环境暴露异常类名作为线索，debug 模式暴露完整详情
+        hint = f"Internal server error: {type(exc).__name__}"
+        content = {"success": False, "code": "INTERNAL_ERROR", "message": hint}
         if rid:
             content["request_id"] = rid
         if settings.debug:

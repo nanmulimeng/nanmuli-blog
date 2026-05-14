@@ -10,6 +10,7 @@ from crawler.single import crawl_single_page
 from crawler.deep import crawl_deep_pages
 from crawler.search import crawl_by_keyword
 from config import settings
+from ai.config import ai_settings
 from api.ssrf_guard import validate_url_ssrf
 
 logger = logging.getLogger(__name__)
@@ -216,7 +217,7 @@ async def organize_content(request: AiOrganizeRequest):
         raise HTTPException(status_code=400, detail="No valid pages to organize")
 
     try:
-        max_retries = settings.ai_max_retries
+        max_retries = ai_settings.ai_max_retries
         result = None
 
         for attempt in range(max_retries + 1):
@@ -233,7 +234,7 @@ async def organize_content(request: AiOrganizeRequest):
             except RateLimitError:
                 if attempt < max_retries:
                     logger.warning("[AiOrganize] Rate limited, retry %d/%d", attempt + 1, max_retries)
-                    await asyncio.sleep(settings.ai_rate_limit_backoff_ms / 1000)
+                    await asyncio.sleep(ai_settings.ai_rate_limit_backoff_ms / 1000)
                 else:
                     raise
             except OrganizerError:

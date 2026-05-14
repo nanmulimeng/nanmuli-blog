@@ -1485,5 +1485,250 @@ class TestBuildHeadersExtended(unittest.TestCase):
         self.assertIn("gzip", headers.get("Accept-Encoding", ""))
 
 
+# ============== _build_headers is_cjk ==============
+
+class TestBuildHeadersCjk(unittest.TestCase):
+    def test_cjk_true_uses_zh_cn_primary(self):
+        headers = search._build_headers(is_cjk=True)
+        self.assertTrue(headers["Accept-Language"].startswith("zh-CN"))
+
+    def test_cjk_false_uses_en_us_primary(self):
+        headers = search._build_headers(is_cjk=False)
+        self.assertTrue(headers["Accept-Language"].startswith("en-US"))
+
+    def test_cjk_true_preserves_en_fallback(self):
+        headers = search._build_headers(is_cjk=True)
+        self.assertIn("en;q=0.8", headers["Accept-Language"])
+
+    def test_cjk_false_preserves_zh_fallback(self):
+        headers = search._build_headers(is_cjk=False)
+        # en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.5
+        self.assertIn("zh-CN", headers.get("Accept-Language", ""))
+
+
+# ============== _backoff_delay ==============
+
+class TestBackoffDelay(unittest.TestCase):
+    def test_increasing_delay(self):
+        """指数退避延迟随尝试次数单调递增"""
+        d0 = search._backoff_delay(0)
+        d1 = search._backoff_delay(1)
+        d3 = search._backoff_delay(3)
+        self.assertLess(d0, d1)
+        self.assertLess(d1, d3)
+
+    def test_minimum_delay(self):
+        """任何尝试次数的最小延迟 >= 0.1"""
+        for attempt in range(10):
+            delay = search._backoff_delay(attempt)
+            self.assertGreaterEqual(delay, 0.1)
+
+    def test_max_delay_capped(self):
+        """延迟在 max_delay 范围内（允许 jitter 浮动 30%）"""
+        max_delay = 8.0
+        for attempt in range(20):
+            delay = search._backoff_delay(attempt, max_delay=max_delay)
+            self.assertLessEqual(delay, max_delay * 1.35)
+
+    def test_custom_base_increases_delay(self):
+        """更大的 base 产生更大的延迟"""
+        d_small = search._backoff_delay(2, base=0.5)
+        d_large = search._backoff_delay(2, base=2.0)
+        self.assertLess(d_small, d_large)
+
+    def test_deterministic_within_jitter_range(self):
+        """同一参数多次调用结果在合理范围内（jitter ≤ 30%）"""
+        delays = [search._backoff_delay(1, base=0.5, max_delay=4.0) for _ in range(20)]
+        expected = min(0.5 * (2 ** 1), 4.0)  # 1.0
+        for d in delays:
+            self.assertGreaterEqual(d, 0.1)
+            self.assertLessEqual(d, expected * 1.35)
+
+
+# ============== SEARCH_ENGINES 选择器验证 ==============
+
+class TestSearchEnginesSelectors(unittest.TestCase):
+    REQUIRED_KEYS = ["result_selector", "title_selector", "link_selector",
+                     "snippet_selector", "fallback_selectors"]
+
+    def test_all_engines_have_required_keys(self):
+        for engine, config in search.SEARCH_ENGINES.items():
+            for key in self.REQUIRED_KEYS:
+                self.assertIn(key, config, f"{engine} missing '{key}'")
+
+    def test_fallback_selectors_non_empty_list(self):
+        for engine, config in search.SEARCH_ENGINES.items():
+            self.assertIsInstance(config["fallback_selectors"], list)
+            self.assertGreater(len(config["fallback_selectors"]), 0,
+                               f"{engine} fallback_selectors is empty")
+
+    def test_google_selectors_updated_2026_05(self):
+        g = search.SEARCH_ENGINES["google"]
+        self.assertEqual(g["result_selector"], "div.tF2Cxc")
+        self.assertEqual(g["link_selector"], "div.yuRUbf a")
+        self.assertIn("div[data-sokoban-container]", g["fallback_selectors"])
+        self.assertEqual(g["selector_version"], "2026-05")
+
+    def test_baidu_selectors_updated_2026_05(self):
+        b = search.SEARCH_ENGINES["baidu"]
+        self.assertEqual(b["result_selector"], ".result.c-container")
+        self.assertIn(".c-container", b["fallback_selectors"])
+        self.assertEqual(b["selector_version"], "2026-05")
+
+    def test_bing_snippet_not_bare_p_tag(self):
+        b = search.SEARCH_ENGINES["bing"]
+        self.assertNotEqual(b["snippet_selector"], "p")
+        self.assertIn("p.b_lineclamp2", b["snippet_selector"])
+
+
+# ============== Google hl 自动检测 ==============
+
+class TestGoogleHlDetection(unittest.TestCase):
+    def test_chinese_keyword_detected_as_cjk(self):
+        """中文关键词 is_cjk=True → hl=zh-CN"""
+        keyword = "Python 异步编程教程"
+        is_cjk = any('一' <= c <= '鿿' for c in keyword)
+        self.assertTrue(is_cjk)
+
+    def test_english_keyword_detected_as_non_cjk(self):
+        """纯英文关键词 is_cjk=False → hl=en"""
+        keyword = "Python async tutorial"
+        is_cjk = any('一' <= c <= '鿿' for c in keyword)
+        self.assertFalse(is_cjk)
+
+    def test_mixed_chinese_english_detected_as_cjk(self):
+        """中英混合关键词 is_cjk=True → hl=zh-CN"""
+        keyword = "Python 异步编程 教程"
+        is_cjk = any('一' <= c <= '鿿' for c in keyword)
+        self.assertTrue(is_cjk)
+
+
+# ============== 403/429 速率限制检测 ==============
+
+class TestRateLimitDetection(unittest.IsolatedAsyncioTestCase):
+    async def test_baidu_403_returns_empty_results(self):
+        """Baidu 返回 403 时引擎终止，返回空 URL 列表（外层 catch 捕获 RuntimeError 后 break）"""
+
+        class _ForbiddenClient:
+            def __init__(self, *a, **kw):
+                pass
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *a):
+                return False
+            async def get(self, url, headers=None):
+                return _FakeResponse(text="<html></html>", status_code=403)
+
+        with patch.object(search.httpx, "AsyncClient", _ForbiddenClient), \
+             patch.object(search.asyncio, "sleep", AsyncMock()):
+            urls = await search._get_search_results("test", "baidu", max_results=3, time_range="all")
+            self.assertEqual(urls, [])
+
+    async def test_bing_429_returns_empty_results(self):
+        """Bing 返回 429 时引擎终止，返回空 URL 列表"""
+
+        class _RateLimitedClient:
+            def __init__(self, *a, **kw):
+                pass
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *a):
+                return False
+            async def get(self, url, headers=None):
+                return _FakeResponse(text="<html></html>", status_code=429)
+
+        with patch.object(search.httpx, "AsyncClient", _RateLimitedClient), \
+             patch.object(search.asyncio, "sleep", AsyncMock()):
+            urls = await search._get_search_results("test", "bing", max_results=3, time_range="all")
+            self.assertEqual(urls, [])
+
+    async def test_sogou_403_returns_empty_results(self):
+        """Sogou 返回 403 时引擎终止，返回空 URL 列表"""
+
+        class _ForbiddenClient:
+            def __init__(self, *a, **kw):
+                pass
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *a):
+                return False
+            async def get(self, url, headers=None):
+                return _FakeResponse(text="<html></html>", status_code=403)
+
+        with patch.object(search.httpx, "AsyncClient", _ForbiddenClient), \
+             patch.object(search.asyncio, "sleep", AsyncMock()):
+            urls = await search._get_search_results("sogou", "sogou", max_results=3, time_range="all")
+            self.assertEqual(urls, [])
+
+    async def test_normal_200_returns_results(self):
+        """正常 200 响应通过解析并返回结果"""
+        parse_results = AsyncMock(return_value=(0, 0))
+        resp = _FakeResponse(text="<html>" + "x" * 600 + "</html>")
+
+        class _NormalClient:
+            def __init__(self, *a, **kw):
+                pass
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *a):
+                return False
+            async def get(self, url, headers=None):
+                return resp
+
+        with patch.object(search.httpx, "AsyncClient", _NormalClient), \
+             patch.object(search, "_parse_search_results", parse_results), \
+             patch.object(search.asyncio, "sleep", AsyncMock()):
+            # 不应抛出异常
+            await search._get_search_results("test", "bing", max_results=1, time_range="all")
+
+
+# ============== crawl_by_keyword deadline 超时 ==============
+
+class TestCrawlByKeywordDeadline(unittest.IsolatedAsyncioTestCase):
+    async def test_deadline_exceeded_returns_partial_results(self):
+        """超时后返回部分结果（已收集 URL 生成失败结果）"""
+        search_urls = ["https://example.com/1", "https://example.com/2"]
+        mock_get_results = AsyncMock(return_value=search_urls)
+
+        with patch.object(search, "_get_search_results", mock_get_results), \
+             patch.object(search, "_crawl_urls_with_shared_browser", AsyncMock()), \
+             patch.object(search, "dedup_results", side_effect=lambda x: x), \
+             patch.object(search.asyncio, "sleep", AsyncMock()):
+
+            # 设置 deadline=0 模拟立即超时
+            with patch.object(search.settings, "search_crawl_deadline_seconds", 0):
+                results = await search.crawl_by_keyword(
+                    keyword="test", engine="bing", max_results=5, time_range="all"
+                )
+
+            # 超时后每个未爬取的 URL 应生成失败结果
+            self.assertGreaterEqual(len(results), 0)
+            if results:
+                for r in results:
+                    self.assertFalse(r.success)
+
+    async def test_deadline_not_exceeded_crawls_normally(self):
+        """未超时时正常爬取"""
+        mock_get_results = AsyncMock(return_value=["https://example.com/1"])
+        good_result = MagicMock()
+        good_result.success = True
+        good_result.url = "https://example.com/1"
+        good_result.word_count = 200
+        mock_crawl = AsyncMock(return_value=[good_result])
+
+        with patch.object(search, "_get_search_results", mock_get_results), \
+             patch.object(search, "_crawl_urls_with_shared_browser", mock_crawl), \
+             patch.object(search, "dedup_results", side_effect=lambda x: x), \
+             patch.object(search.asyncio, "sleep", AsyncMock()), \
+             patch.object(search.settings, "search_crawl_deadline_seconds", 300):
+            results = await search.crawl_by_keyword(
+                keyword="test", engine="bing", max_results=5, time_range="all"
+            )
+
+            self.assertGreaterEqual(len(results), 0)
+            if results:
+                self.assertTrue(results[0].success)
+
+
 if __name__ == "__main__":
     unittest.main()

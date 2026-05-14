@@ -8,6 +8,7 @@ import uuid
 from typing import Dict
 
 from config import settings
+from ai.config import ai_settings
 from standalone.models import TaskStatus
 from standalone import repository as repo
 from standalone.db import task_scoped_db
@@ -156,7 +157,9 @@ class TaskExecutor:
             crawl_duration = sum(r.crawl_time_ms for r in results)
 
             if success_count == 0:
-                error = next((r.error_message for r in results if r.error_message), "所有页面爬取失败")
+                error = next((r.error_message for r in results if r.error_message), None)
+                if not error or not error.strip():
+                    error = "所有页面爬取失败，未返回任何成功结果"
                 await repo.fail_task(task_id, error)
                 await _fire_callback(task_id, TaskStatus.FAILED)
                 return
@@ -185,7 +188,8 @@ class TaskExecutor:
 
         except Exception as e:
             logger.error("Task %d failed: %s", task_id, e, exc_info=True)
-            await repo.fail_task(task_id, str(e))
+            error_msg = str(e).strip() if str(e).strip() else f"未知错误: {type(e).__name__}"
+            await repo.fail_task(task_id, error_msg)
             await _fire_callback(task_id, TaskStatus.FAILED)
 
     async def _execute_keyword_crawl(self, task: dict, config) -> list:
@@ -478,7 +482,7 @@ class TaskExecutor:
             return False
 
         task_type = task["task_type"]
-        max_retries = settings.ai_max_retries
+        max_retries = ai_settings.ai_max_retries
 
         pages = await repo.get_pages_by_task(task_id)
         if not pages or not any(p.get("crawl_status") == 2 and p.get("raw_markdown") for p in pages):

@@ -360,3 +360,42 @@ class TestExtractMarkdownNoiseChain:
         assert "Content" in output
         # 导航链接应被移除（减少）
         assert len(output) < len(result.markdown.fit_markdown)
+
+
+# ============== get_search_run_config ==============
+
+class TestGetSearchRunConfig:
+    def test_default_delay_before_return_html(self):
+        config = get_search_run_config()
+        assert config.delay_before_return_html == 0.5
+
+    def test_custom_delay_before_return_html(self):
+        config = get_search_run_config(delay_before_return_html=2.0)
+        assert config.delay_before_return_html == 2.0
+
+    def test_default_page_timeout(self):
+        config = get_search_run_config()
+        assert config.page_timeout == 15000
+
+    def test_custom_page_timeout(self):
+        config = get_search_run_config(page_timeout=30000)
+        assert config.page_timeout == 30000
+
+    def test_scan_full_page_disabled(self):
+        """搜索页不需要扫描全页（只取 DOM）"""
+        config = get_search_run_config()
+        assert config.scan_full_page is False
+
+    def test_simulate_user_disabled(self):
+        """搜索页无需模拟人类交互"""
+        config = get_search_run_config()
+        assert config.simulate_user is False
+
+    def test_magic_mode_disabled(self):
+        """搜索页无需 magic 模式"""
+        config = get_search_run_config()
+        assert config.magic is False
+
+    def test_wait_until_is_domcontentloaded(self):
+        config = get_search_run_config()
+        assert config.wait_until == "domcontentloaded"

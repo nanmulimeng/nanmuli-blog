@@ -20,6 +20,7 @@ from config import settings
 from .dedup import dedup_results
 from .filters import has_excluded_keywords, is_excluded_domain
 from .single import CrawlResult, crawl_single_page
+from api.ssrf_guard import validate_url_ssrf
 
 logger = logging.getLogger(__name__)
 
@@ -643,6 +644,7 @@ async def _crawl_urls_with_shared_browser(
     async def _crawl_one(rank: int, url: str) -> CrawlResult:
         async with sem:
             try:
+                validate_url_ssrf(url)
                 result = await crawl_single_page(url=url, config=config, crawler=active_crawler)
                 if result.success and result.word_count < settings.search_min_word_count:
                     result.success = False
