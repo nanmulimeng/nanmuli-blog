@@ -15,21 +15,3 @@ export interface Category {
   updateTime: string
   children?: Category[]
 }
-
-// 分类分页查询参数
-export interface CategoryPageQuery {
-  current?: number
-  size?: number
-  parentId?: string | null
-  isLeaf?: boolean | null
-  status?: number | null
-  keyword?: string
-}
-
-// 分类分页结果
-export interface CategoryPageResult {
-  total: number
-  current: number
-  size: number
-  records: Category[]
-}

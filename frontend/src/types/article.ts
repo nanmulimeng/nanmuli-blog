@@ -35,8 +35,3 @@ export interface ArticleQuery extends PageQuery {
   sort?: string
 }
 
-export interface ArticleArchive {
-  year: string
-  month: string
-  count: number
-}

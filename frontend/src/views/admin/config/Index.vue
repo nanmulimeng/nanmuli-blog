@@ -51,27 +51,22 @@ async function handleSave(key: string): Promise<void> {
 }
 
 async function handleSaveGroup(group: string): Promise<void> {
-  const keys = configs.value
-    .filter((c) => c.groupName === group)
-    .map((c) => c.configKey)
-
-  if (keys.length === 0) return
+  const items = groupedConfigs.value[group] || []
+  if (items.length === 0) return
 
   savingGroup.value = group
   try {
-    for (const key of keys) {
-      const config = configs.value.find((c) => c.configKey === key)
-      const value = formData.value[key]
-      if (config?.sensitive && value === '********') {
+    for (const config of items) {
+      const value = formData.value[config.configKey]
+      if (config.sensitive && value === '********') {
         continue
       }
       if (value !== undefined) {
-        await updateConfig(key, value)
+        await updateConfig(config.configKey, value)
       }
     }
     ElMessage.success('保存成功')
-    // 保存爬虫组后刷新代理状态
-    if (group === 'crawler') {
+    if (group === 'crawler-proxy' || group === 'crawler-ai') {
       await fetchProxyStatus()
     }
   } catch {
@@ -83,20 +78,26 @@ async function handleSaveGroup(group: string): Promise<void> {
 
 const groupNames: Record<string, string> = {
   site: '站点配置',
-  ai: 'AI 配置',
-  crawler: '爬虫配置',
+  'crawler-ai': '爬虫AI配置',
+  'crawler-proxy': '代理配置',
 }
 
 const groupDescriptions: Record<string, string> = {
   site: '配置网站基本信息、联系方式与页面内容',
-  ai: '控制 AI 辅助功能的开关与模型参数',
-  crawler: '控制 Python 爬虫服务的 AI 整理、日报生成与代理设置',
+  'crawler-ai': 'AI 内容整理与定时日报 — 模型参数、Token预算、字符限制',
+  'crawler-proxy': 'HTTP 代理网络 — 代理地址、订阅链接、开关控制',
 }
+
+const groupOrder = ['crawler-ai', 'crawler-proxy', 'site']
 
 const groupedConfigs = computed(() => {
   const groups: Record<string, Config[]> = {}
   configs.value.forEach((config) => {
-    const group = config.groupName || 'other'
+    let group = config.groupName || 'other'
+    // 将 crawler 组按前缀拆分为 AI 配置 / 代理配置两个 Tab
+    if (group === 'crawler') {
+      group = config.configKey.startsWith('crawler.proxy.') ? 'crawler-proxy' : 'crawler-ai'
+    }
     if (!groups[group]) {
       groups[group] = []
     }
@@ -141,7 +142,8 @@ onMounted(fetchData)
     </div>
 
     <div v-loading="loading" class="space-y-8">
-      <div v-for="(items, group) in groupedConfigs" :key="group">
+      <template v-for="group in groupOrder" :key="group">
+        <div v-if="groupedConfigs[group]">
         <!-- Group Header -->
         <div class="mb-4 flex items-center justify-between">
           <div>
@@ -166,7 +168,7 @@ onMounted(fetchData)
         <div class="rounded-2xl border border-border bg-surface-secondary p-6 shadow-sm">
           <div class="space-y-6">
             <div
-              v-for="config in items"
+              v-for="config in groupedConfigs[group]"
               :key="config.configKey"
               class="flex flex-col gap-3 sm:flex-row sm:items-start"
             >
@@ -247,8 +249,8 @@ onMounted(fetchData)
           </div>
         </div>
 
-        <!-- 代理概览卡片（仅爬虫配置组） -->
-        <div v-if="group === 'crawler'" class="mt-4 rounded-2xl border border-border bg-surface-secondary p-5 shadow-sm">
+        <!-- 代理概览卡片（仅代理配置组） -->
+        <div v-if="group === 'crawler-proxy'" class="mt-4 rounded-2xl border border-border bg-surface-secondary p-5 shadow-sm">
           <div class="flex items-center justify-between mb-3">
             <h4 class="text-sm font-semibold text-content-primary">代理状态</h4>
             <router-link to="/admin/proxy" class="text-xs text-primary hover:underline">
@@ -289,6 +291,8 @@ onMounted(fetchData)
           </div>
         </div>
       </div>
+
+      </template>
 
       <!-- Empty State -->
       <div v-if="!loading && configs.length === 0" class="py-20 text-center">

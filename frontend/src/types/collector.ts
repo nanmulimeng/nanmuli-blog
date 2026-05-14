@@ -206,11 +206,6 @@ export const AiTemplateMap: Record<string, string> = {
   daily_digest: '每日技术日报',
 }
 
-export const CrawlerHealthStatus = {
-  AVAILABLE: 'available',
-  UNAVAILABLE: 'unavailable',
-} as const
-
 // ============== Source ==============
 
 export interface Source {

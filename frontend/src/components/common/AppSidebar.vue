@@ -23,8 +23,8 @@ const menuItems = [
   { path: '/admin/category', icon: markRaw(Collection), label: '分类管理' },
   { path: '/admin/skill', icon: markRaw(Trophy), label: '技能管理' },
   { path: '/admin/file', icon: markRaw(PictureFilled), label: '文件管理' },
-  { path: '/admin/config', icon: markRaw(Setting), label: '系统配置' },
   { path: '/admin/proxy', icon: markRaw(Connection), label: '代理管理' },
+  { path: '/admin/config', icon: markRaw(Setting), label: '系统配置' },
 ]
 
 function isActive(path: string): boolean {
