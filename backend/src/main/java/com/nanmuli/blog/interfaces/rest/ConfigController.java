@@ -1,6 +1,7 @@
 package com.nanmuli.blog.interfaces.rest;
 
 import com.nanmuli.blog.application.config.ConfigAppService;
+import com.nanmuli.blog.application.config.command.CreateConfigCommand;
 import com.nanmuli.blog.application.config.command.UpdateConfigCommand;
 import com.nanmuli.blog.application.config.dto.ConfigDTO;
 import com.nanmuli.blog.infrastructure.crawler.CrawlerTaskClient;
@@ -48,6 +49,19 @@ public class ConfigController {
     public Result<Void> update(@PathVariable String key,
                                @Valid @RequestBody UpdateConfigCommand command) {
         configAppService.update(key, command.getValue());
+
+        if (key.startsWith("crawler.")) {
+            crawlerTaskClient.refreshConfig();
+        }
+
+        return Result.success();
+    }
+
+    @PostMapping("/admin/config/{key}")
+    public Result<Void> create(@PathVariable String key,
+                               @Valid @RequestBody CreateConfigCommand command) {
+        configAppService.set(key, command.getValue(), command.getDescription(),
+                command.getGroupName(), command.getInputType(), command.getIsPublic());
 
         if (key.startsWith("crawler.")) {
             crawlerTaskClient.refreshConfig();

@@ -4,6 +4,7 @@ import com.nanmuli.blog.application.webcollector.WebCollectorAppService;
 import com.nanmuli.blog.application.webcollector.WebCollectSourceAppService;
 import com.nanmuli.blog.application.webcollector.dto.SourceDTO;
 import com.nanmuli.blog.domain.config.ConfigRepository;
+import com.nanmuli.blog.infrastructure.config.security.AesEncryptor;
 import com.nanmuli.blog.shared.result.Result;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +28,7 @@ public class InternalCallbackController {
     private final WebCollectorAppService collectorAppService;
     private final WebCollectSourceAppService sourceAppService;
     private final ConfigRepository configRepository;
+    private final AesEncryptor aesEncryptor;
 
     @Value("${crawler.callback.api-key:}")
     private String callbackApiKey;
@@ -88,7 +90,7 @@ public class InternalCallbackController {
         Map<String, String> configMap = configRepository.findByGroup("crawler").stream()
                 .collect(Collectors.toMap(
                         c -> c.getConfigKey().replace("crawler.", ""),
-                        c -> c.getConfigValue() != null ? c.getConfigValue() : "",
+                        c -> aesEncryptor.decrypt(c.getConfigValue() != null ? c.getConfigValue() : ""),
                         (a, b) -> b,
                         LinkedHashMap::new));
 

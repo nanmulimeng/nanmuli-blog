@@ -503,38 +503,7 @@ CREATE INDEX IF NOT EXISTS idx_ol_created_at ON sys_operation_log(created_at DES
 CREATE INDEX IF NOT EXISTS idx_ol_status ON sys_operation_log(status);
 
 -- ============================================
--- 15. AI生成记录表 (ai_generation)
--- ============================================
-
-CREATE TABLE IF NOT EXISTS ai_generation (
-    id BIGSERIAL PRIMARY KEY,
-    article_id BIGINT NOT NULL,
-    type VARCHAR(20) NOT NULL,
-    prompt TEXT,
-    content TEXT,
-    tokens_used INT,
-    model VARCHAR(50),
-    status INT NOT NULL DEFAULT 1,
-    error_msg TEXT,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-COMMENT ON TABLE ai_generation IS 'AI生成记录表';
-COMMENT ON COLUMN ai_generation.article_id IS '文章ID';
-COMMENT ON COLUMN ai_generation.type IS '类型：tags-标签 summary-摘要 recommend-推荐 content-内容生成';
-COMMENT ON COLUMN ai_generation.prompt IS '提示词';
-COMMENT ON COLUMN ai_generation.content IS '生成内容';
-COMMENT ON COLUMN ai_generation.tokens_used IS '使用的token数';
-COMMENT ON COLUMN ai_generation.model IS '使用的模型';
-COMMENT ON COLUMN ai_generation.status IS '状态：1-成功 0-失败';
-COMMENT ON COLUMN ai_generation.error_msg IS '错误信息';
-
-CREATE INDEX IF NOT EXISTS idx_ag_article_id ON ai_generation(article_id);
-CREATE INDEX IF NOT EXISTS idx_ag_type ON ai_generation(type);
-CREATE INDEX IF NOT EXISTS idx_ag_created_at ON ai_generation(created_at DESC);
-
--- ============================================
--- 16. 文章内容向量表 (article_vector)
+-- 15. 文章内容向量表 (article_vector)
 -- ============================================
 
 CREATE TABLE IF NOT EXISTS article_vector (
@@ -768,10 +737,6 @@ ALTER TABLE article_draft
 ALTER TABLE sys_file
     ADD CONSTRAINT fk_file_user FOREIGN KEY (user_id) REFERENCES sys_user(id);
 
--- AI生成记录表外键
-ALTER TABLE ai_generation
-    ADD CONSTRAINT fk_ag_article FOREIGN KEY (article_id) REFERENCES article(id) ON DELETE CASCADE;
-
 -- 文章内容向量表外键
 ALTER TABLE article_vector
     ADD CONSTRAINT fk_av_article FOREIGN KEY (article_id) REFERENCES article(id) ON DELETE CASCADE;
@@ -927,13 +892,24 @@ VALUES
     ('site.author', '', '博主名称', 'site', TRUE, 'text'),
     ('site.email', '', '联系邮箱', 'site', TRUE, 'text'),
     ('site.github', '', 'GitHub链接', 'site', TRUE, 'text'),
-    ('ai.enabled', 'false', '是否启用AI功能', 'ai', FALSE, 'switch'),
-    ('ai.model', 'qwen-turbo', 'AI模型', 'ai', FALSE, 'text'),
-    ('ai.autoTags', 'true', '是否自动生成标签', 'ai', FALSE, 'switch'),
-    ('ai.autoSummary', 'true', '是否自动生成摘要', 'ai', FALSE, 'switch'),
+-- AI 配置已迁移至 crawler.ai.* 组（Python 爬虫服务统一管理）
     ('crawler.ai.enabled', 'false', '爬虫AI功能开关', 'crawler', FALSE, 'switch'),
     ('crawler.ai.api_key', '', 'AI API密钥（DashScope）', 'crawler', FALSE, 'password'),
     ('crawler.ai.model', 'qwen-plus', 'AI模型名称', 'crawler', FALSE, 'text'),
+    ('crawler.ai.base_url', 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'AI API 端点地址', 'crawler', FALSE, 'text'),
+    ('crawler.ai.temperature', '0.3', 'LLM 温度参数 (0-2)', 'crawler', FALSE, 'text'),
+    ('crawler.ai.connect_timeout', '10', 'AI API 连接超时(秒)', 'crawler', FALSE, 'text'),
+    ('crawler.ai.read_timeout', '90', 'AI API 读取超时(秒)', 'crawler', FALSE, 'text'),
+    ('crawler.ai.max_retries', '2', 'AI 调用最大重试次数', 'crawler', FALSE, 'text'),
+    ('crawler.ai.rate_limit_backoff_ms', '10000', '限流后退等待(毫秒)', 'crawler', FALSE, 'text'),
+    ('crawler.ai.single_page_max_chars', '80000', '单页最大字符数', 'crawler', FALSE, 'text'),
+    ('crawler.ai.multi_page_per_max_chars', '20000', '多页每页最大字符数', 'crawler', FALSE, 'text'),
+    ('crawler.ai.multi_page_total_budget', '150000', '多页总字符预算', 'crawler', FALSE, 'text'),
+    ('crawler.ai.max_tokens', '8000', 'AI 最大输出 Token', 'crawler', FALSE, 'text'),
+    ('crawler.ai.min_summary_length', '10', '摘要最小长度(字符)', 'crawler', FALSE, 'text'),
+    ('crawler.ai.min_full_content_length', '20', '全文最小长度(字符)', 'crawler', FALSE, 'text'),
+    ('crawler.ai.max_key_points', '10', '最大要点数', 'crawler', FALSE, 'text'),
+    ('crawler.ai.max_tags', '10', '最大标签数', 'crawler', FALSE, 'text'),
     ('crawler.digest.enabled', 'false', '定时日报生成开关', 'crawler', FALSE, 'switch'),
     ('crawler.proxy.enabled', 'false', '是否启用代理', 'crawler', FALSE, 'switch'),
     ('crawler.proxy.url', '', 'HTTP代理地址', 'crawler', FALSE, 'text'),

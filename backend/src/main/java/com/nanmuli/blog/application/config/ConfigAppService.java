@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -28,6 +29,10 @@ public class ConfigAppService {
     private static final String MASK_SENTINEL = "********";
     private static final List<String> SENSITIVE_KEYWORDS = Arrays.asList(
             "key", "secret", "password", "token", "credential", "private", "apikey"
+    );
+    private static final Set<String> NON_SENSITIVE_WHITELIST = Set.of(
+            "crawler.ai.max_key_points",
+            "crawler.ai.max_tokens"
     );
 
     @Transactional(readOnly = true)
@@ -78,6 +83,27 @@ public class ConfigAppService {
     }
 
     @CacheEvict(value = {"config", "config:admin:list"}, allEntries = true)
+    @Transactional
+    public void set(String key, String value, String description, String groupName,
+                    String inputType, Boolean isPublic) {
+        if (MASK_SENTINEL.equals(value) && isSensitiveConfig(key)) {
+            throw new BusinessException("不能使用脱敏值覆盖敏感配置");
+        }
+        String storeValue = isSensitiveConfig(key) ? aesEncryptor.encrypt(value) : value;
+        Config config = configRepository.findByKey(key).orElse(null);
+        if (config == null) {
+            config = new Config();
+            config.setConfigKey(key);
+            config.setDescription(description != null ? description : "");
+            config.setGroupName(groupName != null ? groupName : "other");
+            config.setInputType(inputType != null ? inputType : "text");
+            config.setIsPublic(isPublic != null ? isPublic : false);
+        }
+        config.setConfigValue(storeValue);
+        configRepository.save(config);
+    }
+
+    @CacheEvict(value = {"config", "config:admin:list"}, allEntries = true)
     public void refreshCache() {
     }
 
@@ -113,6 +139,7 @@ public class ConfigAppService {
 
     private boolean isSensitiveConfig(String configKey) {
         if (configKey == null) return false;
+        if (NON_SENSITIVE_WHITELIST.contains(configKey)) return false;
         String lowerKey = configKey.toLowerCase();
         return SENSITIVE_KEYWORDS.stream().anyMatch(lowerKey::contains);
     }
