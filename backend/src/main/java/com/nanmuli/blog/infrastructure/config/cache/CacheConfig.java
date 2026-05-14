@@ -35,7 +35,6 @@ public class CacheConfig {
         private Duration articleList = Duration.ofMinutes(10);
         private Duration articleTop = Duration.ofMinutes(10);
         private Duration category = Duration.ofHours(2);
-        private Duration tag = Duration.ofHours(2);
         private Duration config = Duration.ofDays(1);
         private Duration articleArchive = Duration.ofHours(1);
         private Duration articleStats = Duration.ofMinutes(5);
@@ -52,7 +51,6 @@ public class CacheConfig {
         cacheConfigurations.put("article:list", buildConfig(ttlProps.getArticleList(), jdkSerializer));
         cacheConfigurations.put("article:top", buildConfig(ttlProps.getArticleTop(), jdkSerializer));
         cacheConfigurations.put("category", buildConfig(ttlProps.getCategory(), jdkSerializer));
-        cacheConfigurations.put("tag", buildConfig(ttlProps.getTag(), jdkSerializer));
         cacheConfigurations.put("config", buildConfig(ttlProps.getConfig(), jdkSerializer));
         cacheConfigurations.put("article:archive", buildConfig(ttlProps.getArticleArchive(), jdkSerializer));
         cacheConfigurations.put("article:stats", buildConfig(ttlProps.getArticleStats(), jdkSerializer));

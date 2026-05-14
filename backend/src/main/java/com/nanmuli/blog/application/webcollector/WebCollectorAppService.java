@@ -111,7 +111,7 @@ public class WebCollectorAppService {
                     log.info("[CreateTask] taskId={}, pythonTaskId={}", taskId, pythonTaskId);
                 } catch (Exception e) {
                     log.error("[CreateTask] Failed to create Python task for taskId={}: {}", taskId, e.getMessage());
-                    self.markTaskFailed(taskId, "Python 服务调用失败: " + e.getMessage());
+                    self.markTaskFailed(taskId, "Python 服务调用失败: " + safeErrMsg(e));
                 }
             }
         });
@@ -242,7 +242,7 @@ public class WebCollectorAppService {
                     log.info("[RetryTask] taskId={}, new pythonTaskId={}", tid, pythonTaskId);
                 } catch (Exception e) {
                     log.error("[RetryTask] Failed for taskId={}: {}", tid, e.getMessage());
-                    self.markTaskFailed(tid, "Python 服务调用失败: " + e.getMessage());
+                    self.markTaskFailed(tid, "Python 服务调用失败: " + safeErrMsg(e));
                 }
             }
         });
@@ -415,8 +415,15 @@ public class WebCollectorAppService {
             task.updateStatus(CollectTaskStatus.of(num.intValue()));
         }
 
-        // 错误信息
-        task.setErrorMessage(getStr(pythonTask, "error_message"));
+        // 错误信息 — 确保 FAILED 状态不显示空错误
+        String errMsg = getStr(pythonTask, "error_message");
+        if (errMsg == null || errMsg.isBlank()) {
+            Object st = pythonTask.get("status");
+            if (st instanceof Number num && num.intValue() == CollectTaskStatus.FAILED.getValue()) {
+                errMsg = "任务执行失败，未收到详细错误信息";
+            }
+        }
+        task.setErrorMessage(errMsg);
 
         // 进度
         Object totalPages = pythonTask.get("total_pages");
@@ -579,6 +586,11 @@ public class WebCollectorAppService {
             }
         }
         return sb.isEmpty() ? null : sb.toString();
+    }
+
+    private static String safeErrMsg(Exception e) {
+        String msg = e.getMessage();
+        return (msg != null && !msg.isBlank()) ? msg : "未知错误";
     }
 
     private String truncateUrl(String url) {
