@@ -74,6 +74,11 @@ public class WebCollectorAppService {
             throw new BusinessException("日报任务请通过 /api/admin/collector/digest/trigger 端点触发");
         }
 
+        // 创建任务实体前检查 Python 服务可用性
+        if (!crawlerTaskClient.healthCheck()) {
+            throw new BusinessException("Python 爬虫服务不可用，请稍后重试");
+        }
+
         // 创建任务实体
         WebCollectTask task = new WebCollectTask();
         task.setUserId(userId);
@@ -505,7 +510,7 @@ public class WebCollectorAppService {
 
     private String safeToJson(Object value) {
         try { return objectMapper.writeValueAsString(value); }
-        catch (Exception e) { return null; }
+        catch (Exception e) { log.debug("[DTO] JSON serialization failed: {}", e.getMessage()); return null; }
     }
 
     private WebCollectTask loadTaskForUser(Long taskId, Long userId) {
@@ -614,17 +619,18 @@ public class WebCollectorAppService {
                 dto.setAiSearchMetadata(objectMapper.readValue(
                         task.getAiSearchMetadata(), new TypeReference<Map<String, Object>>() {}));
             } catch (Exception e) {
+                log.debug("[DTO] Failed to parse aiSearchMetadata for taskId={}: {}", task.getId(), e.getMessage());
                 dto.setAiSearchMetadata(Collections.emptyMap());
             }
         }
 
         if (task.getAiKeyPoints() != null) {
             try { dto.setAiKeyPoints(objectMapper.readValue(task.getAiKeyPoints(), List.class)); }
-            catch (Exception e) { dto.setAiKeyPoints(Collections.emptyList()); }
+            catch (Exception e) { log.debug("[DTO] Failed to parse aiKeyPoints: {}", e.getMessage()); dto.setAiKeyPoints(Collections.emptyList()); }
         }
         if (task.getAiTags() != null) {
             try { dto.setAiTags(objectMapper.readValue(task.getAiTags(), List.class)); }
-            catch (Exception e) { dto.setAiTags(Collections.emptyList()); }
+            catch (Exception e) { log.debug("[DTO] Failed to parse aiTags: {}", e.getMessage()); dto.setAiTags(Collections.emptyList()); }
         }
 
         if (task.getTotalPages() != null && task.getTotalPages() > 0) {
@@ -673,6 +679,7 @@ public class WebCollectorAppService {
             try {
                 dto.setPageMetadata(objectMapper.readValue(page.getPageMetadata(), new TypeReference<Map<String, Object>>() {}));
             } catch (Exception e) {
+                log.debug("[DTO] Failed to parse pageMetadata for pageId={}: {}", page.getId(), e.getMessage());
                 dto.setPageMetadata(Collections.emptyMap());
             }
         }
@@ -682,22 +689,22 @@ public class WebCollectorAppService {
 
     private String getTaskTypeLabel(String type) {
         try { return CollectTaskType.of(type).getLabel(); }
-        catch (Exception e) { return type; }
+        catch (Exception e) { log.debug("[DTO] Unknown task type: {}", type); return type; }
     }
 
     private String getStatusLabel(Integer status) {
         try { return CollectTaskStatus.of(status).getLabel(); }
-        catch (Exception e) { return "未知"; }
+        catch (Exception e) { log.debug("[DTO] Unknown status: {}", status); return "未知"; }
     }
 
     private String getStatusDisplay(Integer status) {
         try { return CollectTaskStatus.of(status).getDisplayText(); }
-        catch (Exception e) { return "未知"; }
+        catch (Exception e) { log.debug("[DTO] Unknown status: {}", status); return "未知"; }
     }
 
     private String getPageStatusLabel(Integer status) {
         try { return PageCrawlStatus.of(status).getLabel(); }
-        catch (Exception e) { return "未知"; }
+        catch (Exception e) { log.debug("[DTO] Unknown page status: {}", status); return "未知"; }
     }
 
     // ============== 工具方法 ==============

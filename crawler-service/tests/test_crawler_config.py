@@ -10,7 +10,7 @@
 import os
 import sys
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, AsyncMock, patch
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
@@ -87,34 +87,39 @@ class TestRunParams:
 # ============== get_browser_config ==============
 
 class TestGetBrowserConfig:
+    @pytest.mark.asyncio
     @patch("crawler.config.BrowserConfig")
-    @patch("crawler.config.get_effective_proxy", return_value="http://127.0.0.1:7890")
-    def test_proxy_injection(self, mock_eff_proxy, MockBrowserConfig):
-        get_browser_config(text_mode=True, proxy="http://127.0.0.1:7890")
+    @patch("crawler.config.get_effective_proxy", new_callable=AsyncMock, return_value="http://127.0.0.1:7890")
+    async def test_proxy_injection(self, mock_eff_proxy, MockBrowserConfig):
+        await get_browser_config(text_mode=True, proxy="http://127.0.0.1:7890")
         call_kwargs = MockBrowserConfig.call_args[1]
         extra_args = call_kwargs["extra_args"]
         assert any("--proxy-server=http://127.0.0.1:7890" in a for a in extra_args)
 
+    @pytest.mark.asyncio
     @patch("crawler.config.BrowserConfig")
-    @patch("crawler.config.get_effective_proxy", return_value="")
-    def test_no_proxy_no_proxy_arg(self, mock_eff_proxy, MockBrowserConfig):
-        get_browser_config(text_mode=True, proxy="")
+    @patch("crawler.config.get_effective_proxy", new_callable=AsyncMock, return_value="")
+    async def test_no_proxy_no_proxy_arg(self, mock_eff_proxy, MockBrowserConfig):
+        await get_browser_config(text_mode=True, proxy="")
         call_kwargs = MockBrowserConfig.call_args[1]
         extra_args = call_kwargs["extra_args"]
         assert not any("--proxy-server=" in a for a in extra_args)
 
+    @pytest.mark.asyncio
     @patch("crawler.config.BrowserConfig")
-    @patch("crawler.config.get_effective_proxy", return_value="")
-    def test_proxy_unreachable_fallback(self, mock_eff_proxy, MockBrowserConfig):
+    @patch("crawler.config.get_effective_proxy", new_callable=AsyncMock, return_value="")
+    async def test_proxy_unreachable_fallback(self, mock_eff_proxy, MockBrowserConfig):
         """代理不可达时自动降级直连"""
-        get_browser_config(text_mode=True, proxy="http://127.0.0.1:9999")
+        await get_browser_config(text_mode=True, proxy="http://127.0.0.1:9999")
         call_kwargs = MockBrowserConfig.call_args[1]
         extra_args = call_kwargs["extra_args"]
         assert not any("--proxy-server=" in a for a in extra_args)
 
+    @pytest.mark.asyncio
     @patch("crawler.config.BrowserConfig")
-    def test_headless_always_true(self, MockBrowserConfig):
-        get_browser_config()
+    @patch("crawler.config.get_effective_proxy", new_callable=AsyncMock, return_value="")
+    async def test_headless_always_true(self, mock_eff_proxy, MockBrowserConfig):
+        await get_browser_config()
         call_kwargs = MockBrowserConfig.call_args[1]
         assert call_kwargs["headless"] is True
 

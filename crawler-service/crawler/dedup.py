@@ -105,15 +105,16 @@ def hamming_distance(hash1: int, hash2: int) -> int:
 class DedupEngine:
     """去重引擎"""
 
-    # 汉明距离阈值：≤5视为高度相似（可能是转载/改写）
+    # 类级默认值（保持向后兼容）
     SIMHASH_THRESHOLD = 5
-    # 标题相似度阈值：≥0.8视为相似
     TITLE_SIMILARITY_THRESHOLD = 0.8
     # SimHash 分桶数（64位哈希分为 4 × 16位桶，减少比较次数）
     _BUCKET_COUNT = 4
     _BUCKET_BITS = 16
 
-    def __init__(self):
+    def __init__(self, simhash_threshold=None, title_threshold=None):
+        self.simhash_threshold = simhash_threshold if simhash_threshold is not None else self.SIMHASH_THRESHOLD
+        self.title_threshold = title_threshold if title_threshold is not None else self.TITLE_SIMILARITY_THRESHOLD
         self._url_seen: set = set()
         self._fingerprint_seen: List[ContentFingerprint] = []
         self._title_seen: List[str] = []
@@ -155,8 +156,8 @@ class DedupEngine:
             for idx in candidates:
                 seen_fp = self._fingerprint_seen[idx]
                 distance = hamming_distance(fp.simhash, seen_fp.simhash)
-                if distance <= self.SIMHASH_THRESHOLD:
-                    confidence = 1.0 - (distance / self.SIMHASH_THRESHOLD) * 0.3
+                if distance <= self.simhash_threshold:
+                    confidence = 1.0 - (distance / self.simhash_threshold) * 0.3
                     return {
                         "is_duplicate": True,
                         "reason": "content_similar",
@@ -168,7 +169,7 @@ class DedupEngine:
             title_lower = title.lower().strip()
             for seen_title in self._title_seen:
                 similarity = self._title_similarity(title_lower, seen_title)
-                if similarity >= self.TITLE_SIMILARITY_THRESHOLD:
+                if similarity >= self.title_threshold:
                     return {
                         "is_duplicate": True,
                         "reason": "title_similar",

@@ -19,7 +19,8 @@ from .config import RunParams, get_browser_config, get_search_run_config, get_ef
 from config import settings
 from .dedup import dedup_results
 from .filters import has_excluded_keywords, is_excluded_domain
-from .single import CrawlResult, crawl_single_page
+from .single import crawl_single_page
+from .models import CrawlResult
 from api.ssrf_guard import validate_url_ssrf
 
 logger = logging.getLogger(__name__)
@@ -252,7 +253,7 @@ async def _fetch_search_html(
         if crawler is not None:
             result = await crawler.arun(url=search_url, config=run_config)
         else:
-            browser_config = get_browser_config(text_mode=True, light_mode=True, proxy=settings.proxy_url)
+            browser_config = await get_browser_config(text_mode=True, light_mode=True, proxy=settings.proxy_url)
             async with AsyncWebCrawler(config=browser_config) as c:
                 result = await c.arun(url=search_url, config=run_config)
         if result.success and result.html:
@@ -269,7 +270,7 @@ async def _fetch_search_html(
     if fallback_headers:
         try:
             client_kwargs = {"follow_redirects": True, "timeout": settings.search_httpx_fallback_timeout}
-            effective_proxy = get_effective_proxy(settings.proxy_url)
+            effective_proxy = await get_effective_proxy(settings.proxy_url)
             if effective_proxy:
                 client_kwargs["proxy"] = effective_proxy
             async with httpx.AsyncClient(**client_kwargs) as client:
@@ -480,13 +481,13 @@ async def _get_search_results(keyword: str, engine: str, max_results: int, time_
 
     # 共享 httpx client（非 google 引擎）和浏览器实例（google）
     client_kwargs = {"follow_redirects": True, "timeout": settings.search_client_timeout}
-    effective_proxy = get_effective_proxy(settings.proxy_url)
+    effective_proxy = await get_effective_proxy(settings.proxy_url)
     if effective_proxy:
         client_kwargs["proxy"] = effective_proxy
     is_google = engine == "google"
 
     if is_google:
-        browser_config = get_browser_config(text_mode=True, light_mode=True, proxy=settings.proxy_url)
+        browser_config = await get_browser_config(text_mode=True, light_mode=True, proxy=settings.proxy_url)
         google_crawler = AsyncWebCrawler(config=browser_config)
         await google_crawler.__aenter__()
         shared_client = None
@@ -693,6 +694,9 @@ async def crawl_by_keyword(
     if time_range not in valid_time_ranges:
         raise ValueError(f"Invalid time_range '{time_range}'. Must be one of: {valid_time_ranges}")
 
+    if not keyword or not keyword.strip():
+        raise ValueError("keyword must be a non-empty string")
+
     start_time = time.time()
     deadline = settings.search_crawl_deadline_seconds
     logger.info("[Search] Keyword: '%s', engine: %s, max_results=%s, time_range=%s, deadline=%ss", keyword, engine, max_results, time_range, deadline)
@@ -754,7 +758,7 @@ async def crawl_by_keyword(
             logger.info("[Search] Total %s unique URLs from %s engine(s) for '%s'", len(all_search_urls), len(tried_engines), keyword)
 
             params = RunParams(config)
-            browser_config = get_browser_config(text_mode=params.text_mode, light_mode=params.light_mode, proxy=settings.proxy_url)
+            browser_config = await get_browser_config(text_mode=params.text_mode, light_mode=params.light_mode, proxy=settings.proxy_url)
             results = await _crawl_urls_with_shared_browser(
                 urls=all_search_urls,
                 keyword=keyword,

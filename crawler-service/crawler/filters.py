@@ -105,6 +105,8 @@ def is_excluded_domain(url: str) -> bool:
     parsed = urlparse(url.lower())
     domain = parsed.netloc
     path = parsed.path
+    if parsed.query:
+        path = path + '?' + parsed.query
 
     # 去掉 www 前缀用于域名匹配
     domain_no_www = domain[4:] if domain.startswith('www.') else domain

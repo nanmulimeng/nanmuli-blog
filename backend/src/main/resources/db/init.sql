@@ -400,12 +400,15 @@ CREATE INDEX IF NOT EXISTS idx_file_deleted ON sys_file(is_deleted);
 
 CREATE TABLE IF NOT EXISTS sys_config (
     id BIGSERIAL PRIMARY KEY,
-    config_key VARCHAR(100) NOT NULL UNIQUE,
+    config_key VARCHAR(100) NOT NULL,
     config_value TEXT,
+    default_value TEXT,
     description VARCHAR(200),
     group_name VARCHAR(50),
     is_public BOOLEAN DEFAULT FALSE,
-    input_type VARCHAR(20) DEFAULT 'text',
+    input_type VARCHAR(20) NOT NULL DEFAULT 'text',
+    is_encrypted BOOLEAN NOT NULL DEFAULT FALSE,
+    is_sensitive BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     is_deleted BOOLEAN NOT NULL DEFAULT FALSE
@@ -414,13 +417,16 @@ CREATE TABLE IF NOT EXISTS sys_config (
 COMMENT ON TABLE sys_config IS '系统配置表';
 COMMENT ON COLUMN sys_config.config_key IS '配置键';
 COMMENT ON COLUMN sys_config.config_value IS '配置值';
+COMMENT ON COLUMN sys_config.default_value IS '默认值';
 COMMENT ON COLUMN sys_config.description IS '描述';
 COMMENT ON COLUMN sys_config.group_name IS '分组';
 COMMENT ON COLUMN sys_config.is_public IS '是否公开';
 COMMENT ON COLUMN sys_config.input_type IS '输入类型: text/textarea/switch/image/password';
+COMMENT ON COLUMN sys_config.is_encrypted IS '是否加密存储';
+COMMENT ON COLUMN sys_config.is_sensitive IS '是否敏感（前端脱敏显示）';
 COMMENT ON COLUMN sys_config.is_deleted IS '逻辑删除标记';
 
-CREATE INDEX IF NOT EXISTS idx_config_key ON sys_config(config_key);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_config_key_active ON sys_config(config_key) WHERE is_deleted = FALSE;
 CREATE INDEX IF NOT EXISTS idx_config_group ON sys_config(group_name);
 CREATE INDEX IF NOT EXISTS idx_config_deleted ON sys_config(is_deleted);
 
@@ -879,41 +885,138 @@ ON CONFLICT DO NOTHING;
 -- 插入默认标签 (V1_7 已移除 tag 表,本节作废)
 
 -- 插入系统配置
-INSERT INTO sys_config (config_key, config_value, description, group_name, is_public, input_type)
+INSERT INTO sys_config (config_key, config_value, default_value, description, group_name, is_public, input_type, is_encrypted, is_sensitive)
 VALUES
-    ('site.name', '我的技术博客', '网站名称', 'site', TRUE, 'text'),
-    ('site.description', '记录技术成长，分享学习心得', '网站描述', 'site', TRUE, 'textarea'),
-    ('site.logo', '', '网站Logo', 'site', TRUE, 'image'),
-    ('site.favicon', '', '网站Favicon', 'site', TRUE, 'image'),
-    ('site.icp', '', 'ICP备案号', 'site', TRUE, 'text'),
-    ('site.footer', '© 2025 我的技术博客', '页脚信息', 'site', TRUE, 'textarea'),
-    ('site.about', '', '关于页面内容（Markdown）', 'site', TRUE, 'textarea'),
-    ('site.avatar', '', '个人头像', 'site', TRUE, 'image'),
-    ('site.author', '', '博主名称', 'site', TRUE, 'text'),
-    ('site.email', '', '联系邮箱', 'site', TRUE, 'text'),
-    ('site.github', '', 'GitHub链接', 'site', TRUE, 'text'),
--- AI 配置已迁移至 crawler.ai.* 组（Python 爬虫服务统一管理）
-    ('crawler.ai.enabled', 'false', '爬虫AI功能开关', 'crawler', FALSE, 'switch'),
-    ('crawler.ai.api_key', '', 'AI API密钥（DashScope）', 'crawler', FALSE, 'password'),
-    ('crawler.ai.model', 'qwen-plus', 'AI模型名称', 'crawler', FALSE, 'text'),
-    ('crawler.ai.base_url', 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'AI API 端点地址', 'crawler', FALSE, 'text'),
-    ('crawler.ai.temperature', '0.3', 'LLM 温度参数 (0-2)', 'crawler', FALSE, 'text'),
-    ('crawler.ai.connect_timeout', '10', 'AI API 连接超时(秒)', 'crawler', FALSE, 'text'),
-    ('crawler.ai.read_timeout', '90', 'AI API 读取超时(秒)', 'crawler', FALSE, 'text'),
-    ('crawler.ai.max_retries', '2', 'AI 调用最大重试次数', 'crawler', FALSE, 'text'),
-    ('crawler.ai.rate_limit_backoff_ms', '10000', '限流后退等待(毫秒)', 'crawler', FALSE, 'text'),
-    ('crawler.ai.single_page_max_chars', '80000', '单页最大字符数', 'crawler', FALSE, 'text'),
-    ('crawler.ai.multi_page_per_max_chars', '20000', '多页每页最大字符数', 'crawler', FALSE, 'text'),
-    ('crawler.ai.multi_page_total_budget', '150000', '多页总字符预算', 'crawler', FALSE, 'text'),
-    ('crawler.ai.max_tokens', '8000', 'AI 最大输出 Token', 'crawler', FALSE, 'text'),
-    ('crawler.ai.min_summary_length', '10', '摘要最小长度(字符)', 'crawler', FALSE, 'text'),
-    ('crawler.ai.min_full_content_length', '20', '全文最小长度(字符)', 'crawler', FALSE, 'text'),
-    ('crawler.ai.max_key_points', '10', '最大要点数', 'crawler', FALSE, 'text'),
-    ('crawler.ai.max_tags', '10', '最大标签数', 'crawler', FALSE, 'text'),
-    ('crawler.digest.enabled', 'false', '定时日报生成开关', 'crawler', FALSE, 'switch'),
-    ('crawler.proxy.enabled', 'false', '是否启用代理', 'crawler', FALSE, 'switch'),
-    ('crawler.proxy.url', '', 'HTTP代理地址', 'crawler', FALSE, 'text'),
-    ('crawler.proxy.subscription_url', '', '代理订阅地址', 'crawler', FALSE, 'text')
+    -- 站点配置 (site)
+    ('site.name', '我的技术博客', '我的技术博客', '网站名称', 'site', TRUE, 'text', FALSE, FALSE),
+    ('site.description', '记录技术成长，分享学习心得', '记录技术成长，分享学习心得', '网站描述', 'site', TRUE, 'textarea', FALSE, FALSE),
+    ('site.logo', '', '', '网站Logo', 'site', TRUE, 'image', FALSE, FALSE),
+    ('site.favicon', '', '', '网站Favicon', 'site', TRUE, 'image', FALSE, FALSE),
+    ('site.icp', '', '', 'ICP备案号', 'site', TRUE, 'text', FALSE, FALSE),
+    ('site.footer', '© 2025 我的技术博客', '© 2025 我的技术博客', '页脚信息', 'site', TRUE, 'textarea', FALSE, FALSE),
+    ('site.about', '', '', '关于页面内容（Markdown）', 'site', TRUE, 'textarea', FALSE, FALSE),
+    ('site.avatar', '', '', '个人头像', 'site', TRUE, 'image', FALSE, FALSE),
+    ('site.author', '', '', '博主名称', 'site', TRUE, 'text', FALSE, FALSE),
+    ('site.email', '', '', '联系邮箱', 'site', TRUE, 'text', FALSE, FALSE),
+    ('site.github', '', '', 'GitHub链接', 'site', TRUE, 'text', FALSE, FALSE),
+
+    -- ===== 爬虫全量配置 (Phase 3) =====
+    -- AI 配置 (18)
+    ('crawler.ai.api_key', '', '', 'AI API密钥（DashScope）', 'crawler', FALSE, 'password', TRUE, TRUE),
+    ('crawler.ai.base_url', 'https://api.deepseek.com/v1', '', 'AI API 端点地址', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.ai.connect_timeout', '10', '', 'AI API 连接超时(秒)', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.ai.enabled', 'false', 'false', '爬虫AI功能开关', 'crawler', FALSE, 'switch', FALSE, FALSE),
+    ('crawler.ai.max_key_points', '10', '', '最大要点数', 'crawler', FALSE, 'text', TRUE, TRUE),
+    ('crawler.ai.max_retries', '2', '', 'AI 调用最大重试次数', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.ai.max_tags', '10', '', '最大标签数', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.ai.max_tokens', '8000', '', 'AI 最大输出 Token', 'crawler', FALSE, 'text', TRUE, TRUE),
+    ('crawler.ai.min_full_content_length', '20', '', '全文最小长度(字符)', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.ai.min_summary_length', '10', '', '摘要最小长度(字符)', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.ai.model', 'deepseek-v4-pro', 'qwen-plus', 'AI模型名称', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.ai.multi_page_per_max_chars', '20000', '', '多页每页最大字符数', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.ai.multi_page_total_budget', '150000', '', '多页总字符预算', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.ai.rate_limit_backoff_ms', '10000', '', '限流后退等待(毫秒)', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.ai.read_timeout', '90', '', 'AI API 读取超时(秒)', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.ai.single_page_max_chars', '80000', '', '单页最大字符数', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.ai.temperature', '0.3', '', 'LLM 温度参数 (0-2)', 'crawler', FALSE, 'text', FALSE, FALSE),
+    -- 认证配置 (4)
+    ('crawler.auth.api_keys', '', '', 'API密钥列表(逗号分隔)', 'crawler', FALSE, 'password', TRUE, TRUE),
+    ('crawler.auth.enabled', 'true', 'true', '认证开关', 'crawler', FALSE, 'switch', FALSE, FALSE),
+    ('crawler.auth.header_name', 'X-API-Key', 'X-API-Key', '认证头名称', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.auth.protected_prefixes', '/api/v1,/crawl,/organize,/keyword', '/api/v1,/crawl,/organize,/keyword', '受保护路径前缀', 'crawler', FALSE, 'text', FALSE, FALSE),
+    -- 茧房突破 (4)
+    ('crawler.bubble.cross_language', 'true', 'true', '跨语言搜索', 'crawler', FALSE, 'switch', FALSE, FALSE),
+    ('crawler.bubble.enabled', 'false', 'false', '信息茧房突破开关', 'crawler', FALSE, 'switch', FALSE, FALSE),
+    ('crawler.bubble.max_translate_tokens', '200', '200', '最大翻译Token数', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.bubble.min_source_diversity', '0.6', '0.6', '最小来源多样性', 'crawler', FALSE, 'text', FALSE, FALSE),
+    -- 回调/外部服务 (3)
+    ('crawler.callback.api-key', '', '', '回调认证密钥（Java/Python共享）', 'crawler', FALSE, 'password', TRUE, TRUE),
+    ('crawler.callback.sources_timeout', '5.0', '5.0', '订阅源API超时(秒)', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.callback.timeout', '5.0', '5.0', '回调超时(秒)', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.callback.url', '', '', '任务完成回调URL', 'crawler', FALSE, 'text', FALSE, FALSE),
+    -- SQLite 数据库 (3)
+    ('crawler.db.busy_timeout', '5000', '5000', 'SQLite忙等待超时(ms)', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.db.max_concurrent_tasks', '3', '3', '最大并发任务数', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.db.path', 'data/crawler.db', 'data/crawler.db', 'SQLite数据库路径', 'crawler', FALSE, 'text', FALSE, FALSE),
+    -- 服务基础 (4)
+    ('crawler.debug', 'false', 'false', 'Debug模式', 'crawler', FALSE, 'switch', FALSE, FALSE),
+    ('crawler.host', '0.0.0.0', '0.0.0.0', '爬虫服务监听地址', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.log_level', 'INFO', 'INFO', '日志级别', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.port', '8500', '8500', '爬虫服务监听端口', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.standalone', 'true', 'true', '独立模式', 'crawler', FALSE, 'switch', FALSE, FALSE),
+    -- 日报 (7)
+    ('crawler.digest.cron', '0 8 * * 1-5', '0 8 * * 1-5', '日报CRON表达式', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.digest.enabled', 'false', 'false', '定时日报生成开关', 'crawler', FALSE, 'switch', FALSE, FALSE),
+    ('crawler.digest.history_load_count', '3', '3', '加载最近N期日报去重', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.digest.inter_section_delay', '2.0', '2.0', '日报板块间延迟(秒)', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.digest.search_engine', 'bing', 'bing', '日报专用搜索引擎', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.digest.section_result_multiplier', '2', '2', '日报板块结果倍数', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.digest.sections', '[{"name":"news","keyword":"tech news","time_range":"day","max_items":5}]', '[{"name":"news","keyword":"tech news","time_range":"day","max_items":5}]', '日报板块配置(JSON)', 'crawler', FALSE, 'textarea', FALSE, FALSE),
+    -- Java 侧 HTTP 连接池 (2)
+    ('crawler.http.pool.max-per-route', '10', '10', '单路由最大连接数', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.http.pool.max-total', '20', '20', 'HTTP连接池最大连接数', 'crawler', FALSE, 'text', FALSE, FALSE),
+    -- 关键词搜索 (3)
+    ('crawler.keyword.inter_search_delay', '2.0', '2.0', '多关键词搜索间隔(秒)', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.keyword.max_consecutive_empty', '2', '2', '连续空结果停止阈值', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.keyword.max_variants', '4', '4', 'AI扩展关键词最大变体数', 'crawler', FALSE, 'text', FALSE, FALSE),
+    -- 爬取限制 (3)
+    ('crawler.limit.max_concurrent', '3', '3', '最大并发爬取数', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.limit.max_depth', '3', '3', '最大爬取深度', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.limit.max_pages', '20', '20', '最大爬取页数', 'crawler', FALSE, 'text', FALSE, FALSE),
+    -- 搜索优化 (5)
+    ('crawler.optimization.enabled', 'false', 'false', '自动优化引擎开关', 'crawler', FALSE, 'switch', FALSE, FALSE),
+    ('crawler.optimization.max_rounds', '3', '3', '最大优化轮数', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.optimization.min_improvement', '0.03', '0.03', '最小改进阈值', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.optimization.mode', 'keyword', 'keyword', '优化模式(keyword/digest/both)', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.optimization.target_score', '0.7', '0.7', '优化目标分数', 'crawler', FALSE, 'text', FALSE, FALSE),
+    -- 代理 (3)
+    ('crawler.proxy.enabled', 'false', '', '是否启用代理', 'crawler', FALSE, 'switch', FALSE, FALSE),
+    ('crawler.proxy.subscription_url', '', '', '代理订阅地址', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.proxy.url', '', '', 'HTTP代理地址', 'crawler', FALSE, 'text', FALSE, FALSE),
+    -- 质量关键词 (3)
+    ('crawler.quality.ad_keywords', '限时优惠,点击购买,立即下单,免费试用,优惠券,折扣码,推广链接,affiliate,赞助内容,广告合作,扫码领取,关注公众号,限量,秒杀,抢购,不容错过,错过等一年', '限时优惠,点击购买,立即下单', '广告关键词(逗号分隔)', 'crawler', FALSE, 'textarea', FALSE, FALSE),
+    ('crawler.quality.clickbait_keywords', '震惊,绝了,逆天,炸裂,颠覆,史诗,神级,99%的人不知道,看完我沉默了,后悔没早点,太可怕了,万万没想到,不可思议,惊人,史上最强,全网首发,独家揭秘,内幕,震惊中外,轰动,爆款,疯传,shocking,unbelievable,mind-blowing,epic,you will not believe,this changes everything', '震惊,绝了,逆天,炸裂,颠覆,史诗,神级', '标题党关键词(逗号分隔)', 'crawler', FALSE, 'textarea', FALSE, FALSE),
+    ('crawler.quality.paywall_indicators', 'subscribe to read,membership required,premium content,登录后阅读,订阅后查看,会员专属,付费阅读,sign up to continue,create an account', 'subscribe to read,membership required', '付费墙关键词(逗号分隔)', 'crawler', FALSE, 'textarea', FALSE, FALSE),
+    -- 质量评估权重/阈值 (13)
+    ('crawler.quality.content_weight', '0.6', '0.6', '内容质量权重', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.quality.deep_eval_review_threshold', '25', '25', '深度爬取审查阈值', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.quality.eval_pass_threshold', '65', '65', '综合评分:通过阈值', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.quality.eval_review_threshold', '45', '45', '综合评分:审查阈值', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.quality.keep_threshold', '70', '70', '质量推荐:保留阈值', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.quality.min_content_length', '100', '100', '最低内容字符数', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.quality.review_threshold', '50', '50', '质量推荐:审查阈值', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.quality.source_weight', '0.4', '0.4', '来源可信度权重', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.quality.weight_angle', '0.25', '0.25', '评估权重:角度', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.quality.weight_depth', '0.15', '0.15', '评估权重:深度', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.quality.weight_language', '0.10', '0.10', '评估权重:语言', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.quality.weight_perspective', '0.15', '0.15', '评估权重:视角', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.quality.weight_source', '0.20', '0.20', '评估权重:来源', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.quality.weight_temporal', '0.15', '0.15', '评估权重:时效', 'crawler', FALSE, 'text', FALSE, FALSE),
+    -- 搜索超时/延迟 (16)
+    ('crawler.search.browser_fetch_timeout_ms', '20000', '20000', '浏览器抓取超时(ms)', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.search.client_timeout', '30', '30', '共享搜索客户端超时(秒)', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.search.crawl_deadline_seconds', '300', '300', '整体爬取超时(秒)', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.search.engine_switch_delay_max', '5.0', '5.0', '引擎切换最大延迟(秒)', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.search.engine_switch_delay_min', '2.0', '2.0', '引擎切换最小延迟(秒)', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.search.httpx_fallback_timeout', '15', '15', 'httpx降级超时(秒)', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.search.max_domain_dedup', '2', '2', '同域名去重上限', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.search.max_pages_per_engine', '5', '5', '每个搜索引擎最大翻页数', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.search.min_word_count', '50', '50', '搜索结果最小词数', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.search.optimization_round_delay_max', '4.0', '4.0', '优化轮次最大延迟(秒)', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.search.optimization_round_delay_min', '2.0', '2.0', '优化轮次最小延迟(秒)', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.search.page_delay_max', '2.0', '2.0', '翻页最大延迟(秒)', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.search.page_delay_min', '0.8', '0.8', '翻页最小延迟(秒)', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.search.page_retries', '2', '2', '搜索页获取重试次数', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.search.page_timeout_ms', '15000', '15000', '搜索结果页超时(ms)', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.search.progressive_fallback_enabled', 'true', 'true', '渐进式回退开关', 'crawler', FALSE, 'switch', FALSE, FALSE),
+    ('crawler.search.warmup_timeout', '10', '10', '搜狗预热超时(秒)', 'crawler', FALSE, 'text', FALSE, FALSE),
+    -- Java 侧服务连接 (4)
+    ('crawler.service.api-key', '', '', 'Python API认证密钥', 'crawler', FALSE, 'password', TRUE, TRUE),
+    ('crawler.service.base-url', 'http://localhost:8500', 'http://localhost:8500', 'Python爬虫服务地址', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.service.connect-timeout', '10000', '10000', '连接超时(毫秒)', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.service.read-timeout', '30000', '30000', '读取超时(毫秒)', 'crawler', FALSE, 'text', FALSE, FALSE),
+    -- AES 加密密钥 (1)
+    ('blog.security.encryption-key', 'nanmuli-blog-key', 'nanmuli-blog-key', 'AES-128加密密钥（16字节）', 'blog', FALSE, 'password', TRUE, TRUE)
 ON CONFLICT (config_key) DO NOTHING;
 
 -- 插入示例技能

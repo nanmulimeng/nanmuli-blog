@@ -156,6 +156,7 @@ export interface CreateCollectTaskCommand {
   sourceUrl?: string
   keyword?: string
   searchEngine?: 'sogou' | 'bing' | 'baidu' | 'google'
+  timeRange?: 'day' | 'week' | 'month' | 'year' | 'all'
   crawlMode?: 'single' | 'deep'
   maxDepth?: number
   maxPages?: number

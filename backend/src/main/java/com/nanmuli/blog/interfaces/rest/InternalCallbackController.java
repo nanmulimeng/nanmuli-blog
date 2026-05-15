@@ -4,11 +4,11 @@ import com.nanmuli.blog.application.webcollector.WebCollectorAppService;
 import com.nanmuli.blog.application.webcollector.WebCollectSourceAppService;
 import com.nanmuli.blog.application.webcollector.dto.SourceDTO;
 import com.nanmuli.blog.domain.config.ConfigRepository;
+import com.nanmuli.blog.infrastructure.config.ConfigService;
 import com.nanmuli.blog.infrastructure.config.security.AesEncryptor;
 import com.nanmuli.blog.shared.result.Result;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.LinkedHashMap;
@@ -29,16 +29,15 @@ public class InternalCallbackController {
     private final WebCollectSourceAppService sourceAppService;
     private final ConfigRepository configRepository;
     private final AesEncryptor aesEncryptor;
-
-    @Value("${crawler.callback.api-key:}")
-    private String callbackApiKey;
+    private final ConfigService configService;
 
     /** 认证失败时返回 true，成功时返回 false */
     private boolean authRequired(String callbackKey) {
-        if (callbackApiKey == null || callbackApiKey.isBlank()) {
+        String expectedKey = configService.get("crawler.callback.api-key", "");
+        if (expectedKey.isBlank()) {
             return false;
         }
-        return !callbackApiKey.equals(callbackKey);
+        return !expectedKey.equals(callbackKey);
     }
 
     @PostMapping("/callback")
@@ -90,7 +89,10 @@ public class InternalCallbackController {
         Map<String, String> configMap = configRepository.findByGroup("crawler").stream()
                 .collect(Collectors.toMap(
                         c -> c.getConfigKey().replace("crawler.", ""),
-                        c -> aesEncryptor.decrypt(c.getConfigValue() != null ? c.getConfigValue() : ""),
+                        c -> {
+                            String val = c.getConfigValue() != null ? c.getConfigValue() : "";
+                            return Boolean.TRUE.equals(c.getIsEncrypted()) ? aesEncryptor.decrypt(val) : val;
+                        },
                         (a, b) -> b,
                         LinkedHashMap::new));
 

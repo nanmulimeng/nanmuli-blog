@@ -23,7 +23,7 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from crawler.deep import crawl_deep_pages
-from crawler.single import CrawlResult
+from crawler.models import CrawlResult
 
 
 # ============== Helpers ==============
@@ -513,7 +513,7 @@ class TestDeepCrawl:
              patch("crawler.deep.BFSDeepCrawlStrategy", return_value=MagicMock()), \
              patch("crawler.deep.FilterChain", return_value=MagicMock()), \
              patch("crawler.deep.DomainFilter", return_value=MagicMock()), \
-             patch("crawler.deep.extract_metadata", return_value={"title": "HTML Title"}):
+             patch("crawler.processor.extract_metadata", return_value={"title": "HTML Title"}):
             results = await crawl_deep_pages(
                 url="https://example.com/article",
                 max_depth=2,

@@ -49,31 +49,19 @@ blog:
       article-archive: 1h
       article-stats: 5m
 
-# Web Collector - Python 爬虫服务配置
-crawler:
-  service:
-    base-url: http://localhost:8500
-    api-key: ${CRAWLER_API_KEY:}
-    connect-timeout: ${CRAWLER_CONNECT_TIMEOUT:10000}
-    read-timeout: ${CRAWLER_READ_TIMEOUT:30000}
-  callback:
-    api-key: ${CRAWLER_CALLBACK_API_KEY:}
-  http:
-    pool:
-      max-total: 20
-      max-per-route: 10
+# ===== 以下配置已迁移至 sys_config 表（Phase 2） =====
+# crawler.service.* → sys_config (base-url/api-key/connect-timeout/read-timeout)
+# crawler.callback.* → sys_config (api-key)
+# crawler.http.pool.* → sys_config (max-total/max-per-route)
+# blog.security.*     → sys_config (encryption-key)
+#
+# 运行时通过 PUT /api/admin/config/{key} 修改，POST /api/admin/config/refresh 生效
+# 环境变量覆盖仍可用: CRAWLER_API_KEY, CRAWLER_CONNECT_TIMEOUT, CRAWLER_READ_TIMEOUT, CRAWLER_CALLBACK_API_KEY
 
 # Mihomo (Clash Meta) REST API — 仅服务器可用，本地 Clash Verge 锁定 external-controller
 mihomo:
   api:
     url: http://127.0.0.1:9090
-
-logging:
-  level:
-    root: info
-    com.nanmuli.blog: debug
-  pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] [%X{traceId}] %-5level %logger{36} - %msg%n"
 
 # CORS 配置
 cors:

@@ -13,10 +13,8 @@ import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -27,13 +25,6 @@ public class ConfigAppService {
     private final AesEncryptor aesEncryptor;
 
     private static final String MASK_SENTINEL = "********";
-    private static final List<String> SENSITIVE_KEYWORDS = Arrays.asList(
-            "key", "secret", "password", "token", "credential", "private", "apikey"
-    );
-    private static final Set<String> NON_SENSITIVE_WHITELIST = Set.of(
-            "crawler.ai.max_key_points",
-            "crawler.ai.max_tokens"
-    );
 
     @Transactional(readOnly = true)
     public Map<String, String> getPublicConfigs() {
@@ -70,14 +61,14 @@ public class ConfigAppService {
     @CacheEvict(value = {"config", "config:admin:list"}, allEntries = true)
     @Transactional
     public void update(String key, String value) {
-        // 拒绝遮罩值覆盖真实敏感数据
-        if (MASK_SENTINEL.equals(value) && isSensitiveConfig(key)) {
-            throw new BusinessException("不能使用脱敏值覆盖敏感配置，请修改其他字段后重试");
-        }
         Config config = configRepository.findByKey(key)
                 .orElseThrow(() -> new BusinessException("配置不存在"));
+        // 拒绝遮罩值覆盖真实敏感数据
+        if (MASK_SENTINEL.equals(value) && isSensitive(config)) {
+            throw new BusinessException("不能使用脱敏值覆盖敏感配置，请修改其他字段后重试");
+        }
         // 敏感值加密存储
-        String storeValue = isSensitiveConfig(key) ? aesEncryptor.encrypt(value) : value;
+        String storeValue = isEncrypted(config) ? aesEncryptor.encrypt(value) : value;
         config.setConfigValue(storeValue);
         configRepository.save(config);
     }
@@ -86,10 +77,6 @@ public class ConfigAppService {
     @Transactional
     public void set(String key, String value, String description, String groupName,
                     String inputType, Boolean isPublic) {
-        if (MASK_SENTINEL.equals(value) && isSensitiveConfig(key)) {
-            throw new BusinessException("不能使用脱敏值覆盖敏感配置");
-        }
-        String storeValue = isSensitiveConfig(key) ? aesEncryptor.encrypt(value) : value;
         Config config = configRepository.findByKey(key).orElse(null);
         if (config == null) {
             config = new Config();
@@ -99,6 +86,10 @@ public class ConfigAppService {
             config.setInputType(inputType != null ? inputType : "text");
             config.setIsPublic(isPublic != null ? isPublic : false);
         }
+        if (MASK_SENTINEL.equals(value) && isSensitive(config)) {
+            throw new BusinessException("不能使用脱敏值覆盖敏感配置");
+        }
+        String storeValue = isEncrypted(config) ? aesEncryptor.encrypt(value) : value;
         config.setConfigValue(storeValue);
         configRepository.save(config);
     }
@@ -111,7 +102,7 @@ public class ConfigAppService {
         ConfigDTO dto = new ConfigDTO();
         BeanUtils.copyProperties(config, dto);
         dto.setId(config.getId());
-        if (isSensitiveConfig(config.getConfigKey())) {
+        if (isSensitive(config)) {
             dto.setConfigValue(maskSensitiveValue(config.getConfigValue()));
         }
         return dto;
@@ -121,11 +112,15 @@ public class ConfigAppService {
         ConfigDTO dto = new ConfigDTO();
         BeanUtils.copyProperties(config, dto);
         dto.setId(config.getId());
-        if (isSensitiveConfig(config.getConfigKey())) {
+        if (isSensitive(config)) {
             // 解密存储值用于管理端回显
             String decrypted = aesEncryptor.decrypt(config.getConfigValue());
             dto.setConfigValue(maskSensitiveValue(decrypted));
             dto.setSensitive(true);
+            dto.setIsSensitive(true);
+        }
+        if (isEncrypted(config)) {
+            dto.setIsEncrypted(true);
         }
         return dto;
     }
@@ -137,11 +132,12 @@ public class ConfigAppService {
         return dto;
     }
 
-    private boolean isSensitiveConfig(String configKey) {
-        if (configKey == null) return false;
-        if (NON_SENSITIVE_WHITELIST.contains(configKey)) return false;
-        String lowerKey = configKey.toLowerCase();
-        return SENSITIVE_KEYWORDS.stream().anyMatch(lowerKey::contains);
+    private boolean isEncrypted(Config config) {
+        return Boolean.TRUE.equals(config.getIsEncrypted());
+    }
+
+    private boolean isSensitive(Config config) {
+        return Boolean.TRUE.equals(config.getIsSensitive());
     }
 
     private String maskSensitiveValue(String value) {

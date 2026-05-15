@@ -103,6 +103,13 @@ class TaskExecutor:
         try:
             await repo.update_task_status(task_id, TaskStatus.CRAWLING)
 
+            # source_url 校验：single/deep 任务必须有 URL
+            if task["task_type"] in ("single", "deep"):
+                if not task.get("source_url"):
+                    await repo.fail_task(task_id, f"source_url is required for {task['task_type']} tasks")
+                    await _fire_callback(task_id, TaskStatus.FAILED)
+                    return
+
             # 从 DB 恢复用户提交的 config
             config_json = task.get("crawl_config")
             if config_json:
@@ -114,7 +121,7 @@ class TaskExecutor:
 
             # ========== Phase 1: 爬取 ==========
             if task["task_type"] == "single":
-                browser_config = get_browser_config(
+                browser_config = await get_browser_config(
                     text_mode=params.text_mode, light_mode=params.light_mode,
                     proxy=settings.proxy_url,
                 )
@@ -123,7 +130,7 @@ class TaskExecutor:
                 results = [result]
 
             elif task["task_type"] == "deep":
-                browser_config = get_browser_config(
+                browser_config = await get_browser_config(
                     text_mode=params.text_mode, light_mode=params.light_mode,
                     proxy=settings.proxy_url,
                 )
@@ -140,7 +147,8 @@ class TaskExecutor:
                 results = await self._execute_keyword_crawl(task, config)
 
             elif task["task_type"] == "digest":
-                results = await self._execute_digest_crawl(task, config)
+                from crawler.digest import execute_digest_crawl
+                results = await execute_digest_crawl(task, config, self)
 
             else:
                 await repo.fail_task(task_id, f"Unknown task type: {task['task_type']}")
@@ -148,7 +156,10 @@ class TaskExecutor:
 
             # 质量过滤（日报跳过：来源已由搜索结果保证质量）
             if task["task_type"] != "digest":
-                results = self._filter_low_quality(results, task["task_type"])
+                from crawler.dedup import DedupEngine
+                sim_threshold = settings.content_dedup_deep_threshold if task["task_type"] == "deep" else settings.content_dedup_simhash_threshold
+                dedup_engine = DedupEngine(simhash_threshold=sim_threshold) if settings.content_dedup_enabled else None
+                results = self._filter_low_quality(results, task["task_type"], dedup_engine=dedup_engine)
 
             # 保存爬取结果
             total_words = await repo.save_pages(task_id, results)
@@ -177,10 +188,13 @@ class TaskExecutor:
                         task_id, success_count, len(results), total_words)
 
             # ========== Phase 2: AI 整理 ==========
-            await repo.update_task_status(task_id, TaskStatus.PROCESSING)
-            ai_success = await self._organize_with_ai(task_id, task)
-            if not ai_success:
-                logger.warning("Task %d AI organization failed, task still marked complete with raw content.", task_id)
+            if settings.ai_organization_enabled:
+                await repo.update_task_status(task_id, TaskStatus.PROCESSING)
+                ai_success = await self._organize_with_ai(task_id, task)
+                if not ai_success:
+                    logger.warning("Task %d AI organization failed, task still marked complete with raw content.", task_id)
+            else:
+                logger.info("Task %d AI organization disabled, skipping.", task_id)
 
             await repo.complete_task(task_id)
             logger.info("Task %d completed.", task_id)
@@ -330,144 +344,6 @@ class TaskExecutor:
 
         return final_results
 
-    async def _execute_digest_crawl(self, task: dict, config) -> list:
-        """日报板块爬取（含跨日去重，复用浏览器实例）"""
-        from crawler.search import crawl_by_keyword
-        from crawler.dedup import DedupEngine, dedup_results
-        from crawler.config import get_browser_config, RunParams
-        from crawl4ai import AsyncWebCrawler
-
-        sections = await get_digest_sections()
-        if not sections:
-            raise ValueError("日报功能未配置")
-
-        # 构建跨日去重引擎：加载上一次成功日报的 URL/标题
-        history_engine = await self._build_digest_history_engine()
-
-        seen_urls = set()
-        all_results = []
-        engine = settings.digest_search_engine
-        completed_count = 0
-
-        # 复用同一浏览器实例处理所有板块
-        params = RunParams(config)
-        browser_config = get_browser_config(
-            text_mode=params.text_mode, light_mode=params.light_mode,
-            proxy=settings.proxy_url,
-        )
-        async with AsyncWebCrawler(config=browser_config) as shared_crawler:
-            for i, section in enumerate(sections):
-                config_copy = copy_config(config)
-
-                try:
-                    results = await crawl_by_keyword(
-                        keyword=section["keyword"],
-                        engine=engine,
-                        max_results=section.get("max_items", 5) * settings.digest_section_result_multiplier,
-                        time_range=section.get("time_range", "week"),
-                        config=config_copy,
-                        crawler=shared_crawler,
-                    )
-
-                    # 板块内去重
-                    results = dedup_results(results, history_engine=history_engine)
-
-                    from crawler.utils import dedup_results_into
-                    new = dedup_results_into(results, seen_urls, all_results)
-
-                    completed_count += new
-                    logger.info("Digest section '%s' added %d new URLs (total=%d)",
-                                section["name"], new, len(all_results))
-
-                    await repo.update_task_progress(task["id"], completed_count)
-
-                    if i < len(sections) - 1:
-                        await asyncio.sleep(settings.digest_inter_section_delay)
-
-                except Exception as e:
-                    logger.warning("Digest section '%s' failed: %s", section["name"], e)
-
-            # === 日报自动优化（可选，仍在 shared_crawler 生命周期内） ===
-            if settings.optimization_enabled and settings.optimization_mode in ("digest", "both"):
-                try:
-                    all_results = await self._run_digest_optimization(
-                        task=task, all_results=all_results, seen_urls=seen_urls,
-                        engine=engine, config=config, crawler=shared_crawler,
-                    )
-                except Exception as e:
-                    logger.warning("Digest optimization failed (non-critical): %s", e)
-
-        return all_results
-
-    async def _run_digest_optimization(
-        self, task: dict, all_results: list, seen_urls: set,
-        engine: str, config, crawler,
-    ) -> list:
-        """对日报整体结果执行覆盖度评估和补充搜索"""
-        from ai import content_organizer as organizer
-        from optimization.evaluator import CoverageEvaluator
-        from optimization.strategy import StrategyGenerator
-        from optimization.feedback import FeedbackLoop
-        from optimization.knowledge_base import KnowledgeBase
-        from optimization.bubble_breaker import BubbleBreaker
-        from crawler.search import crawl_by_keyword
-
-        evaluator = CoverageEvaluator(organizer if organizer.is_available else None)
-        strategy_gen = StrategyGenerator()
-        kb = KnowledgeBase()
-        breaker = BubbleBreaker(organizer if organizer.is_available else None)
-        loop = FeedbackLoop(evaluator, strategy_gen, kb, bubble_breaker=breaker)
-
-        final_results, rounds = await loop.execute(
-            keyword=task.get("keyword", "digest"),
-            initial_results=all_results,
-            crawl_fn=crawl_by_keyword,
-            task_id=task["id"],
-            context={
-                "engine": engine,
-                "time_range": "week",
-                "config": config,
-                "crawler": crawler,
-            },
-        )
-
-        if rounds:
-            last = rounds[-1]
-            logger.info(
-                "[DigestOptimization] %d rounds, final score=%.2f",
-                len(rounds), last.evaluation.overall_score,
-            )
-
-        return final_results
-
-    async def _build_digest_history_engine(self):
-        """从最近几次成功日报中加载 URL/标题指纹，用于跨日去重"""
-        from crawler.dedup import DedupEngine
-
-        engine = DedupEngine()
-        try:
-            # 加载最近 3 条完成的日报，避免跨日重复
-            records, _ = await repo.list_tasks(task_type="digest", page=1, size=5)
-            loaded = 0
-            for r in records:
-                if r.get("status") != TaskStatus.COMPLETED:
-                    continue
-                pages = await repo.get_pages_by_task(r["id"])
-                for p in pages:
-                    url = p.get("url", "")
-                    title = p.get("page_title", "")
-                    if url:
-                        engine.add_reference(url, title=title)
-                logger.info("Loaded %d history URLs from digest task %d", len(pages), r["id"])
-                loaded += 1
-                if loaded >= settings.digest_history_load_count:
-                    break
-            if loaded:
-                logger.info("Digest history engine: %d reference records loaded", loaded)
-        except Exception as e:
-            logger.warning("Failed to load digest history for dedup: %s", e)
-        return engine
-
     async def _organize_with_ai(self, task_id: int, task: dict) -> bool:
         """AI 内容整理（含重试）"""
         from ai import content_organizer as organizer
@@ -552,8 +428,8 @@ class TaskExecutor:
     def running_count(self) -> int:
         return len(self._running)
 
-    @staticmethod
-    def _filter_low_quality(results: list, task_type: str = None) -> list:
+    def _filter_low_quality(self, results: list, task_type: str = None,
+                            dedup_engine=None) -> list:
         """过滤低质量/垃圾内容，避免浪费 AI token
 
         深度爬取使用更宽松的阈值：用户主动选择了目标域名，域内页面默认可信，
@@ -562,8 +438,11 @@ class TaskExecutor:
         from crawler.quality import evaluate_content
 
         is_deep = (task_type == "deep")
-        # 深度爬取：仅当综合分低于此值且来源为 spam 时才拒绝
         deep_min_score = settings.deep_eval_review_threshold
+
+        # 过滤统计
+        stats = {"total": len(results), "too_short": 0, "non_article": 0,
+                 "duplicate": 0, "low_quality": 0, "passed": 0}
 
         filtered = []
         for r in results:
@@ -575,26 +454,54 @@ class TaskExecutor:
             title = getattr(r, "title", "") or ""
             markdown = getattr(r, "markdown", "") or ""
 
-            # 内容太短直接标记失败
-            min_content = settings.min_content_length if not is_deep else 20
+            # [1] 内容太短直接标记失败
+            min_content = settings.min_content_length if not is_deep else settings.filter_deep_min_content
             if len(markdown) < min_content:
                 r.success = False
                 r.error_message = f"Content too short ({len(markdown)} chars)"
                 filtered.append(r)
+                stats["too_short"] += 1
                 continue
 
+            # [2] 页面类型分类器（P5）：SERP/列表/论坛 → 直接拒绝
+            if settings.page_classifier_enabled:
+                from crawler.page_classifier import classify_page
+                classification = classify_page(markdown, url, title)
+                if classification.is_non_article:
+                    r.success = False
+                    r.error_message = f"Non-article page: {classification.page_type} (confidence={classification.confidence:.0%})"
+                    filtered.append(r)
+                    stats["non_article"] += 1
+                    logger.debug("Filtered non-article: %s type=%s conf=%.0f signals=%s",
+                                 url, classification.page_type, classification.confidence,
+                                 classification.signals)
+                    continue
+
+            # [3] 内容去重（P6）：跳过头部导航区，取中间段做指纹
+            if dedup_engine is not None and len(markdown) >= 100:
+                skip_header = settings.filter_skip_header_chars
+                content_preview = markdown[skip_header:skip_header + settings.filter_content_preview_length] if len(markdown) > skip_header else markdown[:settings.filter_content_preview_length]
+                dup = dedup_engine.is_duplicate(url, title, content_preview)
+                if dup["is_duplicate"]:
+                    r.success = False
+                    r.error_message = f"Duplicate: {dup['reason']} (confidence={dup['confidence']:.0%})"
+                    filtered.append(r)
+                    stats["duplicate"] += 1
+                    logger.debug("Filtered duplicate: %s reason=%s conf=%.0f",
+                                 url, dup["reason"], dup["confidence"])
+                    continue
+
+            # [4] 质量评分
             evaluation = evaluate_content(url, title, markdown)
             verdict = evaluation["verdict"]
             final_score = evaluation["final_score"]
 
             should_reject = False
             if is_deep:
-                # 深度爬取宽松模式：仅当来源为 spam 且内容分极低时才拒绝
                 source_level = evaluation["source"]["level"]
                 if source_level == "spam" and final_score < deep_min_score:
                     should_reject = True
                 elif final_score < (deep_min_score - 10) and source_level != "official":
-                    # 极低分 + 非官方来源 → 仍然拒绝
                     should_reject = True
             else:
                 should_reject = (verdict == "reject")
@@ -602,6 +509,7 @@ class TaskExecutor:
             if should_reject:
                 r.success = False
                 r.error_message = f"Low quality content (score={final_score:.0f}, verdict={verdict})"
+                stats["low_quality"] += 1
                 logger.info("Filtered low-quality: %s (score=%.0f, reason=%s)",
                             url, final_score, evaluation["source"]["reason"])
             else:
@@ -612,8 +520,21 @@ class TaskExecutor:
                     "pass" if verdict == "pass" else "review"
                 )
                 r.metadata = metadata
+                stats["passed"] += 1
+
+                # [5] 注册去重指纹（质量通过后）
+                if dedup_engine is not None and len(markdown) >= 100:
+                    skip_header = 200
+                    content_preview = markdown[skip_header:skip_header + 800] if len(markdown) > skip_header else markdown[:800]
+                    dedup_engine.add(url, title, content_preview)
 
             filtered.append(r)
+
+        # 过滤统计日志
+        logger.info("Task filter stats: total=%d, too_short=%d, non_article=%d, "
+                    "duplicate=%d, low_quality=%d, passed=%d",
+                    stats["total"], stats["too_short"], stats["non_article"],
+                    stats["duplicate"], stats["low_quality"], stats["passed"])
 
         return filtered
 

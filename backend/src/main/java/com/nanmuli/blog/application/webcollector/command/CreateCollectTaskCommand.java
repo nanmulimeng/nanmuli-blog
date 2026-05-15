@@ -24,7 +24,7 @@ public class CreateCollectTaskCommand {
     private String keyword;
 
     @Pattern(regexp = "^(sogou|bing|baidu|google)?$", message = "搜索引擎必须是 sogou、bing、baidu 或 google")
-    private String searchEngine = "bing";
+    private String searchEngine = "sogou";
 
     @Pattern(regexp = "^(single|deep)?$", message = "爬取模式必须是 single 或 deep")
     private String crawlMode = "single";

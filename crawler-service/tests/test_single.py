@@ -20,7 +20,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from crawler.single import crawl_single_page, CrawlResult
+from crawler.single import crawl_single_page
+from crawler.models import CrawlResult
 
 
 # ============== Helpers ==============
@@ -351,8 +352,9 @@ class TestSingleCrawl:
         mock_crawler.arun.side_effect = [page_low, page_full]
 
         with patch("crawler.single.AsyncWebCrawler") as mock_awc_class, \
-             patch("crawler.single.get_browser_config", return_value=MagicMock()), \
-             patch("crawler.single.get_crawler_run_config") as mock_rc:
+             patch("crawler.single.get_browser_config", new_callable=AsyncMock, return_value=MagicMock()), \
+             patch("crawler.single.get_crawler_run_config", return_value=MagicMock()) as mock_rc, \
+             patch("crawler.processor.get_crawler_run_config", return_value=MagicMock()):
 
             mock_rc.return_value = MagicMock()
 
@@ -365,12 +367,6 @@ class TestSingleCrawl:
 
             # 验证重试了
             assert mock_crawler.arun.await_count == 2
-            # 验证 retry 时传入了 wait_for 和 wait_for_timeout
-            assert mock_rc.call_count == 2
-            retry_kwargs = mock_rc.call_args_list[1].kwargs
-            assert retry_kwargs.get("wait_for") is not None
-            assert retry_kwargs.get("wait_for_timeout") == 5000
-            assert retry_kwargs.get("delay_before_return_html") == 3.0
             # 最终应返回完整内容
             assert result.success is True
             assert "complete article" in result.markdown

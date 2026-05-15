@@ -3,11 +3,20 @@ export interface Config {
   id: string
   configKey: string
   configValue: string
+  defaultValue?: string
   description: string
   groupName: string
   isPublic: boolean
+  isEncrypted?: boolean
+  isSensitive?: boolean
+  /** @deprecated 使用 isSensitive 替代 */
   sensitive?: boolean
   inputType?: string
+}
+
+export interface RefreshResult {
+  message: string
+  components: string[]
 }
 
 export interface ProxyStatus {

@@ -141,6 +141,16 @@ class Settings(BaseSettings):
     quality_ad_keywords: str = "限时优惠,点击购买,立即下单,免费试用,优惠券,折扣码,推广链接,affiliate,赞助内容,广告合作,扫码领取,关注公众号,限量,秒杀,抢购,不容错过,错过等一年"
     quality_paywall_indicators: str = "subscribe to read,membership required,premium content,登录后阅读,订阅后查看,会员专属,付费阅读,sign up to continue,create an account"
 
+    # === 过滤管线优化配置（P1-P6）===
+    ai_organization_enabled: bool = True         # AI 整理开关
+    page_classifier_enabled: bool = True         # P5: 页面类型分类器
+    content_dedup_enabled: bool = True           # P6: 内容去重
+    content_dedup_simhash_threshold: int = 5     # 汉明距离阈值（越小越严）
+    content_dedup_deep_threshold: int = 3        # 深度爬取更严阈值
+    filter_deep_min_content: int = 20            # 深度爬取最小内容长度
+    filter_skip_header_chars: int = 200          # 去重指纹跳过头部字符数
+    filter_content_preview_length: int = 800     # 去重指纹预览长度
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 
