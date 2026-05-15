@@ -619,6 +619,7 @@ class TestDeepCrawl:
                 max_range=1.0,
                 delay_before_return_html=2.0,
                 remove_consent_popups=False,
+                wait_for=None,
             )
 
     # ---------- 18. 失败页面的 depth 回退 ----------

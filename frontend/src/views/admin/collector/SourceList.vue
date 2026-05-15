@@ -1,15 +1,15 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { getSourceList, createSource, updateSource, deleteSource, toggleSource } from '@/api/collector'
 import type { Source, CreateSourceCommand } from '@/types/collector'
-import { SourceTypeMap, ContentCategoryMap } from '@/types/collector'
+import { SourceTypeMap, ContentCategoryMap, AiTemplateMap } from '@/types/collector'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Delete, Edit } from '@element-plus/icons-vue'
 
 const loading = ref(false)
 const sources = ref<Source[]>([])
 const showDialog = ref(false)
-const editingId = ref<string | null>(null)
+const editingId = ref<number | null>(null)
 
 const form = ref<CreateSourceCommand & { isActive?: boolean }>({
   name: '',
@@ -19,7 +19,9 @@ const form = ref<CreateSourceCommand & { isActive?: boolean }>({
   crawlMode: 'single',
   maxDepth: 1,
   maxPages: 10,
+  cssSelector: '',
   aiTemplate: 'tech_summary',
+  scheduleCron: '',
   freshnessHours: 24,
 })
 
@@ -34,12 +36,9 @@ const typeOptions = [
   { value: 'rss', label: 'RSS' },
 ]
 
-const templateOptions = [
-  { value: 'tech_summary', label: '技术文档摘要' },
-  { value: 'tutorial', label: '教程提炼' },
-  { value: 'comparison', label: '对比分析' },
-  { value: 'knowledge_report', label: '知识报告' },
-]
+const templateOptions = computed(() =>
+  Object.entries(AiTemplateMap).map(([value, label]) => ({ value, label })),
+)
 
 async function fetchData(): Promise<void> {
   loading.value = true
@@ -55,7 +54,8 @@ function openCreate(): void {
   form.value = {
     name: '', type: 'keyword', value: '', contentCategory: undefined,
     crawlMode: 'single', maxDepth: 1, maxPages: 10,
-    aiTemplate: 'tech_summary', freshnessHours: 24,
+    cssSelector: '', aiTemplate: 'tech_summary', scheduleCron: '',
+    freshnessHours: 24,
   }
   showDialog.value = true
 }
@@ -67,7 +67,9 @@ function openEdit(row: Source): void {
     contentCategory: row.contentCategory || undefined,
     crawlMode: row.crawlMode || 'single',
     maxDepth: row.maxDepth || 1, maxPages: row.maxPages || 10,
+    cssSelector: row.cssSelector || '',
     aiTemplate: row.aiTemplate || 'tech_summary',
+    scheduleCron: row.scheduleCron || '',
     freshnessHours: row.freshnessHours || 24,
     isActive: row.isActive,
   }
@@ -244,6 +246,15 @@ onMounted(fetchData)
           </el-form-item>
           <el-form-item v-if="editingId" label="启用状态">
             <el-switch v-model="form.isActive" />
+          </el-form-item>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <el-form-item label="CSS 选择器">
+            <el-input v-model="form.cssSelector" placeholder="留空则自动提取正文" />
+          </el-form-item>
+          <el-form-item label="定时计划 (Cron)">
+            <el-input v-model="form.scheduleCron" placeholder="留空则不自动执行" />
           </el-form-item>
         </div>
       </el-form>

@@ -49,6 +49,12 @@ public class WebCollectorController {
     @PostMapping("/task")
     public Result<Map<String, Object>> createTask(@Valid @RequestBody CreateCollectTaskCommand command) {
         Long userId = getCurrentUserId();
+
+        // 事务外检查 Python 服务可用性，避免长事务占用 DB 连接
+        if (!crawlerTaskClient.healthCheck()) {
+            throw new BusinessException("Python 爬虫服务不可用，请稍后重试");
+        }
+
         Long taskId = collectorAppService.createTask(command, userId);
 
         Map<String, Object> data = new HashMap<>();
@@ -222,6 +228,7 @@ public class WebCollectorController {
         try {
             return Result.success(crawlerTaskClient.proxyGet("/api/v1/digests?page=" + page + "&size=" + size));
         } catch (Exception e) {
+            log.warn("[DigestProxy] listDigests failed: {}", e.getMessage());
             throw new BusinessException(503, "Python 爬虫服务不可用: " + e.getMessage());
         }
     }
@@ -235,6 +242,7 @@ public class WebCollectorController {
         try {
             return Result.success(crawlerTaskClient.proxyGet("/api/v1/digests/latest"));
         } catch (Exception e) {
+            log.warn("[DigestProxy] getLatestDigest failed: {}", e.getMessage());
             throw new BusinessException(503, "Python 爬虫服务不可用: " + e.getMessage());
         }
     }
@@ -248,6 +256,21 @@ public class WebCollectorController {
         try {
             return Result.success(crawlerTaskClient.proxyGet("/api/v1/digests/" + date));
         } catch (Exception e) {
+            log.warn("[DigestProxy] getDigestByDate({}) failed: {}", date, e.getMessage());
+            throw new BusinessException(503, "Python 爬虫服务不可用: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 按任务ID查询日报
+     */
+    @Operation(summary = "按任务ID查询日报")
+    @GetMapping("/digest/task/{taskId}")
+    public Result<Object> getDigestByTaskId(@PathVariable Long taskId) {
+        try {
+            return Result.success(crawlerTaskClient.proxyGet("/api/v1/digests/task/" + taskId));
+        } catch (Exception e) {
+            log.warn("[DigestProxy] getDigestByTaskId({}) failed: {}", taskId, e.getMessage());
             throw new BusinessException(503, "Python 爬虫服务不可用: " + e.getMessage());
         }
     }
@@ -275,6 +298,7 @@ public class WebCollectorController {
         try {
             return Result.success(crawlerTaskClient.proxyGet("/api/v1/digests/scheduler/status"));
         } catch (Exception e) {
+            log.warn("[DigestProxy] getSchedulerStatus failed: {}", e.getMessage());
             throw new BusinessException(503, "Python 爬虫服务不可用: " + e.getMessage());
         }
     }
@@ -288,6 +312,7 @@ public class WebCollectorController {
         try {
             return Result.success(crawlerTaskClient.proxyGet("/api/v1/digests/config/sections"));
         } catch (Exception e) {
+            log.warn("[DigestProxy] getSectionConfig failed: {}", e.getMessage());
             throw new BusinessException(503, "Python 爬虫服务不可用: " + e.getMessage());
         }
     }

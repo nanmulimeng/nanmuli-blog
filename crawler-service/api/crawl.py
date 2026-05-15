@@ -39,6 +39,12 @@ class CrawlConfig(BaseModel):
     page_timeout: int = Field(default=60000, ge=5000, le=120000)
     text_mode: bool = Field(default=True)
     light_mode: bool = Field(default=False)
+    max_retries: int = Field(default=2, ge=0, le=5)
+    mean_delay: float = Field(default=0.5, ge=0.0, le=5.0)
+    max_range: float = Field(default=0.5, ge=0.0, le=5.0)
+    delay_before_return_html: float = Field(default=1.0, ge=0.0, le=10.0)
+    remove_consent_popups: bool = Field(default=True)
+    wait_for: Optional[str] = Field(default=None, description="CSS selector to wait for before extracting content")
 
 
 class SingleCrawlRequest(BaseModel):

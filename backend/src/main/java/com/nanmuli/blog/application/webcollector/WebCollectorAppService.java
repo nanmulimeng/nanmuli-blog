@@ -74,11 +74,6 @@ public class WebCollectorAppService {
             throw new BusinessException("日报任务请通过 /api/admin/collector/digest/trigger 端点触发");
         }
 
-        // 创建任务实体前检查 Python 服务可用性
-        if (!crawlerTaskClient.healthCheck()) {
-            throw new BusinessException("Python 爬虫服务不可用，请稍后重试");
-        }
-
         // 创建任务实体
         WebCollectTask task = new WebCollectTask();
         task.setUserId(userId);
@@ -210,7 +205,7 @@ public class WebCollectorAppService {
         task.setAiSearchMetadata(null);
         task.setTokensUsed(null);
         task.setCompletedPages(0);
-        task.updateStatus(CollectTaskStatus.PENDING);
+        task.setStatus(CollectTaskStatus.PENDING.getValue());
         taskRepository.save(task);
 
         // 事务提交后触发 Python 重试或新建
@@ -633,7 +628,8 @@ public class WebCollectorAppService {
             catch (Exception e) { log.debug("[DTO] Failed to parse aiTags: {}", e.getMessage()); dto.setAiTags(Collections.emptyList()); }
         }
 
-        if (task.getTotalPages() != null && task.getTotalPages() > 0) {
+        if (task.getTotalPages() != null && task.getTotalPages() > 0
+                && task.getCompletedPages() != null) {
             dto.setProgressPercent((task.getCompletedPages() * 100) / task.getTotalPages());
         } else {
             dto.setProgressPercent(0);
@@ -659,7 +655,8 @@ public class WebCollectorAppService {
             dto.setAiSummary(task.getAiSummary());
         }
 
-        if (task.getTotalPages() != null && task.getTotalPages() > 0) {
+        if (task.getTotalPages() != null && task.getTotalPages() > 0
+                && task.getCompletedPages() != null) {
             dto.setProgressPercent((task.getCompletedPages() * 100) / task.getTotalPages());
         } else {
             dto.setProgressPercent(0);

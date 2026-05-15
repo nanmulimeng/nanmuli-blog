@@ -102,23 +102,23 @@ export function getSourceList(): Promise<Source[]> {
   return get<Source[]>('/admin/collector/source/list')
 }
 
-export function getSourceDetail(id: string): Promise<Source> {
+export function getSourceDetail(id: number): Promise<Source> {
   return get<Source>(`/admin/collector/source/${id}`)
 }
 
-export function createSource(data: CreateSourceCommand): Promise<string> {
-  return post<string>('/admin/collector/source', data)
+export function createSource(data: CreateSourceCommand): Promise<number> {
+  return post<number>('/admin/collector/source', data)
 }
 
-export function updateSource(id: string, data: UpdateSourceCommand): Promise<void> {
+export function updateSource(id: number, data: UpdateSourceCommand): Promise<void> {
   return put<void>(`/admin/collector/source/${id}`, data)
 }
 
-export function deleteSource(id: string): Promise<void> {
+export function deleteSource(id: number): Promise<void> {
   return del<void>(`/admin/collector/source/${id}`)
 }
 
-export function toggleSource(id: string): Promise<void> {
+export function toggleSource(id: number): Promise<void> {
   return post<void>(`/admin/collector/source/${id}/toggle`)
 }
 

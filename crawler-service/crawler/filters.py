@@ -46,30 +46,30 @@ EXCLUDED_DOMAINS = {
 
 # ============ 域名后缀黑名单 ============
 
-EXCLUDED_DOMAIN_SUFFIXES = [
+EXCLUDED_DOMAIN_SUFFIXES = (
     '.baijiahao.baidu.com',
     '.haokan.baidu.com',
     '.sina.com.cn',
     '.k.sina.com.cn',
-    '.astro.com',       # 占星站点（但保留 astronomy 等科学域名）
+    '.astro.com',
     '.horoscope.com',
     '.zodiac.com',
     '.tarot.com',
-]
+)
 
 # ============ 域名限定路径排除 ============
 
-DOMAIN_PATH_EXCLUSIONS = [
-    ('sohu.com', '/a/'),        # 搜狐号
-    ('163.com', '/dy/'),        # 网易号
-    ('ifeng.com', '/c/'),       # 凤凰号
-    ('baidu.com', '/p/'),       # 百度贴吧
-    ('baidu.com', '/thread-'),  # 百度贴吧
-]
+DOMAIN_PATH_EXCLUSIONS = (
+    ('sohu.com', '/a/'),
+    ('163.com', '/dy/'),
+    ('ifeng.com', '/c/'),
+    ('baidu.com', '/p/'),
+    ('baidu.com', '/thread-'),
+)
 
 # ============ 通用低价值路径（任何域名）============
 
-GENERIC_PATH_PATTERNS = [
+GENERIC_PATH_PATTERNS = (
     '/tag/', '/tags/',
     '/category/', '/categories/',
     '/search?', '/query?', '/s?', '/find?',
@@ -78,14 +78,14 @@ GENERIC_PATH_PATTERNS = [
     '/rss', '/feed', '/atom',
     '/print', '/share', '/email',
     '/amp/', '/promo', '/affiliate', '/ref=', '/utm_',
-]
+)
 
 # ============ 文件扩展名排除 ============
 
-EXCLUDED_EXTENSIONS = [
+EXCLUDED_EXTENSIONS = (
     '.pdf', '.doc', '.docx', '.ppt', '.pptx',
     '.xls', '.xlsx', '.zip', '.rar', '.tar.gz',
-]
+)
 
 # ============ 负向关键词（标题/摘要过滤）============
 

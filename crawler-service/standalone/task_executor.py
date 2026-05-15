@@ -524,8 +524,8 @@ class TaskExecutor:
 
                 # [5] 注册去重指纹（质量通过后）
                 if dedup_engine is not None and len(markdown) >= 100:
-                    skip_header = 200
-                    content_preview = markdown[skip_header:skip_header + 800] if len(markdown) > skip_header else markdown[:800]
+                    skip_header = settings.filter_skip_header_chars
+                    content_preview = markdown[skip_header:skip_header + settings.filter_content_preview_length] if len(markdown) > skip_header else markdown[:settings.filter_content_preview_length]
                     dedup_engine.add(url, title, content_preview)
 
             filtered.append(r)

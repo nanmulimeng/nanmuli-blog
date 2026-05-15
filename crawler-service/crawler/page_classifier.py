@@ -141,6 +141,9 @@ def classify_page(content: str, url: str = "", title: str = "") -> PageClassific
     if not content:
         return PageClassification("unknown", 0, ["empty_content"])
 
+    url = url or ""
+    title = title or ""
+
     # === 1. SERP 检测 ===
     serp_signals, serp_score = _detect_serp(content, url, title)
     if serp_score >= 5:

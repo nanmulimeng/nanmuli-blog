@@ -50,6 +50,7 @@ function resetForm(): void {
     maxDepth: 1,
     maxPages: 10,
     searchEngine: 'sogou',
+    timeRange: 'week',
     aiTemplate: 'tech_summary',
   }
 }

@@ -25,9 +25,6 @@ from api.ssrf_guard import validate_url_ssrf
 
 logger = logging.getLogger(__name__)
 
-MAX_DOMAIN_DEDUP = settings.max_domain_dedup
-SEARCH_PAGE_RETRIES = settings.search_page_retries
-
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
@@ -114,9 +111,6 @@ def _build_headers(is_cjk: bool = False) -> dict:
         "Upgrade-Insecure-Requests": "1",
         "DNT": "1",
     }
-
-
-MIN_WORD_COUNT = settings.search_min_word_count
 
 
 def _backoff_delay(attempt: int, base: float = 0.5, max_delay: float = 8.0) -> float:
@@ -445,7 +439,7 @@ async def _parse_search_results(
 
         domain = urlparse(href).netloc
         domain_count = seen_domains.get(domain, 0)
-        if domain_count >= MAX_DOMAIN_DEDUP:
+        if domain_count >= settings.max_domain_dedup:
             continue
         seen_domains[domain] = domain_count + 1
 
@@ -486,15 +480,16 @@ async def _get_search_results(keyword: str, engine: str, max_results: int, time_
         client_kwargs["proxy"] = effective_proxy
     is_google = engine == "google"
 
-    if is_google:
-        browser_config = await get_browser_config(text_mode=True, light_mode=True, proxy=settings.proxy_url)
-        google_crawler = AsyncWebCrawler(config=browser_config)
-        await google_crawler.__aenter__()
-        shared_client = None
-    else:
-        shared_client = httpx.AsyncClient(**client_kwargs)
+    shared_client = None
+    google_crawler = None
 
     try:
+        if is_google:
+            browser_config = await get_browser_config(text_mode=True, light_mode=True, proxy=settings.proxy_url)
+            google_crawler = AsyncWebCrawler(config=browser_config)
+            await google_crawler.__aenter__()
+        else:
+            shared_client = httpx.AsyncClient(**client_kwargs)
         while len(urls) < max_results and page < settings.search_max_pages_per_engine:
             if engine == "bing":
                 first = page * 10 + 1
@@ -515,11 +510,11 @@ async def _get_search_results(keyword: str, engine: str, max_results: int, time_
             try:
                 if engine == "google":
                     html = None
-                    for attempt in range(SEARCH_PAGE_RETRIES):
+                    for attempt in range(settings.search_page_retries):
                         html = await _fetch_search_html(search_url, engine="google", crawler=google_crawler, fallback_headers=headers)
                         if html is not None:
                             break
-                        if attempt < SEARCH_PAGE_RETRIES - 1:
+                        if attempt < settings.search_page_retries - 1:
                             await asyncio.sleep(_backoff_delay(attempt, base=1.0))
                     if html is None:
                         break
@@ -543,7 +538,7 @@ async def _get_search_results(keyword: str, engine: str, max_results: int, time_
                         except Exception:
                             pass
                     last_exc = None
-                    for attempt in range(SEARCH_PAGE_RETRIES):
+                    for attempt in range(settings.search_page_retries):
                         try:
                             response = await shared_client.get(search_url, headers=headers)
                             if response.status_code in (403, 429):
@@ -569,13 +564,13 @@ async def _get_search_results(keyword: str, engine: str, max_results: int, time_
                             break
                         except Exception as exc:
                             last_exc = exc
-                            if attempt < SEARCH_PAGE_RETRIES - 1:
+                            if attempt < settings.search_page_retries - 1:
                                 await asyncio.sleep(_backoff_delay(attempt, base=0.5))
                             else:
                                 raise last_exc
                 else:
                     last_exc = None
-                    for attempt in range(SEARCH_PAGE_RETRIES):
+                    for attempt in range(settings.search_page_retries):
                         try:
                             response = await shared_client.get(search_url, headers=headers)
                             if response.status_code in (403, 429):
@@ -601,7 +596,7 @@ async def _get_search_results(keyword: str, engine: str, max_results: int, time_
                             break
                         except Exception as exc:
                             last_exc = exc
-                            if attempt < SEARCH_PAGE_RETRIES - 1:
+                            if attempt < settings.search_page_retries - 1:
                                 await asyncio.sleep(_backoff_delay(attempt, base=0.5))
                             else:
                                 raise last_exc

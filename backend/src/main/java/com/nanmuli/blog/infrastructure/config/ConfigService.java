@@ -26,7 +26,7 @@ public class ConfigService {
     private final ConfigRepository configRepository;
     private final AesEncryptor aesEncryptor;
 
-    private final Map<String, String> cache = new ConcurrentHashMap<>();
+    private volatile Map<String, String> cache = new ConcurrentHashMap<>();
 
     @PostConstruct
     public void init() {
@@ -35,14 +35,15 @@ public class ConfigService {
 
     /** 全量重新加载（从 DB 读取所有配置，解密加密值） */
     public synchronized void reload() {
-        cache.clear();
+        Map<String, String> temp = new ConcurrentHashMap<>();
         for (Config config : configRepository.findAll()) {
             String value = config.getConfigValue() != null ? config.getConfigValue() : "";
             if (Boolean.TRUE.equals(config.getIsEncrypted())) {
                 value = aesEncryptor.decrypt(value);
             }
-            cache.put(config.getConfigKey(), value);
+            temp.put(config.getConfigKey(), value);
         }
+        this.cache = temp;
         log.info("[ConfigService] Loaded {} configs from DB", cache.size());
     }
 

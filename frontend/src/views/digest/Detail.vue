@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getPublicDigestByDate, getPublicLatestDigest } from '@/api/collector'
 import type { DigestDetail } from '@/types/collector'
@@ -40,6 +40,10 @@ function goToList(): void {
 }
 
 onMounted(fetchDigest)
+
+watch(dateParam, () => {
+  fetchDigest()
+})
 </script>
 
 <template>

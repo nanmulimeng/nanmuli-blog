@@ -22,6 +22,13 @@ from .processor import extract_page_metadata, retry_js_challenge, extract_depth
 
 logger = logging.getLogger(__name__)
 
+_MULTI_PART_TLD = {
+    'co', 'com', 'org', 'net', 'edu', 'gov', 'ac',
+    'co.jp', 'co.kr', 'co.in', 'co.nz', 'co.za',
+    'com.br', 'com.mx', 'com.au', 'com.sg', 'com.hk', 'com.tw',
+    'org.uk', 'net.cn', 'ac.uk', 'edu.cn',
+}
+
 
 async def crawl_deep_pages(
     url: str,
@@ -61,7 +68,7 @@ async def crawl_deep_pages(
         domain = parsed.netloc
         # 处理子域名：考虑 ccTLD 如 co.uk, com.cn, com.au 等
         parts = domain.split('.')
-        if len(parts) >= 3 and parts[-2] in ('co', 'com', 'org', 'net', 'edu', 'gov', 'ac'):
+        if len(parts) >= 3 and parts[-2] in _MULTI_PART_TLD:
             base_domain = '.'.join(parts[-3:])
         else:
             base_domain = '.'.join(parts[-2:])

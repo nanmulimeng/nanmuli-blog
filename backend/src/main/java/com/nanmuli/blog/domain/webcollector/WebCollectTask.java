@@ -70,6 +70,29 @@ public class WebCollectTask extends BaseAggregateRoot<Long> {
     }
 
     public void updateStatus(CollectTaskStatus status) {
+        // 新实体（status==null）允许设为任意状态
+        if (this.status == null) {
+            this.status = status.getValue();
+            return;
+        }
+        CollectTaskStatus current = CollectTaskStatus.of(this.status);
+        // 终态不可逆转
+        if (current.isTerminal()) {
+            throw new IllegalStateException(
+                    "Cannot transition from terminal state " + current + " to " + status);
+        }
+        // 只允许单向前进或跳转到终态
+        boolean valid = switch (status) {
+            case CRAWLING -> current == CollectTaskStatus.PENDING;
+            case PROCESSING -> current == CollectTaskStatus.CRAWLING || current == CollectTaskStatus.PENDING;
+            case COMPLETED -> current == CollectTaskStatus.PROCESSING || current == CollectTaskStatus.CRAWLING;
+            case FAILED -> true; // 任何非终态均可失败
+            default -> false;
+        };
+        if (!valid) {
+            throw new IllegalStateException(
+                    "Invalid state transition: " + current + " -> " + status);
+        }
         this.status = status.getValue();
     }
 

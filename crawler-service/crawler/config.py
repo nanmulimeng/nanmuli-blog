@@ -98,6 +98,8 @@ async def get_effective_proxy(proxy_url: str) -> str:
                 return ""
 
     # 执行健康检查
+    if len(_proxy_cache) > 10:
+        _proxy_cache.clear()
     is_healthy = await check_proxy_health(proxy_url)
     _proxy_cache[proxy_url] = (now, is_healthy)
 
@@ -165,6 +167,7 @@ class RunParams:
             max_range=self.max_range,
             delay_before_return_html=self.delay_before_return_html,
             remove_consent_popups=self.remove_consent_popups,
+            wait_for=self.wait_for,
         )
 
 

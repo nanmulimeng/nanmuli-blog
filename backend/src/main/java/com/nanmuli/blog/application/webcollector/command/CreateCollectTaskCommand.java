@@ -18,6 +18,7 @@ public class CreateCollectTaskCommand {
     private String taskType;
 
     @Size(max = 2048, message = "URL 长度不能超过 2048")
+    @Pattern(regexp = "^(https?://.*)?$", message = "URL 必须以 http:// 或 https:// 开头")
     private String sourceUrl;
 
     @Size(max = 500, message = "关键词长度不能超过 500")
