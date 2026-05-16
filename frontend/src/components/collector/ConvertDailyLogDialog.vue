@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { convertToDailyLog } from '@/api/collector'
+import { getLeafCategoryList } from '@/api/category'
+import type { Category } from '@/types/category'
 import { ElMessage } from 'element-plus'
 
 const props = defineProps<{
@@ -13,6 +15,7 @@ const emit = defineEmits<{
 
 const visible = defineModel<boolean>('visible', { default: false })
 const loading = ref(false)
+const categories = ref<Category[]>([])
 
 const moods = [
   { value: 'happy', label: '开心', emoji: '😊' },
@@ -26,11 +29,16 @@ const form = ref<{ mood?: string; weather?: string; logDate?: string; isPublic?:
   isPublic: false,
 })
 
-function resetForm(): void {
+async function handleOpen(): Promise<void> {
   form.value = {
     mood: 'normal',
     isPublic: false,
     logDate: new Date().toISOString().slice(0, 10),
+  }
+  if (categories.value.length === 0) {
+    try {
+      categories.value = await getLeafCategoryList()
+    } catch { /* non-critical */ }
   }
 }
 
@@ -52,7 +60,7 @@ async function handleSubmit(): Promise<void> {
     v-model="visible"
     title="转为技术日志"
     width="500px"
-    @open="resetForm"
+    @open="handleOpen"
   >
     <el-form :model="form" label-width="80px">
       <el-form-item label="心情">
@@ -79,6 +87,17 @@ async function handleSubmit(): Promise<void> {
           placeholder="选择日期"
           class="w-full"
         />
+      </el-form-item>
+
+      <el-form-item label="分类">
+        <el-select v-model="form.categoryId" placeholder="选择分类（可选）" clearable class="w-full">
+          <el-option
+            v-for="cat in categories"
+            :key="cat.id"
+            :label="cat.name"
+            :value="cat.id"
+          />
+        </el-select>
       </el-form-item>
 
       <el-form-item label="是否公开">

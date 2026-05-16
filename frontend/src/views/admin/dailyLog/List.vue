@@ -51,7 +51,7 @@ async function handleDelete(row: DailyLog): Promise<void> {
     if (error === 'cancel' || (error instanceof Error && error.message === 'cancel')) {
       return
     }
-    console.error('删除日志失败:', error)
+    console.error('[DailyLog Delete]', { id: row.id, error: String(error) })
   }
 }
 

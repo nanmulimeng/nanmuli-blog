@@ -4,6 +4,7 @@ import com.nanmuli.blog.application.config.ConfigAppService;
 import com.nanmuli.blog.application.config.command.CreateConfigCommand;
 import com.nanmuli.blog.application.config.command.UpdateConfigCommand;
 import com.nanmuli.blog.application.config.dto.ConfigDTO;
+import com.nanmuli.blog.infrastructure.config.ConfigService;
 import com.nanmuli.blog.infrastructure.crawler.CrawlerTaskClient;
 import com.nanmuli.blog.shared.result.Result;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -23,6 +24,7 @@ import java.util.Map;
 public class ConfigController {
 
     private final ConfigAppService configAppService;
+    private final ConfigService configService;
     private final CrawlerTaskClient crawlerTaskClient;
 
     @GetMapping("/config/public")
@@ -68,6 +70,19 @@ public class ConfigController {
         }
 
         return Result.success();
+    }
+
+    @PostMapping("/admin/config/refresh")
+    public Result<Map<String, Object>> refreshAll() {
+        log.info("[ConfigRefresh] Triggered by admin");
+        configAppService.refreshCache();
+        configService.reload();
+        crawlerTaskClient.reloadPool();
+        crawlerTaskClient.refreshConfig();
+        return Result.success(Map.of(
+                "message", "所有配置已刷新",
+                "components", List.of("Spring Cache", "ConfigService", "CrawlerTaskClient Pool", "Python Crawler")
+        ));
     }
 
 }

@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 from crawler.single import crawl_single_page
 from crawler.deep import crawl_deep_pages
 from crawler.search import crawl_by_keyword
+from crawler.config import DEFAULT_EXCLUDED_SELECTOR
 from config import settings
 from ai.config import ai_settings
 from api.ssrf_guard import validate_url_ssrf
@@ -31,13 +32,19 @@ class CrawlConfig(BaseModel):
 
     word_count_threshold: int = Field(default=10, ge=0)
     excluded_tags: list[str] = Field(default=["nav", "footer", "aside", "script", "style", "noscript", "iframe"])
-    excluded_selector: str = Field(default=".sidebar,.nav-links,.footer-links,.related-posts,.recommendations,#sidebar,#comments,.comment-list", description="CSS selector for blocks to exclude from markdown extraction")
+    excluded_selector: str = Field(default=DEFAULT_EXCLUDED_SELECTOR, description="CSS selector for blocks to exclude from markdown extraction")
     prune_threshold: float = Field(default=0.5, ge=0.1, le=1.0, description="PruningContentFilter threshold (higher = more aggressive noise removal)")
     remove_overlay_elements: bool = Field(default=True)
-    wait_until: str = Field(default="load")
+    wait_until: str = Field(default="networkidle", pattern="^(load|domcontentloaded|networkidle)$")
     page_timeout: int = Field(default=60000, ge=5000, le=120000)
     text_mode: bool = Field(default=True)
     light_mode: bool = Field(default=False)
+    max_retries: int = Field(default=2, ge=0, le=5)
+    mean_delay: float = Field(default=0.5, ge=0.0, le=5.0)
+    max_range: float = Field(default=0.5, ge=0.0, le=5.0)
+    delay_before_return_html: float = Field(default=1.0, ge=0.0, le=10.0)
+    remove_consent_popups: bool = Field(default=True)
+    wait_for: Optional[str] = Field(default=None, description="CSS selector to wait for before extracting content")
 
 
 class SingleCrawlRequest(BaseModel):

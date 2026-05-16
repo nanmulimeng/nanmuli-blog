@@ -8,6 +8,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -23,8 +25,17 @@ import java.util.UUID;
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(BusinessException.class)
-    public Result<Void> handleBusinessException(BusinessException e) {
-        return Result.error(e.getCode(), e.getMessage());
+    public ResponseEntity<Result<Void>> handleBusinessException(BusinessException e, HttpServletRequest request) {
+        log.warn("[BusinessException] code={}, msg={}, uri={}", e.getCode(), e.getMessage(), request.getRequestURI());
+        int httpStatus = resolveHttpStatus(e.getCode());
+        return ResponseEntity.status(httpStatus).body(Result.error(e.getCode(), e.getMessage()));
+    }
+
+    private int resolveHttpStatus(Integer code) {
+        if (code != null && code >= 400 && code < 600) {
+            return code;
+        }
+        return HttpStatus.UNPROCESSABLE_ENTITY.value();
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

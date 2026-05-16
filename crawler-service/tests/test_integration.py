@@ -225,8 +225,8 @@ class TestTaskExecutorHelpers:
         sections = await get_digest_sections()
         assert len(sections) >= 3
         names = [s["name"] for s in sections]
-        assert "news" in names
-        assert "opensource" in names
+        assert "hot_trend" in names
+        assert "open_source" in names
 
 
 # ============== Routes Helper ==============

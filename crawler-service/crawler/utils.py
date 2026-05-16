@@ -3,6 +3,11 @@
 import re
 
 
+def detect_cjk(text: str) -> bool:
+    """检测文本是否包含 CJK 字符（中日韩统一表意文字）。"""
+    return any('一' <= c <= '鿿' for c in text)
+
+
 def count_words(text: str) -> int:
     """统计文本字数：中文字符 + 英文单词。
 

@@ -117,18 +117,18 @@ class Settings(BaseSettings):
     digest_sections: str = '[{"name":"news","keyword":"tech news","time_range":"day","max_items":5},{"name":"articles","keyword":"technology blog","time_range":"week","max_items":3},{"name":"opensource","keyword":"GitHub trending","time_range":"week","max_items":3}]'
 
     # 回调配置（任务完成后通知 Java 后端）
-    callback_url: str = ""  # e.g. http://localhost:8080/api/internal/collector/callback
+    callback_url: str = "http://localhost:8081/api/internal/collector/callback"
     callback_api_key: str = ""  # 与 Java 端 crawler.callback.api-key 一致
 
     # Java 后端地址（用于拉取订阅源配置，为空则使用本地配置）
-    java_api_url: str = ""  # e.g. http://localhost:8080
+    java_api_url: str = "http://localhost:8081"
 
     # 自动优化引擎配置
     optimization_enabled: bool = False
     optimization_target_score: float = 0.7
     optimization_max_rounds: int = 3
     optimization_min_improvement: float = 0.03
-    optimization_mode: str = "keyword"  # keyword / digest / both
+    optimization_mode: str = "both"  # keyword / digest / both — 默认启用所有任务类型的优化
 
     # 信息茧房突破配置
     bubble_breaker_enabled: bool = False
@@ -140,6 +140,23 @@ class Settings(BaseSettings):
     quality_clickbait_keywords: str = "震惊,绝了,逆天,炸裂,颠覆,史诗,神级,99%的人不知道,看完我沉默了,后悔没早点,太可怕了,万万没想到,不可思议,惊人,史上最强,全网首发,独家揭秘,内幕,震惊中外,轰动,爆款,疯传,shocking,unbelievable,mind-blowing,epic,you won't believe,this changes everything"
     quality_ad_keywords: str = "限时优惠,点击购买,立即下单,免费试用,优惠券,折扣码,推广链接,affiliate,赞助内容,广告合作,扫码领取,关注公众号,限量,秒杀,抢购,不容错过,错过等一年"
     quality_paywall_indicators: str = "subscribe to read,membership required,premium content,登录后阅读,订阅后查看,会员专属,付费阅读,sign up to continue,create an account"
+
+    # === 过滤管线优化配置（P1-P6）===
+    ai_organization_enabled: bool = True         # AI 整理开关
+    page_classifier_enabled: bool = True         # P5: 页面类型分类器
+    content_dedup_enabled: bool = True           # P6: 内容去重
+    content_dedup_simhash_threshold: int = 5     # 汉明距离阈值（越小越严）
+    content_dedup_deep_threshold: int = 3        # 深度爬取更严阈值
+    filter_deep_min_content: int = 20            # 深度爬取最小内容长度
+    filter_skip_header_chars: int = 200          # 去重指纹跳过头部字符数
+    filter_content_preview_length: int = 800     # 去重指纹预览长度
+
+    # 日报质量过滤与优化专用配置
+    digest_filter_min_content: int = 50          # 日报质量过滤最小内容长度（比通用宽松）
+    digest_optimization_enabled: bool = False     # 日报优化独立开关（需 optimization_enabled=True + 此项=True）
+    digest_optimization_min_sections: int = 2     # 最少板块数才触发优化
+    digest_optimization_min_results_per_section: int = 3  # 每板块最少结果数才触发优化
+    digest_optimization_target_score: float = 0.65  # 日报优化目标分（比通用 0.7 稍低）
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 

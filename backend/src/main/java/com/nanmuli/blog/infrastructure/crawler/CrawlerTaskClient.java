@@ -2,8 +2,8 @@ package com.nanmuli.blog.infrastructure.crawler;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nanmuli.blog.infrastructure.config.ConfigService;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
@@ -29,29 +29,32 @@ import org.apache.hc.core5.util.Timeout;
 @Component
 public class CrawlerTaskClient {
 
-    private final RestTemplate restTemplate;
-    private final CloseableHttpClient httpClient;
-    private final String baseUrl;
-    private final String apiKey;
+    private final ConfigService configService;
     private final ObjectMapper objectMapper;
+    private volatile RestTemplate restTemplate;
+    private volatile CloseableHttpClient httpClient;
+    private volatile String baseUrl;
+    private volatile String apiKey;
 
-    public CrawlerTaskClient(
-            @Value("${crawler.service.base-url:http://localhost:8500}") String baseUrl,
-            @Value("${crawler.service.api-key:}") String apiKey,
-            @Value("${crawler.service.connect-timeout:10000}") int connectTimeout,
-            @Value("${crawler.service.read-timeout:30000}") int readTimeout,
-            @Value("${crawler.http.pool.max-total:20}") int maxTotal,
-            @Value("${crawler.http.pool.max-per-route:10}") int maxPerRoute,
-            ObjectMapper objectMapper) {
-        this.baseUrl = baseUrl;
-        this.apiKey = apiKey;
+    public CrawlerTaskClient(ConfigService configService, ObjectMapper objectMapper) {
+        this.configService = configService;
         this.objectMapper = objectMapper;
+        initPool();
+    }
+
+    private void initPool() {
+        this.baseUrl = configService.get("crawler.service.base-url", "http://localhost:8500");
+        this.apiKey = configService.get("crawler.service.api-key", "");
+        int connectTimeout = configService.getInt("crawler.service.connect-timeout", 10000);
+        int readTimeout = configService.getInt("crawler.service.read-timeout", 30000);
+        int maxTotal = configService.getInt("crawler.http.pool.max-total", 20);
+        int maxPerRoute = configService.getInt("crawler.http.pool.max-per-route", 10);
 
         PoolingHttpClientConnectionManager cm = new PoolingHttpClientConnectionManager();
         cm.setMaxTotal(maxTotal);
         cm.setDefaultMaxPerRoute(maxPerRoute);
 
-        this.httpClient = HttpClients.custom()
+        CloseableHttpClient newClient = HttpClients.custom()
                 .setConnectionManager(cm)
                 .setDefaultRequestConfig(RequestConfig.custom()
                         .setConnectTimeout(Timeout.ofMilliseconds(connectTimeout))
@@ -59,10 +62,27 @@ public class CrawlerTaskClient {
                         .build())
                 .build();
 
-        HttpComponentsClientHttpRequestFactory factory = new HttpComponentsClientHttpRequestFactory(httpClient);
+        HttpComponentsClientHttpRequestFactory factory = new HttpComponentsClientHttpRequestFactory(newClient);
         this.restTemplate = new RestTemplate(factory);
-        log.info("[CrawlerTaskClient] initialized: baseUrl={}, connectTimeout={}ms, readTimeout={}ms",
-                baseUrl, connectTimeout, readTimeout);
+
+        CloseableHttpClient oldClient = this.httpClient;
+        this.httpClient = newClient;
+        if (oldClient != null) {
+            try {
+                oldClient.close();
+            } catch (IOException e) {
+                log.warn("[CrawlerTaskClient] failed to close old httpClient during reload", e);
+            }
+        }
+
+        log.info("[CrawlerTaskClient] initialized: baseUrl={}, connectTimeout={}ms, readTimeout={}ms, maxTotal={}, maxPerRoute={}",
+                baseUrl, connectTimeout, readTimeout, maxTotal, maxPerRoute);
+    }
+
+    /** 运行时重载连接池配置 */
+    public synchronized void reloadPool() {
+        log.info("[CrawlerTaskClient] reloading pool config");
+        initPool();
     }
 
     @PreDestroy
@@ -165,6 +185,7 @@ public class CrawlerTaskClient {
             get("/health");
             return true;
         } catch (Exception e) {
+            log.debug("[CrawlerTaskClient] Health check failed: {}", e.getMessage());
             return false;
         }
     }

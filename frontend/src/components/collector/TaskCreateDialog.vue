@@ -20,6 +20,7 @@ const form = ref<CreateCollectTaskCommand>({
   maxDepth: 1,
   maxPages: 10,
   searchEngine: 'sogou',
+  timeRange: 'week',
   aiTemplate: 'tech_summary',
 })
 
@@ -49,6 +50,7 @@ function resetForm(): void {
     maxDepth: 1,
     maxPages: 10,
     searchEngine: 'sogou',
+    timeRange: 'week',
     aiTemplate: 'tech_summary',
   }
 }
@@ -151,6 +153,15 @@ function handleClose(): void {
             <el-option label="Bing" value="bing" />
             <el-option label="百度" value="baidu" />
             <el-option label="Google" value="google" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="时间范围">
+          <el-select v-model="form.timeRange" class="w-full">
+            <el-option label="最近一天" value="day" />
+            <el-option label="最近一周" value="week" />
+            <el-option label="最近一月" value="month" />
+            <el-option label="最近一年" value="year" />
+            <el-option label="全部" value="all" />
           </el-select>
         </el-form-item>
       </div>

@@ -156,6 +156,7 @@ export interface CreateCollectTaskCommand {
   sourceUrl?: string
   keyword?: string
   searchEngine?: 'sogou' | 'bing' | 'baidu' | 'google'
+  timeRange?: 'day' | 'week' | 'month' | 'year' | 'all'
   crawlMode?: 'single' | 'deep'
   maxDepth?: number
   maxPages?: number
@@ -209,7 +210,7 @@ export const AiTemplateMap: Record<string, string> = {
 // ============== Source ==============
 
 export interface Source {
-  id: string
+  id: number
   name: string
   type: string
   value: string

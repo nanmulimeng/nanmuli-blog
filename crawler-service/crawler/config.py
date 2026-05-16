@@ -12,7 +12,7 @@ from crawl4ai.content_filter_strategy import PruningContentFilter
 
 import logging
 import time
-import urllib.request
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -27,12 +27,26 @@ _proxy_cache: dict[str, tuple[float, bool]] = {}  # {proxy_url: (timestamp, is_h
 # PruningContentFilter 会通过内容密度自动过滤导航型 header
 DEFAULT_EXCLUDED_TAGS = ["nav", "footer", "aside", "script", "style", "noscript", "iframe"]
 
+DEFAULT_EXCLUDED_SELECTOR = (
+    ".sidebar,.nav-links,.footer-links,.related-posts,.recommendations,"
+    "#sidebar,#comments,.comment-list,.sidebar-block,.left-sidebar,#left-sidebar,"
+    ".right-sidebar,#right-sidebar,.side-navigator-wrap,.side-navigator,"
+    ".breadcrumb,.breadcrumbs,.cookie-banner,.cookie-consent,.newsletter-signup,"
+    ".newsletter,.social-share,.share-buttons,.pagination,.page-nav,.copyright,"
+    ".site-footer,.site-footer--copyright,.site-footer--nav,.feedback-widget,"
+    ".read-more,.related-articles,.author-bio,.toc,.table-of-contents,"
+    ".ad-container,.advertisement,.s-sidebarwidget,.entry-footer,"
+    ".download-app,.download-popover,.global-component-box,.top-banners-container,"
+    "[role='complementary'],[role='contentinfo'],"
+    "[aria-label='Cookie notice'],[aria-label='Cookie banner']"
+)
 
-def check_proxy_health(proxy_url: str) -> bool:
+
+async def check_proxy_health(proxy_url: str) -> bool:
     """
-    检测代理服务器是否可用。
+    检测代理服务器是否可用（异步，不阻塞事件循环）。
 
-    通过 HTTP CONNECT 代理发出 HTTPS 请求，
+    通过 HTTP CONNECT 代理发出 HTTPS HEAD 请求，
     验证代理是否在线并能成功建立隧道。
 
     Args:
@@ -44,27 +58,26 @@ def check_proxy_health(proxy_url: str) -> bool:
     if not proxy_url:
         return False
     try:
-        proxy_handler = urllib.request.ProxyHandler({
-            'https': proxy_url,
-            'http': proxy_url,
-        })
-        opener = urllib.request.build_opener(proxy_handler)
-        req = urllib.request.Request(_PROXY_CHECK_URL, method='HEAD')
-        resp = opener.open(req, timeout=_PROXY_CHECK_TIMEOUT)
-        return resp.status in (200, 301, 302, 307, 308)
+        async with httpx.AsyncClient(
+            proxy=proxy_url,
+            timeout=httpx.Timeout(_PROXY_CHECK_TIMEOUT, connect=_PROXY_CHECK_TIMEOUT),
+            follow_redirects=True,
+        ) as client:
+            resp = await client.head(_PROXY_CHECK_URL)
+            return resp.status_code in (200, 301, 302, 307, 308)
     except Exception:
         return False
 
 
-def get_effective_proxy(proxy_url: str) -> str:
+async def get_effective_proxy(proxy_url: str) -> str:
     """
-    全项目统一的代理决策入口。
+    全项目统一的代理决策入口（异步）。
 
     - proxy_url 为空 → 返回空字符串（直连）
     - 代理健康检查缓存命中且健康 → 返回 proxy_url
     - 代理不可达 → 返回空字符串 + 记录 WARNING
 
-    所有需要代理的代码（BrowserConfig / httpx / urllib）均应通过此函数
+    所有需要代理的代码（BrowserConfig / httpx）均应通过此函数
     获取有效代理地址，而非直接读取 settings.proxy_url。
 
     Returns:
@@ -85,7 +98,9 @@ def get_effective_proxy(proxy_url: str) -> str:
                 return ""
 
     # 执行健康检查
-    is_healthy = check_proxy_health(proxy_url)
+    if len(_proxy_cache) > 10:
+        _proxy_cache.clear()
+    is_healthy = await check_proxy_health(proxy_url)
     _proxy_cache[proxy_url] = (now, is_healthy)
 
     if is_healthy:
@@ -109,7 +124,7 @@ class RunParams:
             self.light_mode = False
             self.word_count_threshold = 10
             self.excluded_tags = DEFAULT_EXCLUDED_TAGS.copy()
-            self.excluded_selector = ".sidebar,.nav-links,.footer-links,.related-posts,.recommendations,#sidebar,#comments,.comment-list,.sidebar-block,.left-sidebar,#left-sidebar,.right-sidebar,#right-sidebar,.side-navigator-wrap,.side-navigator,.breadcrumb,.breadcrumbs,.cookie-banner,.cookie-consent,.newsletter-signup,.newsletter,.social-share,.share-buttons,.pagination,.page-nav,.copyright,.site-footer,.site-footer--copyright,.site-footer--nav,.feedback-widget,.read-more,.related-articles,.author-bio,.toc,.table-of-contents,.ad-container,.advertisement,.s-sidebarwidget,.entry-footer,.download-app,.download-popover,.global-component-box,.top-banners-container,[role='complementary'],[role='contentinfo'],[aria-label='Cookie notice'],[aria-label='Cookie banner']"
+            self.excluded_selector = DEFAULT_EXCLUDED_SELECTOR
             self.prune_threshold = 0.5
             self.wait_until = "networkidle"
             self.page_timeout = 60000
@@ -125,7 +140,7 @@ class RunParams:
             self.light_mode = getattr(config, 'light_mode', False)
             self.word_count_threshold = getattr(config, 'word_count_threshold', 10)
             self.excluded_tags = getattr(config, 'excluded_tags', DEFAULT_EXCLUDED_TAGS.copy())
-            self.excluded_selector = getattr(config, 'excluded_selector', ".sidebar,.nav-links,.footer-links,.related-posts,.recommendations,#sidebar,#comments,.comment-list,.sidebar-block,.left-sidebar,#left-sidebar,.right-sidebar,#right-sidebar,.side-navigator-wrap,.side-navigator,.breadcrumb,.breadcrumbs,.cookie-banner,.cookie-consent,.newsletter-signup,.newsletter,.social-share,.share-buttons,.pagination,.page-nav,.copyright,.site-footer,.site-footer--copyright,.site-footer--nav,.feedback-widget,.read-more,.related-articles,.author-bio,.toc,.table-of-contents,.ad-container,.advertisement,.s-sidebarwidget,.entry-footer,.download-app,.download-popover,.global-component-box,.top-banners-container,[role='complementary'],[role='contentinfo'],[aria-label='Cookie notice'],[aria-label='Cookie banner']")
+            self.excluded_selector = getattr(config, 'excluded_selector', DEFAULT_EXCLUDED_SELECTOR)
             self.prune_threshold = getattr(config, 'prune_threshold', 0.5)
             self.wait_until = getattr(config, 'wait_until', "networkidle")
             self.page_timeout = getattr(config, 'page_timeout', 60000)
@@ -136,11 +151,27 @@ class RunParams:
             self.mean_delay = getattr(config, 'mean_delay', 0.5)
             self.max_range = getattr(config, 'max_range', 0.5)
             self.remove_consent_popups = getattr(config, 'remove_consent_popups', True)
-            self.page_timeout = getattr(config, 'page_timeout', 60000)
-            self.remove_overlay_elements = getattr(config, 'remove_overlay_elements', True)
+
+    def to_run_config_kwargs(self) -> dict:
+        """转换为 get_crawler_run_config() 的关键字参数"""
+        return dict(
+            word_count_threshold=self.word_count_threshold,
+            excluded_tags=self.excluded_tags,
+            excluded_selector=self.excluded_selector,
+            prune_threshold=self.prune_threshold,
+            wait_until=self.wait_until,
+            page_timeout=self.page_timeout,
+            remove_overlay_elements=self.remove_overlay_elements,
+            max_retries=self.max_retries,
+            mean_delay=self.mean_delay,
+            max_range=self.max_range,
+            delay_before_return_html=self.delay_before_return_html,
+            remove_consent_popups=self.remove_consent_popups,
+            wait_for=self.wait_for,
+        )
 
 
-def get_browser_config(text_mode: bool = True, light_mode: bool = False,
+async def get_browser_config(text_mode: bool = True, light_mode: bool = False,
                         proxy: str = '') -> BrowserConfig:
     """
     获取浏览器配置
@@ -166,7 +197,7 @@ def get_browser_config(text_mode: bool = True, light_mode: bool = False,
     ]
 
     # 代理健康检查 + 自动降级：统一通过 get_effective_proxy() 决策
-    effective_proxy = get_effective_proxy(proxy)
+    effective_proxy = await get_effective_proxy(proxy)
     if effective_proxy:
         extra_args.append(f"--proxy-server={effective_proxy}")
 
@@ -323,6 +354,10 @@ _MAX_INLINE_RATIO = 0.7
 _MIN_SMALL_NAV_LINES = 3
 _MAX_SMALL_NAV_RATIO = 0.80
 
+# Tab栏检测阈值
+_MIN_TAB_BAR_ITEMS = 2      # 最少链接+标签项数
+_MAX_TAB_BAR_RATIO = 0.60   # 导航文本占比阈值
+
 
 def _is_inline_nav(line: str) -> bool:
     """检测管道/逗号分隔的内联导航行
@@ -341,6 +376,36 @@ def _is_inline_nav(line: str) -> bool:
         return False
     link_len = sum(len(l) for l in links)
     return link_len / len(clean) > _MAX_INLINE_RATIO
+
+
+def _is_tab_bar(line: str) -> bool:
+    """检测标签栏导航行（粗体标签 + 链接混排模式）
+
+    识别: **网页** [图片](url) [视频](url) | **Bold** | [Link](url)
+    """
+    import re
+    s = line.strip()
+    if not s:
+        return False
+
+    links = re.findall(r'\[([^\[\]]*?)\]\([^\(\)]*?\)', s)
+    bolds = re.findall(r'\*\*([^*]+?)\*\*', s)
+
+    total_items = len(links) + len(bolds)
+    if total_items < _MIN_TAB_BAR_ITEMS:
+        return False
+
+    link_chars = sum(len(l.strip()) for l in links)
+    bold_chars = sum(len(b.strip()) for b in bolds)
+    nav_chars = link_chars + bold_chars
+
+    clean = re.sub(r'!?\[([^\[\]]*?)\]\([^\(\)]*?\)', r'\1', s)
+    clean = re.sub(r'\*\*([^*]+?)\*\*', r'\1', clean)
+    clean = re.sub(r'[\s#*>|·•\-\[\]\(\)\!`~]', '', clean)
+
+    if len(clean) == 0:
+        return False
+    return nav_chars / len(clean) > _MAX_TAB_BAR_RATIO
 
 
 def _filter_nav_noise(markdown: str) -> str:
@@ -366,6 +431,13 @@ def _filter_nav_noise(markdown: str) -> str:
         if _is_inline_nav(lines[i]):
             to_remove.add(i)
             logger.debug("[Filter] Dropped inline nav line %d", i)
+            i += 1
+            continue
+
+        # 检测标签栏导航行（粗体标签 + 链接混排）
+        if _is_tab_bar(lines[i]):
+            to_remove.add(i)
+            logger.debug("[Filter] Dropped tab bar line %d", i)
             i += 1
             continue
 
@@ -406,6 +478,7 @@ def _filter_nav_noise(markdown: str) -> str:
 
 
 _BOILERPLATE_PATTERNS = [
+    # === 英文样板 ===
     (r'(?i)^.*\b(we use cookies|accept cookies|cookie policy|privacy policy|'
      r'cookie consent|this site uses cookies|consent preferences)\b.*$', 'cookie'),
     (r'(?i)^.*\b(subscribe to|newsletter|sign up for|email updates|'
@@ -415,6 +488,57 @@ _BOILERPLATE_PATTERNS = [
     (r'(?i)^.*\b(copyright\s+\d{4}|all rights reserved|\(c\)|©)\b.*$', 'copyright'),
     (r'(?i)^.*\b(page \d+ of \d+|previous page|next page|pagination|'
      r'load more|show more)\b.*$', 'pagination'),
+
+    # === 中文样板 ===
+    # ICP备案
+    (r'^.*(ICP备\d+号|ICP证\d+|备案号|公安备案|公网安备\d+号|网站备案).*$', 'icp'),
+    # 扫码关注
+    (r'^.*(扫码关注|关注公众号|关注.*公众号|领取.*代金券|微信扫码|添加微信|扫描二维码).*$', 'qrcode'),
+    # 登录评论
+    (r'^.*(请登录后发表评论|登录后即可评论|登录.*评论|您还未登录|请先登录|登录后才能).*$', 'login_comment'),
+    # 同步曝光
+    (r'^.*(本文参与.*同步曝光计划|同步曝光|曝光计划|参与.*社区激励).*$', 'exposure'),
+    # 编辑精选/推荐
+    (r'^.*(编辑精选|精选文章|推荐阅读|相关文章|热门推荐|相关推荐|猜你喜欢|为你推荐).*$', 'recommend'),
+    # AI声明
+    (r'^.*(AI生成内容|本文由AI辅助生成|AI辅助创作|由AI生成|本文使用AI|内容由AI|AI技术生成).*$', 'ai_declare'),
+    # CSDN皮肤元素（必须在转载声明之前，避免"版权声明：本文"误匹配）
+    (r'^.*(版权声明：本文为博主原创|CSDN博客|分类专栏|文章目录|展开全部|收起).*$', 'csdn_skin'),
+    # 转载声明
+    (r'^.*(本文转载自|版权声明：本文|文章来源|原文链接|转载.*注明出处|著作权归作者所有|来源：).*$', 'reprint'),
+    # 举报反馈
+    (r'^.*(举报反馈|意见反馈|投诉举报|侵权投诉|举报.*电话|反馈建议|我要反馈).*$', 'report'),
+    # 免责声明
+    (r'^.*(本文仅代表作者观点|不代表.*立场|免责声明|风险提示|投资有风险).*$', 'disclaimer'),
+    # 打赏/求关注
+    (r'^.*(打赏作者|赏金|赞赏|投币|一键三连|求关注|给作者点赞|您的支持是我).*$', 'reward'),
+    # 页面统计行（阅读数+点赞数等）
+    (r'^.*(阅读[\s\d]+(次)?.*(点赞|收藏|评论|分享)[\s\d]+|'
+     r'点赞[\s\d]+.*阅读[\s\d]+|'
+     r'收藏[\s\d]+.*分享[\s\d]+).*$', 'page_stats'),
+    # 广告/促销
+    (r'^.*(限时优惠|点击购买|立即下单|免费试用|优惠券|折扣码|'
+     r'推广链接|赞助内容|广告合作|扫码领取|限量.*抢购|不容错过).*$', 'ad'),
+    # APP 下载横幅
+    (r'^.*(下载APP|打开APP|APP内打开|APP内阅读|使用APP|下载客户端).*$', 'app_banner'),
+    # 查看原文提示（需要前缀动词，避免正文中的"原文"误匹配）
+    (r'^.*(点击查看原文|点击阅读原文|查看完整版|阅读完整版|查看原文链接|'
+     r'请阅读原文|去查看原文|查看全文).*$', 'read_original'),
+    # 付费墙展开（需要上下文限定）
+    (r'^.*(解锁全文|展开剩余|点击展开全文|查看完整内容|购买继续阅读|'
+     r'本文需要付费|订阅后查看|开通会员.*阅读|剩余.*内容.*登录).*$', 'paywall'),
+    # 热门活动/推荐课程（需要完整短语，避免正文误杀）
+    (r'^.*(热门活动.*报名|参与活动.*赢|推荐课程.*元|精品课程.*折|'
+     r'课程推荐.*限时|近期活动.*报名|热门活动|活动推荐).*$', 'activity'),
+    # VIP 会员
+    (r'^.*(开通VIP|升级VIP|会员专享|VIP特权|VIP免费|'
+     r'超级会员|年费会员|月度会员).*$', 'vip'),
+    # 扫码入群（需要动词前缀，避免正文中提到"技术交流群"被误删）
+    (r'^.*(长按识别|扫码入群|扫码下载|扫码关注|二维码入群|'
+     r'加入.*技术交流群|加入.*QQ群|加入.*微信群|扫码加群).*$', 'qr_group'),
+    # Cookie 中文
+    (r'^.*(我们使用Cookie|本站使用Cookie|隐私偏好|'
+     r'Cookie设置|Cookie偏好|接受所有Cookie).*$', 'cookie_cn'),
 ]
 
 

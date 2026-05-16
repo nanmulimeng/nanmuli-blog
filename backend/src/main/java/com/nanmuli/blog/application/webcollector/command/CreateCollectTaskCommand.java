@@ -18,13 +18,14 @@ public class CreateCollectTaskCommand {
     private String taskType;
 
     @Size(max = 2048, message = "URL 长度不能超过 2048")
+    @Pattern(regexp = "^(https?://.*)?$", message = "URL 必须以 http:// 或 https:// 开头")
     private String sourceUrl;
 
     @Size(max = 500, message = "关键词长度不能超过 500")
     private String keyword;
 
     @Pattern(regexp = "^(sogou|bing|baidu|google)?$", message = "搜索引擎必须是 sogou、bing、baidu 或 google")
-    private String searchEngine = "bing";
+    private String searchEngine = "sogou";
 
     @Pattern(regexp = "^(single|deep)?$", message = "爬取模式必须是 single 或 deep")
     private String crawlMode = "single";

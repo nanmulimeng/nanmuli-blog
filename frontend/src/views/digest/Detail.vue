@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getPublicDigestByDate, getPublicLatestDigest } from '@/api/collector'
 import type { DigestDetail } from '@/types/collector'
@@ -12,16 +12,32 @@ const router = useRouter()
 
 const loading = ref(false)
 const digest = ref<DigestDetail | null>(null)
+let pollTimer: ReturnType<typeof setTimeout> | null = null
 
 const isLatest = computed(() => route.name === 'PublicDigestLatest')
 const dateParam = computed(() => route.params.date as string)
+const isInProgress = computed(() => digest.value !== null && digest.value.status !== 3 && digest.value.status !== 4)
 
 function sectionBorderColor(category: string): string {
   return getDigestCategoryColor(category)
 }
 
-async function fetchDigest(): Promise<void> {
-  loading.value = true
+function stopPolling(): void {
+  if (pollTimer !== null) {
+    clearTimeout(pollTimer)
+    pollTimer = null
+  }
+}
+
+function schedulePoll(): void {
+  stopPolling()
+  if (isInProgress.value) {
+    pollTimer = setTimeout(() => fetchDigest({ silent: true }), 5000)
+  }
+}
+
+async function fetchDigest(options?: { silent?: boolean }): Promise<void> {
+  if (!options?.silent) loading.value = true
   try {
     if (isLatest.value) {
       digest.value = await getPublicLatestDigest()
@@ -33,6 +49,7 @@ async function fetchDigest(): Promise<void> {
   } finally {
     loading.value = false
   }
+  schedulePoll()
 }
 
 function goToList(): void {
@@ -40,12 +57,22 @@ function goToList(): void {
 }
 
 onMounted(fetchDigest)
+
+onUnmounted(stopPolling)
+
+watch(dateParam, () => {
+  fetchDigest()
+})
 </script>
 
 <template>
   <div class="mx-auto max-w-4xl px-4 py-8">
     <div v-loading="loading">
       <template v-if="digest">
+        <!-- In-progress banner -->
+        <div v-if="isInProgress" class="mb-6 rounded-lg bg-primary/10 border border-primary/20 p-4 text-center text-sm text-primary">
+          日报正在生成中，页面将自动刷新...
+        </div>
         <!-- Header -->
         <div class="mb-8">
           <button

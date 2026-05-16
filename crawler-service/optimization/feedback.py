@@ -110,6 +110,7 @@ class FeedbackLoop:
 
         # === Round 2+: 反馈循环 ===
         strategy_history: list[SearchStrategy] = [initial_strategy]
+        consecutive_failures = 0
 
         for round_num in range(2, self._max_rounds + 1):
             strategy = self._strategy_gen.generate(
@@ -153,9 +154,15 @@ class FeedbackLoop:
                     config=ctx.get("config"),
                     crawler=ctx.get("crawler"),
                 )
+                consecutive_failures = 0
             except Exception as e:
-                logger.warning("[Optimization] Round %d search failed: %s", round_num, e)
-                break
+                consecutive_failures += 1
+                logger.warning("[Optimization] Round %d search failed (%d consecutive): %s",
+                               round_num, consecutive_failures, e)
+                if consecutive_failures >= 2:
+                    logger.warning("[Optimization] 2 consecutive search failures, stopping")
+                    break
+                continue
 
             added = dedup_results_into(new_results, seen_urls, all_results)
 

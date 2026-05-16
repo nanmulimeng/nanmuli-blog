@@ -224,8 +224,9 @@ class TestBuildHeaders(unittest.TestCase):
 # ============== MIN_WORD_COUNT ==============
 
 class TestMinWordCount(unittest.TestCase):
-    def test_constant_exists(self):
-        self.assertEqual(search.MIN_WORD_COUNT, 50)
+    def test_settings_value(self):
+        from config import settings
+        self.assertEqual(settings.search_min_word_count, 50)
 
 
 # ============== Integration tests ==============
@@ -336,7 +337,8 @@ class SearchTests(unittest.IsolatedAsyncioTestCase):
         )
 
         # MAX_DOMAIN_DEDUP defaults to 2, so only 2 from example.com
-        self.assertLessEqual(len(urls), search.MAX_DOMAIN_DEDUP)
+        from config import settings
+        self.assertLessEqual(len(urls), settings.max_domain_dedup)
 
 
 # ============== _is_relevant_to_keyword 单词边界 & 片段匹配 ==============

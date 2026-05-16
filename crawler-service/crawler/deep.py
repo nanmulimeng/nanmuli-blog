@@ -12,20 +12,19 @@ from urllib.parse import urlparse
 from crawl4ai import AsyncWebCrawler
 from crawl4ai.deep_crawling import BFSDeepCrawlStrategy
 from crawl4ai.deep_crawling.filters import FilterChain, DomainFilter
+from .deep_filters import ExcludedDomainFilter
 
 from config import settings
 from .config import get_browser_config, get_crawler_run_config, RunParams, extract_markdown
-from .metadata import extract_metadata
-from .single import CrawlResult
+from .models import CrawlResult, JS_CHALLENGE_MIN_WORDS
 from .utils import count_words
+from .processor import extract_page_metadata, retry_js_challenge, extract_depth
 
 logger = logging.getLogger(__name__)
 
-# JS Challenge 检测阈值：成功但字数低于此值视为可能被拦截
-_JS_CHALLENGE_MIN_WORDS = 20
-# JS Challenge 重试参数：等待正文元素出现 + 额外延迟
-_JS_CHALLENGE_DELAY = 3.0
-_JS_CHALLENGE_WAIT_FOR = "article, main, .post-content, .entry-content, .content, #content, .article"
+_MULTI_PART_TLD = {
+    'co', 'com', 'org', 'net', 'edu', 'gov', 'ac',
+}
 
 
 async def crawl_deep_pages(
@@ -66,28 +65,15 @@ async def crawl_deep_pages(
         domain = parsed.netloc
         # 处理子域名：考虑 ccTLD 如 co.uk, com.cn, com.au 等
         parts = domain.split('.')
-        if len(parts) >= 3 and parts[-2] in ('co', 'com', 'org', 'net', 'edu', 'gov', 'ac'):
+        if len(parts) >= 3 and parts[-2] in _MULTI_PART_TLD:
             base_domain = '.'.join(parts[-3:])
         else:
             base_domain = '.'.join(parts[-2:])
 
         logger.info("[Deep] Starting BFS crawl: %s, depth=%s, max_pages=%s, domain=%s", url, max_depth, max_pages, base_domain)
 
-        browser_config = get_browser_config(text_mode=params.text_mode, light_mode=params.light_mode, proxy=settings.proxy_url)
-        run_config = get_crawler_run_config(
-            word_count_threshold=params.word_count_threshold,
-            excluded_tags=params.excluded_tags,
-            excluded_selector=params.excluded_selector,
-            prune_threshold=params.prune_threshold,
-            wait_until=params.wait_until,
-            page_timeout=params.page_timeout,
-            remove_overlay_elements=params.remove_overlay_elements,
-            max_retries=params.max_retries,
-            mean_delay=params.mean_delay,
-            max_range=params.max_range,
-            delay_before_return_html=params.delay_before_return_html,
-            remove_consent_popups=params.remove_consent_popups,
-        )
+        browser_config = await get_browser_config(text_mode=params.text_mode, light_mode=params.light_mode, proxy=settings.proxy_url)
+        run_config = get_crawler_run_config(**params.to_run_config_kwargs())
 
         # 配置深度爬取策略
         run_config.deep_crawl_strategy = BFSDeepCrawlStrategy(
@@ -96,6 +82,7 @@ async def crawl_deep_pages(
             include_external=False,  # 只爬同域名
             filter_chain=FilterChain([
                 DomainFilter(allowed_domains=[domain, f"*.{base_domain}"]),
+                ExcludedDomainFilter(),  # P2: 路径级过滤
             ])
         )
 
@@ -110,6 +97,8 @@ async def crawl_deep_pages(
             results_raw = await crawler.arun(url=url, config=run_config)
 
         # Crawl4AI 0.8.x: arun 返回 list（非 AsyncGenerator）
+        if not isinstance(results_raw, list):
+            results_raw = [results_raw]
         page_count = 0
         for result in results_raw:
             # 上层 URL 去重保护（防御 BFSDeepCrawlStrategy 去重失效）
@@ -125,29 +114,13 @@ async def crawl_deep_pages(
                 word_count = count_words(markdown) if markdown else 0
 
                 # JS Challenge 检测：成功但字数异常低，对该 URL 单独重试
-                if word_count < _JS_CHALLENGE_MIN_WORDS and active_crawler is not None:
+                if word_count < JS_CHALLENGE_MIN_WORDS and active_crawler is not None:
                     logger.warning(
                         "[Deep] Low word count (%s) on %s, possible JS challenge, retrying",
                         word_count, result.url
                     )
                     try:
-                        single_config = get_crawler_run_config(
-                            word_count_threshold=params.word_count_threshold,
-                            excluded_tags=params.excluded_tags,
-                            excluded_selector=params.excluded_selector,
-                            prune_threshold=params.prune_threshold,
-                            wait_until=params.wait_until,
-                            page_timeout=params.page_timeout,
-                            remove_overlay_elements=params.remove_overlay_elements,
-                            max_retries=params.max_retries,
-                            mean_delay=params.mean_delay,
-                            max_range=params.max_range,
-                            delay_before_return_html=_JS_CHALLENGE_DELAY,
-                            remove_consent_popups=params.remove_consent_popups,
-                            wait_for=_JS_CHALLENGE_WAIT_FOR,
-                            wait_for_timeout=5000,
-                        )
-                        retry_results = await active_crawler.arun(url=result.url, config=single_config)
+                        retry_results = await retry_js_challenge(active_crawler, result.url, params)
                         if retry_results and isinstance(retry_results, list):
                             retry = retry_results[0]
                         else:
@@ -155,31 +128,15 @@ async def crawl_deep_pages(
                         if retry and getattr(retry, 'success', False):
                             markdown = extract_markdown(retry)
                             word_count = count_words(markdown) if markdown else 0
-                            result = retry  # 使用重试结果
+                            result = retry
                             logger.info("[Deep] JS challenge retry succeeded: %s, words=%s", result.url, word_count)
                     except Exception as retry_err:
                         logger.warning("[Deep] JS challenge retry failed for %s: %s, keeping original", result.url, retry_err)
 
-                # 获取深度信息（Crawl4AI 0.8.x: depth 在 metadata 中）
-                depth = getattr(result, 'depth', None)
-                if depth is None and isinstance(result.metadata, dict):
-                    depth = result.metadata.get('depth', 0)
-                if depth is None:
-                    depth = 0
+                depth = extract_depth(result)
 
-                # 提取丰富元数据（与 single.py 一致）
-                page_metadata = extract_metadata(
-                    html_content=result.html,
-                    base_url=result.url
-                ) if result.html else {}
-
+                page_metadata = extract_page_metadata(result, result.url) if result.html else {}
                 page_metadata['links_found'] = len(getattr(result, 'links', {}).get('internal', []))
-
-                if hasattr(result, 'metadata') and isinstance(result.metadata, dict):
-                    page_metadata.update({
-                        'crawl4ai_title': result.metadata.get('title'),
-                        'crawl4ai_description': result.metadata.get('description'),
-                    })
 
                 page_title = page_metadata.get('title') or page_metadata.get('crawl4ai_title')
 

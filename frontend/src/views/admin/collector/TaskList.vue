@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { getCollectTaskList, deleteCollectTask, retryCollectTask } from '@/api/collector'
 import type { CollectTaskListDTO } from '@/types/collector'
@@ -36,6 +36,9 @@ async function fetchData(): Promise<void> {
     })
     tasks.value = res.records
     total.value = res.total
+    if (hasActiveTasks()) {
+      nextTick(() => startPolling())
+    }
   } finally {
     loading.value = false
   }
@@ -93,7 +96,6 @@ function hasActiveTasks(): boolean {
   return tasks.value.some(t => t.status === 0 || t.status === 1 || t.status === 2)
 }
 
-// 使用 usePolling 替代手动 setInterval 轮询
 const { start: startPolling } = usePolling(fetchData, POLLING_INTERVAL.TASK_STATUS, {
   immediate: false,
   condition: () => hasActiveTasks() && !loading.value,

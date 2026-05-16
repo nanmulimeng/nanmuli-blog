@@ -11,10 +11,11 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY main.py config.py ./
+COPY main.py config.py logging_config.py ./
 COPY api/ ./api/
 COPY ai/ ./ai/
 COPY crawler/ ./crawler/
+COPY optimization/ ./optimization/
 COPY standalone/ ./standalone/
 
 # Create data directory and non-root user

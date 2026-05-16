@@ -18,6 +18,14 @@ TRANSLATE_SYSTEM_PROMPT = """你是搜索关键词翻译专家。
 3. 使用搜索引擎友好的短语格式（如 "Spring Boot tutorial" 而非完整句子）
 4. 如果关键词已经是英文，原样返回"""
 
+TRANSLATE_TO_CN_PROMPT = """你是搜索关键词翻译专家。
+将给定的英文搜索关键词翻译为最适合搜索引擎的中文搜索词。
+规则：
+1. 只输出中文关键词，不要解释
+2. 保留技术专有名词（如 React、Kubernetes）
+3. 使用搜索引擎友好的短语格式
+4. 如果关键词已经是中文，原样返回"""
+
 
 class BubbleBreaker:
     """信息茧房突破器：检测并突破搜索结果的来源/语言单一性"""
@@ -72,13 +80,23 @@ class BubbleBreaker:
         return expanded
 
     async def translate_keyword(self, keyword: str) -> str | None:
-        """用 AI 将中文关键词翻译为英文搜索词，失败静默降级"""
+        """用 AI 翻译关键词（中→英 或 英→中），失败静默降级"""
         if not self._organizer or not self._organizer.is_available:
             return None
         try:
-            response = await self._organizer._call_ai(TRANSLATE_SYSTEM_PROMPT, keyword)
+            from crawler.utils import detect_cjk
+            is_cn = detect_cjk(keyword)
+            prompt = TRANSLATE_SYSTEM_PROMPT if is_cn else TRANSLATE_TO_CN_PROMPT
+
+            response = await self._organizer._call_ai(prompt, keyword)
             translated = response.get("content", "").strip()
-            if translated and translated != keyword and re.search(r"[a-zA-Z]{2,}", translated):
+
+            if not translated or translated == keyword:
+                return None
+            # 验证翻译方向：中→英应有英文，英→中应有中文
+            if is_cn and re.search(r"[a-zA-Z]{2,}", translated):
+                return translated
+            if not is_cn and re.search(r"[一-鿿]", translated):
                 return translated
             return None
         except Exception as e:

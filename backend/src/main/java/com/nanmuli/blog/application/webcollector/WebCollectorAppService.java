@@ -121,7 +121,9 @@ public class WebCollectorAppService {
 
     public CollectTaskDTO getTask(Long taskId, Long userId) {
         WebCollectTask task = loadTaskForUser(taskId, userId);
-        syncFromPythonIfNeeded(task);
+        if (syncFromPythonIfNeeded(task)) {
+            task = loadTaskForUser(taskId, userId);
+        }
         return convertToDTO(task);
     }
 
@@ -205,7 +207,7 @@ public class WebCollectorAppService {
         task.setAiSearchMetadata(null);
         task.setTokensUsed(null);
         task.setCompletedPages(0);
-        task.updateStatus(CollectTaskStatus.PENDING);
+        task.setStatus(CollectTaskStatus.PENDING.getValue());
         taskRepository.save(task);
 
         // 事务提交后触发 Python 重试或新建
@@ -265,7 +267,9 @@ public class WebCollectorAppService {
         }
 
         // 转换前先同步最新 AI 结果
-        syncFromPythonIfNeeded(task);
+        if (syncFromPythonIfNeeded(task)) {
+            task = loadTaskForUser(taskId, userId);
+        };
 
         if (task.getArticleId() != null) {
             throw new BusinessException("该任务已转为文章，articleId=" + task.getArticleId());
@@ -306,7 +310,9 @@ public class WebCollectorAppService {
             throw new BusinessException("任务尚未完成，无法转换");
         }
 
-        syncFromPythonIfNeeded(task);
+        if (syncFromPythonIfNeeded(task)) {
+            task = loadTaskForUser(taskId, userId);
+        }
 
         if (task.getDailyLogId() != null) {
             throw new BusinessException("该任务已转为日志，dailyLogId=" + task.getDailyLogId());
@@ -340,7 +346,7 @@ public class WebCollectorAppService {
     /**
      * afterCommit 中调用的 DB 操作，独立事务保证原子性
      */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = false)
     public void updatePythonTaskId(Long taskId, int pythonTaskId) {
         taskRepository.findById(taskId).ifPresent(t -> {
             t.setPythonTaskId(pythonTaskId);
@@ -348,7 +354,7 @@ public class WebCollectorAppService {
         });
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = false)
     public void markTaskFailed(Long taskId, String errorMessage) {
         taskRepository.findById(taskId).ifPresent(t -> {
             t.markFailed(errorMessage);
@@ -359,10 +365,12 @@ public class WebCollectorAppService {
     /**
      * 从 Python 同步任务状态和 AI 结果到 MySQL（仅在任务非终态时）
      */
-    private void syncFromPythonIfNeeded(WebCollectTask task) {
+    private boolean syncFromPythonIfNeeded(WebCollectTask task) {
         if (task.getPythonTaskId() != null && !isTerminal(task.getStatus())) {
             syncFromPythonSilent(task);
+            return true;
         }
+        return false;
     }
 
     private void syncFromPythonSilent(WebCollectTask task) {
@@ -379,7 +387,7 @@ public class WebCollectorAppService {
         }
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = false)
     public void syncPythonTaskToDb(Long taskId, Map<String, Object> pythonTask) {
         taskRepository.findById(taskId).ifPresent(t -> {
             updateTaskFromPython(t, pythonTask);
@@ -505,7 +513,7 @@ public class WebCollectorAppService {
 
     private String safeToJson(Object value) {
         try { return objectMapper.writeValueAsString(value); }
-        catch (Exception e) { return null; }
+        catch (Exception e) { log.debug("[DTO] JSON serialization failed: {}", e.getMessage()); return null; }
     }
 
     private WebCollectTask loadTaskForUser(Long taskId, Long userId) {
@@ -614,20 +622,22 @@ public class WebCollectorAppService {
                 dto.setAiSearchMetadata(objectMapper.readValue(
                         task.getAiSearchMetadata(), new TypeReference<Map<String, Object>>() {}));
             } catch (Exception e) {
+                log.debug("[DTO] Failed to parse aiSearchMetadata for taskId={}: {}", task.getId(), e.getMessage());
                 dto.setAiSearchMetadata(Collections.emptyMap());
             }
         }
 
         if (task.getAiKeyPoints() != null) {
             try { dto.setAiKeyPoints(objectMapper.readValue(task.getAiKeyPoints(), List.class)); }
-            catch (Exception e) { dto.setAiKeyPoints(Collections.emptyList()); }
+            catch (Exception e) { log.debug("[DTO] Failed to parse aiKeyPoints: {}", e.getMessage()); dto.setAiKeyPoints(Collections.emptyList()); }
         }
         if (task.getAiTags() != null) {
             try { dto.setAiTags(objectMapper.readValue(task.getAiTags(), List.class)); }
-            catch (Exception e) { dto.setAiTags(Collections.emptyList()); }
+            catch (Exception e) { log.debug("[DTO] Failed to parse aiTags: {}", e.getMessage()); dto.setAiTags(Collections.emptyList()); }
         }
 
-        if (task.getTotalPages() != null && task.getTotalPages() > 0) {
+        if (task.getTotalPages() != null && task.getTotalPages() > 0
+                && task.getCompletedPages() != null) {
             dto.setProgressPercent((task.getCompletedPages() * 100) / task.getTotalPages());
         } else {
             dto.setProgressPercent(0);
@@ -653,7 +663,8 @@ public class WebCollectorAppService {
             dto.setAiSummary(task.getAiSummary());
         }
 
-        if (task.getTotalPages() != null && task.getTotalPages() > 0) {
+        if (task.getTotalPages() != null && task.getTotalPages() > 0
+                && task.getCompletedPages() != null) {
             dto.setProgressPercent((task.getCompletedPages() * 100) / task.getTotalPages());
         } else {
             dto.setProgressPercent(0);
@@ -673,6 +684,7 @@ public class WebCollectorAppService {
             try {
                 dto.setPageMetadata(objectMapper.readValue(page.getPageMetadata(), new TypeReference<Map<String, Object>>() {}));
             } catch (Exception e) {
+                log.debug("[DTO] Failed to parse pageMetadata for pageId={}: {}", page.getId(), e.getMessage());
                 dto.setPageMetadata(Collections.emptyMap());
             }
         }
@@ -682,22 +694,22 @@ public class WebCollectorAppService {
 
     private String getTaskTypeLabel(String type) {
         try { return CollectTaskType.of(type).getLabel(); }
-        catch (Exception e) { return type; }
+        catch (Exception e) { log.debug("[DTO] Unknown task type: {}", type); return type; }
     }
 
     private String getStatusLabel(Integer status) {
         try { return CollectTaskStatus.of(status).getLabel(); }
-        catch (Exception e) { return "未知"; }
+        catch (Exception e) { log.debug("[DTO] Unknown status: {}", status); return "未知"; }
     }
 
     private String getStatusDisplay(Integer status) {
         try { return CollectTaskStatus.of(status).getDisplayText(); }
-        catch (Exception e) { return "未知"; }
+        catch (Exception e) { log.debug("[DTO] Unknown status: {}", status); return "未知"; }
     }
 
     private String getPageStatusLabel(Integer status) {
         try { return PageCrawlStatus.of(status).getLabel(); }
-        catch (Exception e) { return "未知"; }
+        catch (Exception e) { log.debug("[DTO] Unknown page status: {}", status); return "未知"; }
     }
 
     // ============== 工具方法 ==============

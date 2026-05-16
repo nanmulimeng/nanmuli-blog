@@ -1,5 +1,6 @@
 package com.nanmuli.blog.infrastructure.config.security;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -8,6 +9,7 @@ import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
+@Slf4j
 @Component
 public class AesEncryptor {
 
@@ -34,7 +36,8 @@ public class AesEncryptor {
             byte[] encrypted = cipher.doFinal(plainText.getBytes(StandardCharsets.UTF_8));
             return MARKER + Base64.getEncoder().encodeToString(encrypted);
         } catch (Exception e) {
-            return plainText; // 加密失败不阻塞业务流程
+            log.warn("[AesEncryptor] Encryption failed, returning plaintext: {}", e.getMessage());
+            return plainText;
         }
     }
 
@@ -49,7 +52,8 @@ public class AesEncryptor {
             byte[] decrypted = cipher.doFinal(Base64.getDecoder().decode(base64));
             return new String(decrypted, StandardCharsets.UTF_8);
         } catch (Exception e) {
-            return cipherText; // 解密失败返回原文
+            log.warn("[AesEncryptor] Decryption failed, returning ciphertext: {}", e.getMessage());
+            return cipherText;
         }
     }
 }

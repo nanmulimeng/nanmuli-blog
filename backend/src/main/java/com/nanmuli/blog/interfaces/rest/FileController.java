@@ -8,10 +8,12 @@ import com.nanmuli.blog.shared.result.PageResult;
 import com.nanmuli.blog.shared.result.Result;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 @Tag(name = "文件管理")
+@Slf4j
 @RestController
 @RequestMapping("/api")
 @RequiredArgsConstructor
@@ -28,6 +30,7 @@ public class FileController {
         try {
             command.setContent(file.getBytes());
         } catch (Exception e) {
+            log.warn("[FileUpload] Failed to read uploaded file: {}", e.getMessage());
             return Result.error(400, "文件读取失败");
         }
         return Result.success(fileAppService.upload(command));

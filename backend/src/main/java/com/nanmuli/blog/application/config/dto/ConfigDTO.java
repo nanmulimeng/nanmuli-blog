@@ -14,9 +14,13 @@ public class ConfigDTO implements Serializable {
     private Long id;
     private String configKey;
     private String configValue;
+    private String defaultValue;
     private String description;
     private String groupName;
     private Boolean isPublic;
-    private Boolean sensitive; // 是否为敏感配置
-    private String inputType;  // text/textarea/switch/image/password
+    private Boolean isEncrypted;  // AES-128 加密存储
+    private Boolean isSensitive;  // 敏感配置（前端脱敏显示）
+    /** @deprecated 请使用 isSensitive */
+    private Boolean sensitive;
+    private String inputType;     // text/textarea/switch/image/password
 }

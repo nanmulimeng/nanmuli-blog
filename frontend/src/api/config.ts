@@ -1,5 +1,5 @@
 import { get, put, post } from '@/utils/request'
-import type { Config, ProxyStatus, ProxyGroup, NodeDelay } from '@/types/config'
+import type { Config, RefreshResult, ProxyStatus, ProxyGroup, NodeDelay } from '@/types/config'
 
 export function getPublicConfig(): Promise<Record<string, string>> {
   return get<Record<string, string>>('/config/public')
@@ -11,6 +11,11 @@ export function updateConfig(key: string, value: string): Promise<void> {
 
 export function getAdminConfigList(): Promise<Config[]> {
   return get<Config[]>('/admin/config/list')
+}
+
+/** 刷新所有配置缓存（Java ConfigService + Python 爬虫服务） */
+export function refreshConfigs(): Promise<RefreshResult> {
+  return post<RefreshResult>('/admin/config/refresh')
 }
 
 // ==================== 代理管理 ====================
