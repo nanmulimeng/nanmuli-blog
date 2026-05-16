@@ -80,6 +80,13 @@ def _apply_ai_settings(config: dict[str, str]) -> None:
         settings.ai_multi_page_per_max_chars = _to_int(config["ai.multi_page_per_max_chars"])
     if config.get("ai.multi_page_total_budget", ""):
         settings.ai_multi_page_total_budget = _to_int(config["ai.multi_page_total_budget"])
+    # Digest 专用 AI 参数
+    if config.get("ai.digest_per_max_chars", ""):
+        settings.ai_digest_per_max_chars = _to_int(config["ai.digest_per_max_chars"])
+    if config.get("ai.digest_total_budget", ""):
+        settings.ai_digest_total_budget = _to_int(config["ai.digest_total_budget"])
+    if config.get("ai.digest_max_tokens", ""):
+        settings.ai_digest_max_tokens = _to_int(config["ai.digest_max_tokens"])
     if config.get("ai.min_summary_length", ""):
         settings.ai_min_summary_length = _to_int(config["ai.min_summary_length"])
     if config.get("ai.min_full_content_length", ""):
@@ -195,6 +202,12 @@ def _apply_digest_settings(config: dict[str, str]) -> None:
         settings.digest_optimization_min_sections = _to_int(config["digest.optimization_min_sections"])
     if config.get("digest.optimization_target_score", ""):
         settings.digest_optimization_target_score = _to_float(config["digest.optimization_target_score"])
+    if config.get("digest.parallel_sections", ""):
+        settings.digest_parallel_sections = _to_int(config["digest.parallel_sections"])
+    if config.get("digest.optimization_min_results_per_section", ""):
+        settings.digest_optimization_min_results_per_section = _to_int(config["digest.optimization_min_results_per_section"])
+    if config.get("digest.global_timeout", ""):
+        settings.digest_global_timeout = _to_int(config["digest.global_timeout"])
 
 
 def _apply_callback_settings(config: dict[str, str]) -> None:

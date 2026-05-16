@@ -110,22 +110,65 @@ class SourceAuthority:
         return domain
 
 
+# ============ 预编译正则 ============
+
+_RE_HEADINGS = re.compile(r'#{2,4}\s+\S')
+_RE_CODE_BLOCKS = re.compile(r'```[\s\S]*?```')
+_RE_LIST = re.compile(r'^[\s]*[-*]\s+\S', re.MULTILINE)
+_RE_NESTED_LIST = re.compile(r'^[\s]*[-*]\s+.*\n[\s]{2,}[-*]\s+', re.MULTILINE)
+_RE_TABLE = re.compile(r'\|[\s\-:]+\|')
+
+
+def _build_combined_pattern(keywords: list[str]) -> re.Pattern | None:
+    """将关键词列表编译为单个交替正则，用于一次扫描"""
+    escaped = [re.escape(kw) for kw in keywords if kw]
+    if not escaped:
+        return None
+    return re.compile("|".join(escaped))
+
+
 # ============ 内容质量评分 ============
 
 class ContentQuality:
     """内容质量评分体系"""
 
+    # 缓存：避免每次调用都 split + 编译
+    _cached_clickbait_raw: str | None = None
+    _cached_ad_raw: str | None = None
+    _cached_paywall_raw: str | None = None
+    _cached_clickbait_list: list[str] = []
+    _cached_ad_list: list[str] = []
+    _cached_paywall_list: list[str] = []
+    _cached_clickbait_re: re.Pattern | None = None
+    _cached_ad_re: re.Pattern | None = None
+    _cached_paywall_re: re.Pattern | None = None
+
     @classmethod
     def _clickbait_keywords(cls) -> list[str]:
-        return [kw.strip() for kw in settings.quality_clickbait_keywords.split(",") if kw.strip()]
+        raw = settings.quality_clickbait_keywords
+        if raw != cls._cached_clickbait_raw:
+            cls._cached_clickbait_raw = raw
+            cls._cached_clickbait_list = [kw.strip() for kw in raw.split(",") if kw.strip()]
+            cls._cached_clickbait_re = _build_combined_pattern(cls._cached_clickbait_list)
+        return cls._cached_clickbait_list
 
     @classmethod
     def _ad_keywords(cls) -> list[str]:
-        return [kw.strip() for kw in settings.quality_ad_keywords.split(",") if kw.strip()]
+        raw = settings.quality_ad_keywords
+        if raw != cls._cached_ad_raw:
+            cls._cached_ad_raw = raw
+            cls._cached_ad_list = [kw.strip() for kw in raw.split(",") if kw.strip()]
+            cls._cached_ad_re = _build_combined_pattern(cls._cached_ad_list)
+        return cls._cached_ad_list
 
     @classmethod
     def _paywall_indicators(cls) -> list[str]:
-        return [kw.strip() for kw in settings.quality_paywall_indicators.split(",") if kw.strip()]
+        raw = settings.quality_paywall_indicators
+        if raw != cls._cached_paywall_raw:
+            cls._cached_paywall_raw = raw
+            cls._cached_paywall_list = [kw.strip() for kw in raw.split(",") if kw.strip()]
+            cls._cached_paywall_re = _build_combined_pattern(cls._cached_paywall_list)
+        return cls._cached_paywall_list
 
     @classmethod
     def score(cls, title: str, content: str, url: str) -> Dict:
@@ -169,24 +212,24 @@ class ContentQuality:
         # 2. 结构评分 (0-25分)
         structure_score = 0
         # 有标题层级
-        if re.search(r'#{2,4}\s+\S', content):
+        if _RE_HEADINGS.search(content):
             structure_score += 8
         # 有代码块
         if '```' in content:
             structure_score += 8
         # 有列表
-        if re.search(r'^[\s]*[-*]\s+\S', content, re.MULTILINE):
+        if _RE_LIST.search(content):
             structure_score += 4
         # 有多级列表（嵌套结构，说明内容组织清晰）
-        if re.search(r'^[\s]*[-*]\s+.*\n[\s]{2,}[-*]\s+', content, re.MULTILINE):
+        if _RE_NESTED_LIST.search(content):
             structure_score += 3
         # 有表格
-        if '|' in content and re.search(r'\|[\s\-:]+\|', content):
+        if '|' in content and _RE_TABLE.search(content):
             structure_score += 2
         dimensions['structure'] = min(structure_score, 25)
 
         # 3. 代码密度评分 (0-25分，平滑曲线)
-        code_blocks = re.findall(r'```[\s\S]*?```', content)
+        code_blocks = _RE_CODE_BLOCKS.findall(content)
         code_chars = sum(len(block) for block in code_blocks)
         total_chars = len(content) if content else 1
         code_ratio = code_chars / total_chars if total_chars > 0 else 0
@@ -204,12 +247,17 @@ class ContentQuality:
             dimensions['code_density'] = 5  # 几乎无代码
 
         # 4. 广告占比评分 (0-25分，反向：25=无广告)
-        ad_count = sum(1 for kw in cls._ad_keywords() if kw in content)
+        cls._ad_keywords()  # ensure cache populated
+        ad_re = cls._cached_ad_re
+        ad_count = len(ad_re.findall(content)) if ad_re else 0
         ad_ratio = min(ad_count / 5, 1.0)  # 5个以上广告词视为满广告
         dimensions['ad_ratio'] = 25 * (1 - ad_ratio)
 
         # 5. 标题党惩罚
-        clickbait_count = sum(1 for kw in cls._clickbait_keywords() if kw in title.lower())
+        cls._clickbait_keywords()  # ensure cache populated
+        clickbait_re = cls._cached_clickbait_re
+        title_lower = title.lower()
+        clickbait_count = len(clickbait_re.findall(title_lower)) if clickbait_re else 0
         clickbait_penalty = min(clickbait_count * 15, 50)
         penalties['clickbait_penalty'] = clickbait_penalty
 
@@ -218,7 +266,10 @@ class ContentQuality:
         penalties['ad_penalty'] = ad_penalty
 
         # 7. 付费墙检测
-        paywall_flag = any(ind in content.lower() for ind in cls._paywall_indicators())
+        cls._paywall_indicators()  # ensure cache populated
+        paywall_re = cls._cached_paywall_re
+        content_lower = content.lower()
+        paywall_flag = bool(paywall_re.search(content_lower)) if paywall_re else False
         penalties['paywall_flag'] = paywall_flag
 
         # 8. 时效性检测（P2: 信息不滞后）
@@ -294,9 +345,12 @@ class ContentQuality:
 
 # ============ 便捷函数 ============
 
-def evaluate_content(url: str, title: str, content: str) -> Dict:
+def evaluate_content(url: str, title: str, content: str, task_type: str = None) -> Dict:
     """
     一站式内容评估：来源可信度 + 内容质量
+
+    Args:
+        task_type: 任务类型，"digest" 时提高来源权重（新闻类内容代码密度低但来源可信）
 
     Returns:
         {
@@ -309,8 +363,16 @@ def evaluate_content(url: str, title: str, content: str) -> Dict:
     source = SourceAuthority.score(url)
     quality = ContentQuality.score(title, content, url)
 
-    # 综合评分：来源权重 + 质量权重
-    final_score = source["score"] * settings.quality_source_weight + quality["total_score"] * settings.quality_content_weight
+    # 日报任务：提高来源权重、降低内容质量权重
+    # 新闻类内容天然缺少代码块和结构化格式，内容质量分低不代表无价值
+    if task_type == "digest":
+        src_weight = 0.6
+        cnt_weight = 0.4
+    else:
+        src_weight = settings.quality_source_weight
+        cnt_weight = settings.quality_content_weight
+
+    final_score = source["score"] * src_weight + quality["total_score"] * cnt_weight
 
     # 决策（P1: 宁可少而不可错）
     if source["level"] == "spam":

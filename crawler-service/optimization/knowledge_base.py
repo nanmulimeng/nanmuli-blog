@@ -44,6 +44,7 @@ class KnowledgeBase:
                           search_keyword, time_range
                    FROM optimization_record
                    WHERE score_delta > 0
+                     AND round_num > 1
                      AND (search_keyword LIKE ? ESCAPE '!' OR time_range = ?)
                    ORDER BY score_delta DESC
                    LIMIT 50""",
@@ -144,7 +145,7 @@ class KnowledgeBase:
                 f"""SELECT search_keyword, search_engine, time_range,
                            strategy_type, overall_score, score_delta, created_at
                     FROM optimization_record
-                    WHERE score_delta > 0 AND ({conditions})
+                    WHERE score_delta > 0 AND round_num > 1 AND ({conditions})
                     ORDER BY score_delta DESC
                     LIMIT ?""",
                 params,

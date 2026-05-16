@@ -85,10 +85,10 @@ TIME_FILTER_PARAMS = {
         "all": "",
     },
     "sogou": {
-        "day": "&s_from=forecast&forecast=day",
-        "week": "&s_from=forecast&forecast=week",
-        "month": "&s_from=forecast&forecast=month",
-        "year": "&s_from=forecast&forecast=year",
+        "day": "&intime=1",
+        "week": "&intime=7",
+        "month": "&intime=30",
+        "year": "&intime=365",
         "all": "",
     },
 }
@@ -189,9 +189,9 @@ def _is_relevant_to_keyword(keyword: str, title: str, snippet: str) -> bool:
         if part in title_lower:
             return True
 
-    # 摘要中需要匹配一半以上片段
+    # snippet 需要匹配 2/3 以上片段（收紧阈值，降低误匹配率）
     snippet_matches = sum(1 for part in parts if part in combined)
-    min_required = max(1, len(parts) // 2)
+    min_required = max(1, (len(parts) * 2 + 2) // 3)
     return snippet_matches >= min_required
 
 

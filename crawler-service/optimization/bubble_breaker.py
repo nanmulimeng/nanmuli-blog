@@ -88,7 +88,7 @@ class BubbleBreaker:
             is_cn = detect_cjk(keyword)
             prompt = TRANSLATE_SYSTEM_PROMPT if is_cn else TRANSLATE_TO_CN_PROMPT
 
-            response = await self._organizer._call_ai(prompt, keyword)
+            response = await self._organizer._call_ai(prompt, keyword, max_tokens=200)
             translated = response.get("content", "").strip()
 
             if not translated or translated == keyword:

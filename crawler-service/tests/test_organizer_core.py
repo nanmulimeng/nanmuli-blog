@@ -205,22 +205,22 @@ class TestParseOrganizedContent:
         response = """{
             "title": "Title",
             "summary": "This summary is definitely long enough for validation.",
-            "keyPoints": ["a", "b", "a", "c"],
+            "keyPoints": ["alpha point", "beta point", "alpha point", "gamma point"],
             "tags": ["tag"],
             "category": "其他",
             "fullContent": "This full content is definitely long enough for validation."
         }"""
         result = self.organizer._parse_organized_content(response)
-        assert result.key_points == ["a", "b", "c"]
+        assert result.key_points == ["alpha point", "beta point", "gamma point"]
 
     def test_empty_title_rejected(self):
         response = """{
             "title": "",
-            "summary": "valid summary",
-            "keyPoints": ["a"],
-            "tags": ["t"],
+            "summary": "valid summary text for testing",
+            "keyPoints": ["valid point text"],
+            "tags": ["tag"],
             "category": "其他",
-            "fullContent": "valid content"
+            "fullContent": "valid content for testing purposes"
         }"""
         with pytest.raises(InvalidOutputError, match="Missing title"):
             self.organizer._parse_organized_content(response)
@@ -229,10 +229,10 @@ class TestParseOrganizedContent:
         response = """{
             "title": "Title",
             "summary": "short",
-            "keyPoints": ["a"],
-            "tags": ["t"],
+            "keyPoints": ["valid point text"],
+            "tags": ["tag"],
             "category": "其他",
-            "fullContent": "valid content long enough"
+            "fullContent": "valid content long enough for testing"
         }"""
         with pytest.raises(InvalidOutputError, match="Summary too short"):
             self.organizer._parse_organized_content(response)
@@ -241,7 +241,7 @@ class TestParseOrganizedContent:
         response = """{
             "title": "Title",
             "summary": "This summary is definitely long enough.",
-            "keyPoints": ["a"],
+            "keyPoints": ["valid point text"],
             "tags": [],
             "category": "其他",
             "fullContent": "This full content is definitely long enough."
@@ -253,8 +253,8 @@ class TestParseOrganizedContent:
         response = """{
             "title": "Title",
             "summary": "This summary is definitely long enough.",
-            "keyPoints": ["a"],
-            "tags": ["t"],
+            "keyPoints": ["valid point text"],
+            "tags": ["tag"],
             "category": "invalid_category",
             "fullContent": "This full content is definitely long enough."
         }"""

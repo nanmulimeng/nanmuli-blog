@@ -100,6 +100,9 @@ EVALUATOR_SYSTEM_PROMPT = """你是一位技术信息覆盖度分析专家。
 
 JSON_BLOCK_RE = re.compile(r"```(?:json)?\s*\n?([\s\S]*?)```")
 
+# 评估输出是简单 JSON，无需大量 token
+_EVALUATOR_MAX_TOKENS = 500
+
 
 # ============== 评估器 ==============
 
@@ -264,7 +267,9 @@ class CoverageEvaluator:
 
         user_prompt = self._build_eval_prompt(keyword, meta, ctx)
         try:
-            response = await self._organizer._call_ai(EVALUATOR_SYSTEM_PROMPT, user_prompt)
+            response = await self._organizer._call_ai(
+                EVALUATOR_SYSTEM_PROMPT, user_prompt, max_tokens=_EVALUATOR_MAX_TOKENS
+            )
             content = response.get("content", "")
             tokens = response.get("total_tokens", 0)
 

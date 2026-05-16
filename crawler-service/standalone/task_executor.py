@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import uuid
 from typing import Dict
 
@@ -155,9 +156,14 @@ class TaskExecutor:
                 return
 
             # 质量过滤（所有任务类型，日报使用宽松阈值）
+            # 日报任务已在 execute_digest_crawl() 内做过去重，跳过 SimHash 二次去重
+            is_digest = task["task_type"] == "digest"
             from crawler.dedup import DedupEngine
-            sim_threshold = settings.content_dedup_deep_threshold if task["task_type"] == "deep" else settings.content_dedup_simhash_threshold
-            dedup_engine = DedupEngine(simhash_threshold=sim_threshold) if settings.content_dedup_enabled else None
+            if is_digest:
+                dedup_engine = None
+            else:
+                sim_threshold = settings.content_dedup_deep_threshold if task["task_type"] == "deep" else settings.content_dedup_simhash_threshold
+                dedup_engine = DedupEngine(simhash_threshold=sim_threshold) if settings.content_dedup_enabled else None
             results = self._filter_low_quality(results, task["task_type"], dedup_engine=dedup_engine)
 
             # 保存爬取结果
@@ -435,6 +441,10 @@ class TaskExecutor:
         仅过滤内容过短或明显为垃圾的页面。
         """
         from crawler.quality import evaluate_content
+        page_classifier = None
+        if settings.page_classifier_enabled:
+            from crawler.page_classifier import classify_page as _classify
+            page_classifier = _classify
 
         is_deep = (task_type == "deep")
         is_digest = (task_type == "digest")
@@ -469,9 +479,8 @@ class TaskExecutor:
                 continue
 
             # [2] 页面类型分类器（P5）：SERP/列表/论坛 → 直接拒绝
-            if settings.page_classifier_enabled:
-                from crawler.page_classifier import classify_page
-                classification = classify_page(markdown, url, title)
+            if page_classifier is not None:
+                classification = page_classifier(markdown, url, title)
                 if classification.is_non_article:
                     r.success = False
                     r.error_message = f"Non-article page: {classification.page_type} (confidence={classification.confidence:.0%})"
@@ -497,7 +506,7 @@ class TaskExecutor:
                     continue
 
             # [4] 质量评分
-            evaluation = evaluate_content(url, title, markdown)
+            evaluation = evaluate_content(url, title, markdown, task_type=task_type)
             verdict = evaluation["verdict"]
             final_score = evaluation["final_score"]
 
@@ -560,18 +569,100 @@ def extract_source_name(url: str) -> str:
         return "未知来源"
 
 
+# ============ 分类推断（基于域名优先 + 标题词边界匹配） ============
+
+_SOURCE_CATEGORY_MAP: dict[str, str] = {
+    # 开源项目
+    "github.com": "open_source",
+    "gitlab.com": "open_source",
+    "gitee.com": "open_source",
+    "npmjs.com": "open_source",
+    "pypi.org": "open_source",
+    "pkg.go.dev": "open_source",
+    "crates.io": "open_source",
+    "gitlab.io": "open_source",
+    "netlify.app": "open_source",
+    "vercel.app": "open_source",
+    "huggingface.co": "open_source",
+    # 学术论文
+    "arxiv.org": "paper",
+    "paperswithcode.com": "paper",
+    "dl.acm.org": "paper",
+    "ieeexplore.ieee.org": "paper",
+    "scholar.google.com": "paper",
+    "academic.microsoft.com": "paper",
+    # 开发工具
+    "producthunt.com": "dev_tool",
+    "jetbrains.com": "dev_tool",
+    "code.visualstudio.com": "dev_tool",
+    # 热点动态
+    "hackernewsletter.com": "hot_trend",
+    "news.ycombinator.com": "hot_trend",
+    "github.blog": "hot_trend",
+    "techcrunch.com": "hot_trend",
+    "thenewstack.io": "hot_trend",
+    "infoq.com": "hot_trend",
+    "infoq.cn": "hot_trend",
+    # 技术文章
+    "lobste.rs": "tech_article",
+    "stackoverflow.com": "tech_article",
+    "juejin.cn": "tech_article",
+    "segmentfault.com": "tech_article",
+    "csdn.net": "tech_article",
+    "blog.csdn.net": "tech_article",
+    "zhihu.com": "tech_article",
+    "v2ex.com": "tech_article",
+    "ruanyifeng.com": "tech_article",
+}
+
+_TITLE_PATTERNS: list[tuple] = [
+    # 学术论文（优先匹配，避免 "paper" 出现在其他上下文被误匹配）
+    (re.compile(r'(?:论文|(?:paper|arxiv)\b)'), "paper"),
+    # 开源项目
+    (re.compile(r'(?:开源|open[- ]?source)\s*(?:项目|库|工具|release|发布)'), "open_source"),
+    # AI 相关动态
+    (re.compile(r'(?:\b(?:LLM|GPT|AI\s*agent|RAG|embedding|transformer)\b|大\s*模型|语言模型)'), "hot_trend"),
+    # 版本发布/重大事件
+    (re.compile(r'(?:发布|(?:released?|launch)\b).*?(?:v?\d+\.\d+)'), "hot_trend"),
+    (re.compile(r'(?:新版本|新功能|(?:breaking\s*change)\b|发布\s*v?\d)'), "hot_trend"),
+    # 开发工具
+    (re.compile(r'(?:工具推荐|开发工具|(?:devtool|插件|extension|vscode|编辑器)\b)'), "dev_tool"),
+    # 技术文章（放后面，避免抢先匹配 "教程" 等泛词）
+    (re.compile(r'(?:教程|指南|(?:best\s*practice)\b|入门|进阶|原理分析|源码解析)'), "tech_article"),
+    # 创意发现
+    (re.compile(r'(?:创意|有趣|(?:hackathon)\b)'), "creative"),
+]
+
+
+def _extract_domain(url: str) -> str:
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        domain = parsed.netloc.lower()
+        if domain.startswith("www."):
+            domain = domain[4:]
+        return domain
+    except Exception:
+        return ""
+
+
 def infer_category(url: str, title: str) -> str:
-    lower = (url + " " + title).lower()
-    if "github" in lower or "开源" in lower:
-        return "open_source"
-    if "arxiv" in lower or "论文" in lower or "paper" in lower:
-        return "paper"
-    if "tool" in lower or "工具" in lower:
-        return "dev_tool"
-    if "news" in lower or "新闻" in lower or "动态" in lower:
-        return "hot_trend"
-    if "creative" in lower or "创意" in lower or "有趣" in lower or "hackathon" in lower:
-        return "creative"
+    """基于域名优先 + 标题词边界匹配的分类推断
+
+    域名命中 → 直接返回；否则按标题正则匹配。
+    避免"动态规划"→hot_trend、"toolbar"→dev_tool 等误分类。
+    """
+    # 1. 域名精确匹配
+    domain = _extract_domain(url)
+    if domain in _SOURCE_CATEGORY_MAP:
+        return _SOURCE_CATEGORY_MAP[domain]
+
+    # 2. 标题正则匹配（带词边界）
+    title_lower = (title or "").lower()
+    for pattern, category in _TITLE_PATTERNS:
+        if pattern.search(title_lower):
+            return category
+
     return "tech_article"
 
 

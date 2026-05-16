@@ -919,6 +919,10 @@ VALUES
     ('crawler.ai.read_timeout', '90', '', 'AI API 读取超时(秒)', 'crawler', FALSE, 'text', FALSE, FALSE),
     ('crawler.ai.single_page_max_chars', '80000', '', '单页最大字符数', 'crawler', FALSE, 'text', FALSE, FALSE),
     ('crawler.ai.temperature', '0.3', '', 'LLM 温度参数 (0-2)', 'crawler', FALSE, 'text', FALSE, FALSE),
+    -- 日报专用 AI 参数 (3)
+    ('crawler.ai.digest_per_max_chars', '8000', '8000', '日报每页输入字符上限', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.ai.digest_total_budget', '100000', '100000', '日报总输入字符预算', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.ai.digest_max_tokens', '10000', '10000', '日报AI输出最大Token数', 'crawler', FALSE, 'text', FALSE, FALSE),
     -- 认证配置 (4)
     ('crawler.auth.api_keys', '', '', 'API密钥列表(逗号分隔)', 'crawler', FALSE, 'password', TRUE, TRUE),
     ('crawler.auth.enabled', 'true', 'true', '认证开关', 'crawler', FALSE, 'switch', FALSE, FALSE),
@@ -952,6 +956,8 @@ VALUES
     ('crawler.digest.search_engine', 'bing', 'bing', '日报专用搜索引擎', 'crawler', FALSE, 'text', FALSE, FALSE),
     ('crawler.digest.section_result_multiplier', '2', '2', '日报板块结果倍数', 'crawler', FALSE, 'text', FALSE, FALSE),
     ('crawler.digest.sections', '[{"name":"news","keyword":"tech news 最新技术动态","time_range":"day","max_items":5},{"name":"articles","keyword":"技术文章 教程 tutorial","time_range":"week","max_items":5},{"name":"opensource","keyword":"open source 开源项目 GitHub","time_range":"week","max_items":5}]', '[{"name":"news","keyword":"tech news 最新技术动态","time_range":"day","max_items":5},{"name":"articles","keyword":"技术文章 教程 tutorial","time_range":"week","max_items":5},{"name":"opensource","keyword":"open source 开源项目 GitHub","time_range":"week","max_items":5}]', '日报板块配置(JSON)', 'crawler', FALSE, 'textarea', FALSE, FALSE),
+    ('crawler.digest.parallel_sections', '2', '2', '日报板块并行爬取上限', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.digest.global_timeout', '600', '600', '日报全局超时(秒)', 'crawler', FALSE, 'text', FALSE, FALSE),
     -- Java 侧 HTTP 连接池 (2)
     ('crawler.http.pool.max-per-route', '10', '10', '单路由最大连接数', 'crawler', FALSE, 'text', FALSE, FALSE),
     ('crawler.http.pool.max-total', '20', '20', 'HTTP连接池最大连接数', 'crawler', FALSE, 'text', FALSE, FALSE),
@@ -974,6 +980,7 @@ VALUES
     ('crawler.digest.optimization_enabled', 'false', 'false', '日报优化独立开关', 'crawler', FALSE, 'switch', FALSE, FALSE),
     ('crawler.digest.optimization_min_sections', '2', '2', '触发优化最少板块数', 'crawler', FALSE, 'text', FALSE, FALSE),
     ('crawler.digest.optimization_target_score', '0.65', '0.65', '日报优化目标分', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.digest.optimization_min_results_per_section', '3', '3', '每板块最少结果数触发优化', 'crawler', FALSE, 'text', FALSE, FALSE),
     -- 过滤管线 (7)
     ('crawler.pipeline.ai_organization_enabled', 'true', 'true', 'AI整理开关', 'crawler', FALSE, 'switch', FALSE, FALSE),
     ('crawler.pipeline.content_dedup_deep_threshold', '3', '3', '深度爬取去重汉明距离', 'crawler', FALSE, 'text', FALSE, FALSE),

@@ -36,12 +36,25 @@ def build_digest_pages(pages: list[dict]) -> list[DigestPageContent]:
             url=p.get("url", ""),
             title=p.get("page_title", ""),
             markdown=p.get("raw_markdown", ""),
+            summary=_extract_summary(p.get("raw_markdown", "")),
             category=infer_category(p.get("url", ""), p.get("page_title", "")),
             source_name=extract_source_name(p.get("url", "")),
         )
         for p in pages
         if p.get("crawl_status") == 2 and p.get("raw_markdown")
     ]
+
+
+def _extract_summary(markdown: str, max_chars: int = 200) -> str:
+    """从 markdown 提取前 max_chars 字符作为摘要（截取到段落边界）"""
+    if not markdown:
+        return ""
+    text = markdown.strip()
+    for sep in ["\n\n", "\n# ", "\n---"]:
+        pos = text.find(sep)
+        if 10 < pos <= max_chars:
+            return text[:pos].strip()
+    return text[:max_chars].strip()
 
 
 def serialize_digest_sections(result) -> list[dict]:

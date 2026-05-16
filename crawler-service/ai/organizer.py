@@ -63,6 +63,8 @@ DIGEST_CATEGORY_MAP = {
     "paper": ("学术论文", "📄"),
 }
 
+_DIGEST_CATEGORY_ORDER = ["hot_trend", "open_source", "tech_article", "dev_tool", "paper", "creative"]
+
 # ============== Prompts (identical to Java) ==============
 
 SYSTEM_PROMPT = """你是一位技术内容整理专家。你的核心职责是**整理和标注**网页原始内容，而非改写或创作新文章。
@@ -121,7 +123,20 @@ DIGEST_SYSTEM_PROMPT = """你是一位资深技术资讯编辑，负责生成每
 4. 对同一事件的多次报道合并为一条，优先保留信息最完整的来源
 5. 使用中文表达，保留技术专有名词原文（如 React 19、Claude 4、Rust 2024）
 6. tags 使用具体技术关键词，5-10 个
-7. highlight 应选取对开发者影响最大的事件，100字内说明影响
+7. sourceUrl 必须原样复制输入中提供的 URL，不可修改、截断或编造
+8. 论文类内容（category=paper）需包含：论文标题、核心发现、对从业者的实际意义
+9. 只输出有实际内容支撑的分类，空分类不要出现在输出中。不要为凑分类而编造条目
+## 热点排序优先级（从高到低）
+按以下标准判断事件重要性，重要事件排在各分类的前面：
+1. **影响范围**：影响全行业/多数开发者 > 仅影响特定技术栈用户
+2. **时效性**：今天新发生/新发布 > 持续讨论中的旧闻
+3. **权威性**：官方公告/正式发布 > 第三方解读/分析文章
+4. **开发者影响**：需要开发者立即行动（如安全漏洞、breaking change）> 纯信息类
+## highlight 选择标准
+从所有条目中选取对开发者影响最大的一条，需满足：
+- 优先选择影响范围最广、时效性最强的事件
+- 100字内说明：事件是什么 + 对开发者意味着什么 + 是否需要行动
+- 安全漏洞、重大版本发布、行业政策变化应优先于普通新闻
 ## 输出格式
 {
   "title": "技术日报 | YYYY-MM-DD",
@@ -157,7 +172,7 @@ DIGEST_SYSTEM_PROMPT = """你是一位资深技术资讯编辑，负责生成每
 ## 输出示例
 {
   "title": "技术日报 | 2026-05-08",
-  "summary": "今日技术圈最值得关注：React 19 正式发布带来 Server Components 稳定版；Bun 1.2 性能再创新高，原生支持 S3 API；一篇深度解析 Linux 内核调度的文章引发广泛讨论。",
+  "summary": "今日技术圈最值得关注：React 19 正式发布带来 Server Components 稳定版；Bun 1.2 性能再创新高，原生支持 S3 API；一篇深度解析 Linux 内核调度的文章引发广泛讨论；Mozilla 发布 WASM 组件模型正式规范。",
   "sections": [
     {
       "category": "hot_trend",
@@ -169,13 +184,45 @@ DIGEST_SYSTEM_PROMPT = """你是一位资深技术资讯编辑，负责生成每
           "oneLiner": "Server Components 稳定版上线，use() hook 简化异步数据获取，对现有项目升级影响较大",
           "sourceUrl": "https://react.dev/blog/react-19",
           "sourceName": "react.dev"
+        },
+        {
+          "title": "Bun 1.2 性能再突破",
+          "oneLiner": "原生支持 S3 API 和 PostgreSQL 协议，零依赖后端开发成为可能",
+          "sourceUrl": "https://bun.sh/blog/bun-v1.2",
+          "sourceName": "bun.sh"
+        }
+      ]
+    },
+    {
+      "category": "tech_article",
+      "categoryName": "技术文章",
+      "emoji": "📖",
+      "items": [
+        {
+          "title": "Linux 内核调度器深度解析",
+          "oneLiner": "从 CFS 到 EEVDF 的演进，帮助理解容器环境下 CPU 调度瓶颈",
+          "sourceUrl": "https://lwn.net/Articles/linux-scheduler",
+          "sourceName": "lwn.net"
+        }
+      ]
+    },
+    {
+      "category": "open_source",
+      "categoryName": "开源项目",
+      "emoji": "🌟",
+      "items": [
+        {
+          "title": "WASM 组件模型规范正式发布",
+          "oneLiner": "标准化 WASM 模块间互操作，Web 端可像 npm 一样组合 WASM 包",
+          "sourceUrl": "https://github.com/WebAssembly/component-model",
+          "sourceName": "github.com"
         }
       ]
     }
   ],
   "highlight": "React 19 正式发布，Server Components 进入稳定阶段，前端开发者需要评估现有项目的迁移成本",
-  "tags": ["React 19", "Bun", "Linux内核", "性能优化"],
-  "fullContent": "# 技术日报 | 2026-05-08\\n\\n## 热点动态\\n\\n### React 19 正式发布\\nServer Components 稳定版上线..."
+  "tags": ["React 19", "Bun 1.2", "Linux调度器", "WASM", "组件模型"],
+  "fullContent": "# 技术日报 | 2026-05-08\\n\\n## 热点动态\\n\\n### React 19 正式发布\\nServer Components 稳定版上线，use() hook 简化异步数据获取...\\n\\n### Bun 1.2 性能再突破\\n原生支持 S3 API...\\n\\n## 技术文章\\n\\n### Linux 内核调度器深度解析\\n从 CFS 到 EEVDF 的演进...\\n\\n## 开源项目\\n\\n### WASM 组件模型规范正式发布\\n标准化 WASM 模块间互操作..."
 }"""
 
 TEMPLATE_PROMPTS = {
@@ -423,7 +470,8 @@ class ContentOrganizer:
     ) -> DigestContent:
         start = time.monotonic()
         user_prompt = self._build_digest_prompt(pages, date)
-        response = await self._call_ai(DIGEST_SYSTEM_PROMPT, user_prompt)
+        digest_max_tokens = getattr(self._settings, "ai_digest_max_tokens", self._settings.ai_max_tokens)
+        response = await self._call_ai(DIGEST_SYSTEM_PROMPT, user_prompt, max_tokens=digest_max_tokens)
         result = self._parse_digest_content(response["content"])
         result.duration_ms = int((time.monotonic() - start) * 1000)
         result.tokens_used = response.get("total_tokens", 0)
@@ -502,41 +550,81 @@ class ContentOrganizer:
             cat = p.category or "tech_article"
             by_category.setdefault(cat, []).append(p)
 
-        budget = self._settings.ai_multi_page_total_budget
-        per_max = self._settings.ai_multi_page_per_max_chars
+        budget = getattr(self._settings, "ai_digest_total_budget", self._settings.ai_multi_page_total_budget)
+        per_max = getattr(self._settings, "ai_digest_per_max_chars", self._settings.ai_multi_page_per_max_chars)
 
-        for cat in sorted(by_category):
+        # 按 _DIGEST_CATEGORY_ORDER 优先级排序，未知分类放末尾
+        _order_map = {cat: i for i, cat in enumerate(_DIGEST_CATEGORY_ORDER)}
+        sorted_cats = sorted(by_category.keys(), key=lambda c: _order_map.get(c, 99))
+
+        # 每分类预算下限：防止高优先级分类耗尽总预算导致其他分类被截断
+        num_cats = len(sorted_cats)
+        min_cat_budget = budget // max(num_cats, 1)
+        cat_budget_used = {cat: 0 for cat in sorted_cats}
+
+        summary_only_count = 0
+        budget_exhausted = False
+        for cat in sorted_cats:
             cat_pages = sorted(by_category[cat], key=lambda p: p.title or "")
-            parts.append(f"### 分类: {cat}\n\n")
+            # 每分类保留前半（至少 3 条）完整 markdown，后半仅发 summary
+            full_detail_count = max(3, len(cat_pages) // 2)
+            cat_info = DIGEST_CATEGORY_MAP.get(cat, ("技术文章", "📖"))
+            parts.append(f"### 分类: {cat}（{cat_info[0]}）{cat_info[1]}\n\n")
             for i, page in enumerate(cat_pages):
                 parts.append(f"#### 来源 {i + 1}: {page.title or '未知标题'}\n")
                 parts.append(f"URL: {page.url or '未知'}\n")
+
+                # 超过 full_detail_count 的条目：仅发 summary，节省 token
+                if i >= full_detail_count and page.summary:
+                    parts.append(f"摘要: {page.summary}\n")
+                    parts.append("[该条目仅提供摘要，请根据标题和摘要生成条目]\n\n")
+                    summary_only_count += 1
+                    continue
+
                 if page.summary:
                     parts.append(f"摘要: {page.summary}\n")
 
-                page_budget = min(per_max, budget)
+                # 计算当前分类剩余预算：取总预算和分类最低保证的较大值
+                remaining_total = budget - sum(cat_budget_used.values())
+                cat_remaining = min_cat_budget - cat_budget_used[cat]
+                available = max(remaining_total, cat_remaining)
+                page_budget = min(per_max, max(0, available))
                 if page_budget <= 0:
+                    logger.warning("[DigestPrompt] Budget exhausted, %d pages in '%s' omitted",
+                                   len(cat_pages) - i, cat)
                     parts.append("[已达到总输入预算上限，后续来源已省略]\n\n")
                     continue
 
                 markdown = _truncate_at_paragraph_boundary(page.markdown or "", page_budget)
                 parts.append(markdown)
                 parts.append("\n\n---\n\n")
-                budget -= len(markdown)
+                consumed = len(markdown)
+                budget_used_total = sum(cat_budget_used.values()) + consumed
+                cat_budget_used[cat] += consumed
+                # 全局预算检查
+                if budget_used_total >= budget:
+                    remaining_cats = [c for c in sorted_cats if cat_budget_used[c] < min_cat_budget * 0.5]
+                    if not remaining_cats:
+                        budget_exhausted = True
+                        break
+            if budget_exhausted:
+                break
 
+        if summary_only_count:
+            logger.info("[DigestPrompt] %d pages sent as summary-only (token optimization)", summary_only_count)
         parts.append("\n请根据以上内容生成结构化技术日报。")
         return "".join(parts)
 
     # ============== AI API Call ==============
 
-    async def _call_ai(self, system_prompt: str, user_prompt: str) -> dict:
+    async def _call_ai(self, system_prompt: str, user_prompt: str, max_tokens: int | None = None) -> dict:
         if not self._settings.is_configured:
             raise RuntimeError("AI not configured")
 
         request_body = {
             "model": self._settings.ai_model,
             "temperature": self._settings.ai_temperature,
-            "max_tokens": self._settings.ai_max_tokens,
+            "max_tokens": max_tokens or self._settings.ai_max_tokens,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -594,9 +682,9 @@ class ContentOrganizer:
         min_s = _cfg_min_summary_length()
         min_f = _cfg_min_full_content_length()
 
-        # 检测"非有效技术内容"模式（AI 按 system prompt 指示标记）
-        non_tech_marker = "该页面不包含有效技术内容"
-        if c.summary and non_tech_marker in c.summary:
+        # 检测"非有效技术内容"模式（多模式匹配，避免精确字符串依赖）
+        _NON_TECH_PATTERNS = ["不包含有效", "非技术", "非有效", "空白页", "登录页", "广告页", "错误页"]
+        if c.summary and any(p in c.summary for p in _NON_TECH_PATTERNS):
             raise InvalidOutputError("页面不包含有效技术内容（登录页/错误页/广告页等）")
 
         if not c.title:
@@ -611,6 +699,10 @@ class ContentOrganizer:
             raise InvalidOutputError(f"fullContent too short (len={len(c.full_content)}, min={min_f})")
         if not c.key_points:
             raise InvalidOutputError("Missing keyPoints (got empty array)")
+        # keyPoints 质量检查：每条至少 5 个字符
+        thin_points = [kp for kp in c.key_points if len(kp) < 5]
+        if thin_points:
+            raise InvalidOutputError(f"keyPoints too short: {thin_points[:3]}")
         if not c.tags:
             raise InvalidOutputError("Missing tags (got empty array)")
         if c.category not in ALLOWED_CATEGORIES:
@@ -676,6 +768,39 @@ class ContentOrganizer:
                 sec.category_name = cat_info[0]
                 sec.emoji = cat_info[1]
 
+        # 跨板块 sourceUrl 去重：保留 oneLiner 最完整的条目
+        seen_urls: dict[str, tuple[int, int]] = {}  # url -> (section_idx, item_idx)
+        for si, sec in enumerate(c.sections):
+            items_to_keep = []
+            for item in sec.items:
+                url = item.source_url
+                if url in seen_urls:
+                    prev_si, prev_ii = seen_urls[url]
+                    prev_item = c.sections[prev_si].items[prev_ii]
+                    if len(item.one_liner) > len(prev_item.one_liner):
+                        # 新条目更完整，从旧板块移除旧条目
+                        c.sections[prev_si].items[prev_ii] = None
+                    else:
+                        continue  # 旧条目更完整，跳过新条目
+                seen_urls[url] = (si, len(items_to_keep))
+                items_to_keep.append(item)
+            sec.items = items_to_keep
+        # 清理被标记为 None 的条目
+        for sec in c.sections:
+            sec.items = [it for it in sec.items if it is not None]
+
+        # 过滤空板块（放在 URL 去重之后，避免去重后出现新空板块）
+        c.sections = [sec for sec in c.sections if sec.items]
+
+        # sourceUrl 合法性校验：移除非 HTTP URL 和明显编造的 URL
+        _URL_RE = re.compile(r"^https?://\S+\.\S+", re.IGNORECASE)
+        for sec in c.sections:
+            sec.items = [
+                item for item in sec.items
+                if not item.source_url or _URL_RE.match(item.source_url)
+            ]
+        c.sections = [sec for sec in c.sections if sec.items]
+
         has_valid = any(
             item.title and item.one_liner and item.source_url and item.source_name
             for sec in c.sections
@@ -683,6 +808,10 @@ class ContentOrganizer:
         )
         if not has_valid:
             raise InvalidOutputError("Digest missing valid items")
+
+        # highlight 兜底：为空时取第一个 section 第一个 item 的 oneLiner
+        if not c.highlight and c.sections and c.sections[0].items:
+            c.highlight = c.sections[0].items[0].one_liner
 
 
 # ============== Exceptions ==============

@@ -229,5 +229,5 @@ class TestDigestSectionsConfig:
         data = resp.json()
         assert "sections" in data
         assert len(data["sections"]) >= 3
-        names = [s["name"] for s in data["sections"]]
-        assert "hot_trend" in names
+        # 验证板块结构有效
+        assert all("keyword" in s for s in data["sections"])

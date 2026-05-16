@@ -116,6 +116,17 @@ async def get_digest_by_date(digest_date: str) -> dict | None:
         return _row_to_dict(row) if row else None
 
 
+async def get_digest_existing_non_failed(digest_date: str) -> dict | None:
+    """单次查询检查指定日期是否存在非失败状态的日报任务（防重复竞态）"""
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT id, status FROM crawl_task WHERE task_type = 'digest' AND digest_date = ? AND status != 4 ORDER BY created_at DESC LIMIT 1",
+            (digest_date,)
+        )
+        row = await cursor.fetchone()
+        return _row_to_dict(row) if row else None
+
+
 async def get_latest_completed_digest() -> dict | None:
     """获取最近一条完成的日报任务"""
     async with get_db() as db:
@@ -518,10 +529,14 @@ async def get_optimization_records(task_id: int) -> list[dict]:
 
 
 async def get_history_digest_pages(count: int = 3) -> list[dict]:
-    """单次 JOIN 查询获取最近 N 期已完成日报的所有页面（替代 N+1 查询）"""
+    """单次 JOIN 查询获取最近 N 期已完成日报的所有页面（替代 N+1 查询）
+
+    raw_markdown 截断到 2000 字符：SimHash 2-gram 特征提取需要 ~500-1000 字才能稳定，
+    800 字符不足以区分内容相似但不同的文章，2000 是精度和传输量的平衡点。
+    """
     async with get_db() as db:
         cursor = await db.execute(
-            """SELECT p.url, p.page_title, p.raw_markdown
+            """SELECT p.url, p.page_title, SUBSTR(p.raw_markdown, 1, 2000) AS raw_markdown
                FROM crawl_page p
                INNER JOIN (
                    SELECT id FROM crawl_task
@@ -541,6 +556,7 @@ async def get_effective_strategies(limit: int = 10) -> list[dict]:
                       overall_score, score_delta, created_at
                FROM optimization_record
                WHERE score_delta > 0.05
+                 AND round_num > 1
                ORDER BY score_delta DESC
                LIMIT ?""",
             (limit,),

@@ -42,9 +42,9 @@ class FeedbackLoop:
         self._strategy_gen = strategy_gen
         self._kb = knowledge_base
         self._bubble_breaker = bubble_breaker
-        self._max_rounds = max_rounds or settings.optimization_max_rounds
-        self._target_score = target_score or settings.optimization_target_score
-        self._min_improvement = min_improvement or settings.optimization_min_improvement
+        self._max_rounds = max_rounds if max_rounds is not None else settings.optimization_max_rounds
+        self._target_score = target_score if target_score is not None else settings.optimization_target_score
+        self._min_improvement = min_improvement if min_improvement is not None else settings.optimization_min_improvement
 
     async def execute(
         self,
@@ -94,7 +94,7 @@ class FeedbackLoop:
             strategy=initial_strategy,
             urls_before=0,
             urls_after=len(seen_urls),
-            score_delta=eval_result.overall_score,
+            score_delta=0.0,  # Round 1 是基线，无增量
         ))
 
         logger.info(
@@ -134,7 +134,7 @@ class FeedbackLoop:
                 round_num, strategy.strategy_type, strategy.keyword, strategy.engine,
             )
 
-            # 跨语言策略：翻译关键词后搜索
+            # 跨语言策略：翻译关键词后搜索，翻译失败则跳过本轮
             if strategy.strategy_type == "cross_language" and self._bubble_breaker:
                 translated = await self._bubble_breaker.translate_keyword(strategy.keyword)
                 if translated:
@@ -144,6 +144,12 @@ class FeedbackLoop:
                         reason=strategy.reason, site_scope=None,
                     )
                     logger.info("[Optimization] Cross-language translated: '%s'", translated)
+                else:
+                    logger.info("[Optimization] Cross-language translation failed, skipping round %d", round_num)
+                    continue
+            elif strategy.strategy_type == "cross_language" and not self._bubble_breaker:
+                logger.info("[Optimization] Cross-language requested but BubbleBreaker unavailable, skipping round %d", round_num)
+                continue
 
             try:
                 new_results = await crawl_fn(

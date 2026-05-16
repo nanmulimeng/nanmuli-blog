@@ -109,12 +109,24 @@ class Settings(BaseSettings):
     ai_min_full_content_length: int = 20       # 全文最小长度
     ai_max_key_points: int = 10                # 最大要点数
     ai_max_tags: int = 10                      # 最大标签数
+    # Digest 专用 AI 参数
+    ai_digest_per_max_chars: int = 8000        # 日报每页输入上限（低于普通多页的 20K）
+    ai_digest_total_budget: int = 100_000      # 日报总输入预算（低于普通多页的 150K）
+    ai_digest_max_tokens: int = 16_000         # 日报输出上限（5板块+多个条目需要更多空间）
 
     # 日报配置
     digest_enabled: bool = False
     digest_cron: str = "0 8 * * 1-5"  # 工作日 8:00
-    digest_search_engine: str = "bing"  # 日报专用搜索引擎
-    digest_sections: str = '[{"name":"news","keyword":"tech news","time_range":"day","max_items":5},{"name":"articles","keyword":"technology blog","time_range":"week","max_items":3},{"name":"opensource","keyword":"GitHub trending","time_range":"week","max_items":3}]'
+    digest_search_engine: str = "sogou"  # 日报专用搜索引擎（sogou 对中文技术内容搜索效果好于 bing）
+    digest_sections: str = (
+        '[{"name":"hot_news","keyword":"技术新闻 科技资讯 今日热点","time_range":"day","max_items":5},'
+        '{"name":"ai_llm","keyword":"人工智能 大模型 最新动态 深度学习","time_range":"week","max_items":4},'
+        '{"name":"opensource","keyword":"开源项目 最新发布 热门仓库","time_range":"week","max_items":4},'
+        '{"name":"dev_tools","keyword":"开发工具 IDE 插件 编程工具","time_range":"week","max_items":3},'
+        '{"name":"tech_articles","keyword":"技术博客 教程 最佳实践 深度解析","time_range":"week","max_items":3}]'
+    )
+    digest_parallel_sections: int = 2  # 板块并行爬取上限
+    digest_global_timeout: int = 600  # 板块并行总时限（秒），超时返回已有结果
 
     # 回调配置（任务完成后通知 Java 后端）
     callback_url: str = "http://localhost:8081/api/internal/collector/callback"

@@ -45,20 +45,12 @@ async def generate_scheduled_digest(force: bool = False):
     logger.info("Scheduled digest generation triggered for %s (force=%s)", today, force)
 
     try:
-        # 检查今天是否已有日报任务（防重复）
+        # 原子防重复检查：一条 SQL 检查活跃 + 已完成任务
         if not force:
-            # 有活跃任务 → 跳过
-            active = await repo.get_digest_today_pending_or_running()
-            if active:
-                r = active[0]
-                logger.info("Digest for %s already running (task_id=%d, status=%d), skipping.",
-                            today, r["id"], r["status"])
-                return
-            # 有已完成任务 → 跳过
-            completed = await repo.get_digest_by_date(today)
-            if completed and completed.get("status") == TaskStatus.COMPLETED:
-                logger.info("Digest for %s already completed (task_id=%d), skipping.",
-                            today, completed["id"])
+            existing = await repo.get_digest_existing_non_failed(today)
+            if existing:
+                logger.info("Digest for %s already exists (task_id=%d, status=%d), skipping.",
+                            today, existing["id"], existing["status"])
                 return
 
         task_id = await repo.create_task(
