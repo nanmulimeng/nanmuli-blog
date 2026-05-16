@@ -86,6 +86,13 @@ request.interceptors.response.use(
         window.location.href = '/login'
       }
 
+      console.warn('[API Business Error]', {
+        url: response.config?.url,
+        method: response.config?.method?.toUpperCase(),
+        code: data.code,
+        message: data.message,
+      })
+
       return Promise.reject(new Error(data.message))
     }
 
@@ -123,6 +130,14 @@ request.interceptors.response.use(
     // 重试次数耗尽或不需要重试，显示错误
     const message = error.response?.data?.message || error.message || '网络错误'
     ElMessage.error(message)
+
+    console.error('[API Error]', {
+      url: error.config?.url,
+      method: error.config?.method?.toUpperCase(),
+      status: error.response?.status,
+      message,
+      retries: error.config?.__retryCount ?? 0,
+    })
     return Promise.reject(error)
   }
 )

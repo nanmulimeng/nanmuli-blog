@@ -51,6 +51,6 @@ export function setupRouterGuards(router: Router): void {
 
   // 错误处理
   router.onError((error) => {
-    console.error('路由错误:', error)
+    console.error('[Router Error]', { error: String(error) })
   })
 }

@@ -3,6 +3,8 @@
 import logging
 from dataclasses import dataclass
 
+from crawler.utils import detect_cjk
+
 logger = logging.getLogger(__name__)
 
 # 搜索引擎优先级（与 crawler/search.py 一致）
@@ -134,7 +136,12 @@ class StrategyGenerator:
                 reason=f"来源多样性仅 {score:.0%}，切换到 {available[0]} 引入新来源",
             )
 
-        site_targets = ["github.com", "medium.com", "dev.to", "stackoverflow.com"]
+        is_cn = detect_cjk(keyword)
+        site_targets = (
+            ["github.com", "juejin.cn", "zhihu.com", "segmentfault.com", "infoq.cn"]
+            if is_cn else
+            ["github.com", "medium.com", "dev.to", "stackoverflow.com", "news.ycombinator.com"]
+        )
         used_sites = {h.site_scope for h in history if h.site_scope}
         for site in site_targets:
             scope = f"site:{site}"
@@ -173,7 +180,12 @@ class StrategyGenerator:
         history: list[SearchStrategy],
         kb_hint: dict | None = None,
     ) -> SearchStrategy | None:
-        depth_modifiers = ["原理 源码分析", "architecture deep dive", "内部实现", "tutorial 实战"]
+        is_cn = detect_cjk(keyword)
+        depth_modifiers = (
+            ["原理 源码分析", "内部实现 实战", "深入理解 底层原理", "源码解读 实现细节"]
+            if is_cn else
+            ["architecture deep dive", "internals implementation", "how it works under the hood", "in-depth tutorial"]
+        )
         used_keywords = {h.keyword for h in history}
         for mod in depth_modifiers:
             candidate = f"{keyword} {mod}"
@@ -193,12 +205,21 @@ class StrategyGenerator:
         history: list[SearchStrategy],
         kb_hint: dict | None = None,
     ) -> SearchStrategy | None:
-        angle_variants = [
-            f"{keyword} vs 对比",
-            f"{keyword} best practices",
-            f"{keyword} 性能优化",
-            f"{keyword} 常见问题",
-        ]
+        is_cn = detect_cjk(keyword)
+        if is_cn:
+            angle_variants = [
+                f"{keyword} 对比 评测",
+                f"{keyword} 最佳实践",
+                f"{keyword} 性能优化",
+                f"{keyword} 常见问题 解决方案",
+            ]
+        else:
+            angle_variants = [
+                f"{keyword} comparison vs alternatives",
+                f"{keyword} best practices",
+                f"{keyword} performance optimization",
+                f"{keyword} common issues troubleshooting",
+            ]
         used_keywords = {h.keyword for h in history}
         for variant in angle_variants:
             if variant not in used_keywords:
@@ -217,11 +238,19 @@ class StrategyGenerator:
         history: list[SearchStrategy],
         kb_hint: dict | None = None,
     ) -> SearchStrategy | None:
-        perspective_modifiers = [
-            f"{keyword} 缺点 限制",
-            f"{keyword} vs alternative",
-            f"{keyword} 问题 风险",
-        ]
+        is_cn = detect_cjk(keyword)
+        if is_cn:
+            perspective_modifiers = [
+                f"{keyword} 缺点 限制",
+                f"{keyword} 问题 风险",
+                f"{keyword} 踩坑 避坑",
+            ]
+        else:
+            perspective_modifiers = [
+                f"{keyword} downsides limitations",
+                f"{keyword} problems risks",
+                f"{keyword} pitfalls lessons learned",
+            ]
         used_keywords = {h.keyword for h in history}
         for mod in perspective_modifiers:
             if mod not in used_keywords:

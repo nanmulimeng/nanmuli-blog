@@ -65,6 +65,7 @@ async def generate_scheduled_digest(force: bool = False):
             task_type="digest",
             ai_template="daily_digest",
             keyword=today,
+            digest_date=today,
         )
         await executor.submit(task_id)
         logger.info("Scheduled digest task created: task_id=%d, date=%s", task_id, today)

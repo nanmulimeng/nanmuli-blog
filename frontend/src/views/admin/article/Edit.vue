@@ -63,7 +63,7 @@ async function fetchCategories() {
     const res = await getLeafCategoryList()
     categories.value = res
   } catch (error) {
-    console.error('加载分类失败:', error)
+    console.error('[Category Load]', { error: (error as Error).message })
     ElMessage.error('加载分类失败')
   }
 }

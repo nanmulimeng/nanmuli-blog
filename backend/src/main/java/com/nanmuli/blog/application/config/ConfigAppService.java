@@ -81,10 +81,25 @@ public class ConfigAppService {
         if (config == null) {
             config = new Config();
             config.setConfigKey(key);
-            config.setDescription(description != null ? description : "");
-            config.setGroupName(groupName != null ? groupName : "other");
-            config.setInputType(inputType != null ? inputType : "text");
-            config.setIsPublic(isPublic != null ? isPublic : false);
+        }
+        // 更新 metadata（创建和更新都执行）
+        if (description != null && !description.isEmpty()) {
+            config.setDescription(description);
+        }
+        if (groupName != null && !groupName.isEmpty()) {
+            config.setGroupName(groupName);
+        } else if (config.getGroupName() == null) {
+            config.setGroupName("other");
+        }
+        if (inputType != null && !inputType.isEmpty()) {
+            config.setInputType(inputType);
+        } else if (config.getInputType() == null) {
+            config.setInputType("text");
+        }
+        if (isPublic != null) {
+            config.setIsPublic(isPublic);
+        } else if (config.getIsPublic() == null) {
+            config.setIsPublic(false);
         }
         if (MASK_SENTINEL.equals(value) && isSensitive(config)) {
             throw new BusinessException("不能使用脱敏值覆盖敏感配置");

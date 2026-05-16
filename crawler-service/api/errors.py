@@ -1,11 +1,14 @@
 """全局异常处理器（分级处理）+ 结构化错误码 + RequestID"""
 
 import logging
+import time
 import uuid
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from config import settings
+
+from api.context import request_id_var
 
 logger = logging.getLogger(__name__)
 
@@ -66,13 +69,34 @@ def _get_request_id(request: Request) -> str:
 async def request_id_middleware(request: Request, call_next):
     request_id = request.headers.get("X-Request-ID", uuid.uuid4().hex[:12])
     request.state.request_id = request_id
+    token = request_id_var.set(request_id)
+    try:
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        return response
+    finally:
+        request_id_var.reset(token)
+
+
+# ============== Access Log Middleware ==============
+
+async def access_log_middleware(request: Request, call_next):
+    start = time.monotonic()
     response = await call_next(request)
-    response.headers["X-Request-ID"] = request_id
+    duration_ms = int((time.monotonic() - start) * 1000)
+
+    if request.url.path != "/health":
+        level = logging.WARNING if response.status_code >= 500 else logging.DEBUG
+        logger.log(level, "[AccessLog] method=%s path=%s status=%d duration=%dms",
+                   request.method, request.url.path, response.status_code, duration_ms)
+
     return response
 
 
-def register_request_id_middleware(app: FastAPI):
+def register_middlewares(app: FastAPI):
+    """注册所有中间件（Request-ID + Access Log）"""
     app.middleware("http")(request_id_middleware)
+    app.middleware("http")(access_log_middleware)
 
 
 # ============== 异常处理器 ==============

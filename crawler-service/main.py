@@ -32,15 +32,19 @@ if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     os.environ.setdefault("TERM", "xterm-256color")
 
+# 防止系统 HTTP_PROXY 代理劫持 localhost 连接
+# httpx/Crawl4AI 会读取 *_PROXY 环境变量，导致 127.0.0.1 请求走代理超时
+if not os.environ.get("NO_PROXY") and not os.environ.get("no_proxy"):
+    os.environ.setdefault("NO_PROXY", "localhost,127.0.0.1,.local")
+
 from config import settings
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
 
-logging.basicConfig(
-    level=getattr(logging, settings.log_level.upper(), logging.INFO),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+from logging_config import setup_logging
+
+setup_logging(log_level=settings.log_level, standalone=settings.standalone)
 logger = logging.getLogger(__name__)
 
 
@@ -104,7 +108,7 @@ def create_app() -> "FastAPI":
     from fastapi import FastAPI
     from api.crawl import router as crawl_router
     from api.health import router as health_router
-    from api.errors import register_error_handlers, register_request_id_middleware
+    from api.errors import register_error_handlers, register_middlewares
 
     app = FastAPI(
         title="Web Collector Crawler Service",
@@ -113,8 +117,8 @@ def create_app() -> "FastAPI":
         lifespan=lifespan,
     )
 
-    # 始终注册：RequestID + 爬取 API + 健康检查 + 错误处理
-    register_request_id_middleware(app)
+    # 始终注册：RequestID + AccessLog + 爬取 API + 健康检查 + 错误处理
+    register_middlewares(app)
     app.include_router(crawl_router)
     app.include_router(health_router)
     register_error_handlers(app)

@@ -164,7 +164,8 @@ def _is_relevant_to_keyword(keyword: str, title: str, snippet: str) -> bool:
     # 完整匹配检测：
     # - 纯 ASCII 关键词用 \b 单词边界，避免 "go" 误匹配 "good"/"algorithm"
     # - 含中文的关键词直接子串匹配（中文无单词边界，但字符自分隔）
-    has_cjk = any('一' <= c <= '鿿' for c in keyword_lower)
+    from crawler.utils import detect_cjk
+    has_cjk = detect_cjk(keyword_lower)
     if has_cjk:
         if keyword_lower in combined:
             return True
@@ -455,7 +456,8 @@ async def _get_search_results(keyword: str, engine: str, max_results: int, time_
         raise ValueError(f"Unsupported search engine: {engine}. Supported: {list(SEARCH_ENGINES.keys())}")
 
     config = SEARCH_ENGINES[engine]
-    is_cjk = any('一' <= c <= '鿿' for c in keyword)
+    from crawler.utils import detect_cjk
+    is_cjk = detect_cjk(keyword)
     headers = _build_headers(is_cjk=is_cjk)
     if engine == "sogou":
         headers["Referer"] = "https://www.sogou.com/"
@@ -483,11 +485,13 @@ async def _get_search_results(keyword: str, engine: str, max_results: int, time_
     shared_client = None
     google_crawler = None
 
+    # Google 需要 AsyncWebCrawler（无头浏览器），其他引擎用 httpx
+    google_crawler_cm = None
     try:
         if is_google:
             browser_config = await get_browser_config(text_mode=True, light_mode=True, proxy=settings.proxy_url)
-            google_crawler = AsyncWebCrawler(config=browser_config)
-            await google_crawler.__aenter__()
+            google_crawler_cm = AsyncWebCrawler(config=browser_config)
+            google_crawler = await google_crawler_cm.__aenter__()
         else:
             shared_client = httpx.AsyncClient(**client_kwargs)
         while len(urls) < max_results and page < settings.search_max_pages_per_engine:
@@ -619,8 +623,8 @@ async def _get_search_results(keyword: str, engine: str, max_results: int, time_
         if shared_client is not None:
             if hasattr(shared_client, "aclose"):
                 await shared_client.aclose()
-        if is_google and google_crawler is not None:
-            await google_crawler.__aexit__(None, None, None)
+        if google_crawler_cm is not None:
+            await google_crawler_cm.__aexit__(None, None, None)
 
     logger.info("[Search] Filtered %s URLs from %s raw results (pages=%s) for keyword='%s'", len(urls), total_raw, page, keyword)
     return urls
@@ -769,8 +773,8 @@ async def crawl_by_keyword(
             elapsed, deadline
         )
         # 超时时返回已收集但未爬取的 URL 的错误结果
-        for url in all_search_urls:
-            rank = list(url_source_map.keys()).index(url) + 1 if url in url_source_map else 0
+        for rank_0, url in enumerate(all_search_urls):
+            rank = rank_0 + 1
             results.append(CrawlResult(
                 success=False,
                 url=url,

@@ -339,10 +339,8 @@ async def list_digests(
     page: int = Query(1, ge=1),
     size: int = Query(10, ge=1, le=50),
 ):
-    """日报列表（按日期倒序）"""
-    records, total = await repo.list_tasks(
-        task_type="digest", page=page, size=size
-    )
+    """日报列表（按日期倒序，仅返回有 AI 内容的记录）"""
+    records, total = await repo.list_digests_with_ai(page=page, size=size)
     digests = []
     for r in records:
         r = _enrich_task(r)

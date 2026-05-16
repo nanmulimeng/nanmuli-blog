@@ -76,7 +76,13 @@ class TestListDigests:
         repo = patched_repo
 
         await repo.create_task(task_type="single", source_url="https://example.com")
-        await repo.create_task(task_type="digest", keyword="2026-05-08", ai_template="daily_digest")
+        digest_id = await repo.create_task(task_type="digest", keyword="2026-05-08", ai_template="daily_digest")
+        # list_digests only returns tasks with ai_title set
+        await repo.save_ai_results(
+            digest_id, ai_title="Test Digest", ai_summary="s", ai_key_points=[],
+            ai_tags=[], ai_category="tech_article", ai_full_content="c",
+            ai_duration=1, ai_tokens_used=0,
+        )
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             resp = await ac.get("/digests")
@@ -224,4 +230,4 @@ class TestDigestSectionsConfig:
         assert "sections" in data
         assert len(data["sections"]) >= 3
         names = [s["name"] for s in data["sections"]]
-        assert "news" in names
+        assert "hot_trend" in names

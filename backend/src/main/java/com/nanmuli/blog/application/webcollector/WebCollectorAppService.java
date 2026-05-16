@@ -121,7 +121,9 @@ public class WebCollectorAppService {
 
     public CollectTaskDTO getTask(Long taskId, Long userId) {
         WebCollectTask task = loadTaskForUser(taskId, userId);
-        syncFromPythonIfNeeded(task);
+        if (syncFromPythonIfNeeded(task)) {
+            task = loadTaskForUser(taskId, userId);
+        }
         return convertToDTO(task);
     }
 
@@ -265,7 +267,9 @@ public class WebCollectorAppService {
         }
 
         // 转换前先同步最新 AI 结果
-        syncFromPythonIfNeeded(task);
+        if (syncFromPythonIfNeeded(task)) {
+            task = loadTaskForUser(taskId, userId);
+        };
 
         if (task.getArticleId() != null) {
             throw new BusinessException("该任务已转为文章，articleId=" + task.getArticleId());
@@ -306,7 +310,9 @@ public class WebCollectorAppService {
             throw new BusinessException("任务尚未完成，无法转换");
         }
 
-        syncFromPythonIfNeeded(task);
+        if (syncFromPythonIfNeeded(task)) {
+            task = loadTaskForUser(taskId, userId);
+        }
 
         if (task.getDailyLogId() != null) {
             throw new BusinessException("该任务已转为日志，dailyLogId=" + task.getDailyLogId());
@@ -340,7 +346,7 @@ public class WebCollectorAppService {
     /**
      * afterCommit 中调用的 DB 操作，独立事务保证原子性
      */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = false)
     public void updatePythonTaskId(Long taskId, int pythonTaskId) {
         taskRepository.findById(taskId).ifPresent(t -> {
             t.setPythonTaskId(pythonTaskId);
@@ -348,7 +354,7 @@ public class WebCollectorAppService {
         });
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = false)
     public void markTaskFailed(Long taskId, String errorMessage) {
         taskRepository.findById(taskId).ifPresent(t -> {
             t.markFailed(errorMessage);
@@ -359,10 +365,12 @@ public class WebCollectorAppService {
     /**
      * 从 Python 同步任务状态和 AI 结果到 MySQL（仅在任务非终态时）
      */
-    private void syncFromPythonIfNeeded(WebCollectTask task) {
+    private boolean syncFromPythonIfNeeded(WebCollectTask task) {
         if (task.getPythonTaskId() != null && !isTerminal(task.getStatus())) {
             syncFromPythonSilent(task);
+            return true;
         }
+        return false;
     }
 
     private void syncFromPythonSilent(WebCollectTask task) {
@@ -379,7 +387,7 @@ public class WebCollectorAppService {
         }
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = false)
     public void syncPythonTaskToDb(Long taskId, Map<String, Object> pythonTask) {
         taskRepository.findById(taskId).ifPresent(t -> {
             updateTaskFromPython(t, pythonTask);

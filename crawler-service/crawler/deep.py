@@ -24,9 +24,6 @@ logger = logging.getLogger(__name__)
 
 _MULTI_PART_TLD = {
     'co', 'com', 'org', 'net', 'edu', 'gov', 'ac',
-    'co.jp', 'co.kr', 'co.in', 'co.nz', 'co.za',
-    'com.br', 'com.mx', 'com.au', 'com.sg', 'com.hk', 'com.tw',
-    'org.uk', 'net.cn', 'ac.uk', 'edu.cn',
 }
 
 
@@ -100,6 +97,8 @@ async def crawl_deep_pages(
             results_raw = await crawler.arun(url=url, config=run_config)
 
         # Crawl4AI 0.8.x: arun 返回 list（非 AsyncGenerator）
+        if not isinstance(results_raw, list):
+            results_raw = [results_raw]
         page_count = 0
         for result in results_raw:
             # 上层 URL 去重保护（防御 BFSDeepCrawlStrategy 去重失效）

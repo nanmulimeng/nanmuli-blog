@@ -31,7 +31,8 @@ async def create_task(
     task_type: str, source_url: str = None, keyword: str = None,
     search_engine: str = "bing", max_depth: int = 1,
     max_pages: int = 10, config_json: str = None,
-    ai_template: str = "tech_summary", time_range: str = "week"
+    ai_template: str = "tech_summary", time_range: str = "week",
+    digest_date: str = None,
 ) -> int:
     """创建任务，返回 task_id"""
     async with get_db() as db:
@@ -39,10 +40,10 @@ async def create_task(
         cursor = await db.execute(
             """INSERT INTO crawl_task
                (task_type, source_url, keyword, search_engine, max_depth, max_pages,
-                crawl_config, ai_template, time_range)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                crawl_config, ai_template, time_range, digest_date)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (task_type, source_url, keyword, search_engine, max_depth, max_pages,
-             config_json, ai_template, time_range)
+             config_json, ai_template, time_range, digest_date)
         )
         await db.commit()
         return cursor.lastrowid
@@ -84,6 +85,26 @@ async def list_tasks(status: int = None, task_type: str = None,
         return [_row_to_dict(r) for r in rows], total
 
 
+async def list_digests_with_ai(page: int = 1, size: int = 10) -> tuple[list[dict], int]:
+    """分页查询有 AI 内容的日报任务（SQL 层面过滤 + 分页）"""
+    async with get_db() as db:
+        where_sql = "WHERE task_type = 'digest' AND ai_title IS NOT NULL AND ai_title != ''"
+
+        count_cursor = await db.execute(
+            "SELECT COUNT(*) FROM crawl_task " + where_sql
+        )
+        total = (await count_cursor.fetchone())[0]
+
+        offset = max(0, (page - 1) * size)
+        cursor = await db.execute(
+            "SELECT * FROM crawl_task " + where_sql
+            + " ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            [size, offset]
+        )
+        rows = await cursor.fetchall()
+        return [_row_to_dict(r) for r in rows], total
+
+
 async def get_digest_by_date(digest_date: str) -> dict | None:
     """按日期精确查询日报任务"""
     async with get_db() as db:
@@ -99,7 +120,7 @@ async def get_latest_completed_digest() -> dict | None:
     """获取最近一条完成的日报任务"""
     async with get_db() as db:
         cursor = await db.execute(
-            "SELECT * FROM crawl_task WHERE task_type = 'digest' AND status = 3 ORDER BY created_at DESC LIMIT 1"
+            "SELECT * FROM crawl_task WHERE task_type = 'digest' AND status = 3 AND ai_title IS NOT NULL ORDER BY created_at DESC LIMIT 1"
         )
         row = await cursor.fetchone()
         return _row_to_dict(row) if row else None
@@ -494,6 +515,23 @@ async def get_optimization_records(task_id: int) -> list[dict]:
                     pass
         results.append(d)
     return results
+
+
+async def get_history_digest_pages(count: int = 3) -> list[dict]:
+    """单次 JOIN 查询获取最近 N 期已完成日报的所有页面（替代 N+1 查询）"""
+    async with get_db() as db:
+        cursor = await db.execute(
+            """SELECT p.url, p.page_title, p.raw_markdown
+               FROM crawl_page p
+               INNER JOIN (
+                   SELECT id FROM crawl_task
+                   WHERE task_type = 'digest' AND status = 3
+                   ORDER BY created_at DESC LIMIT ?
+               ) t ON p.task_id = t.id
+               ORDER BY t.created_at DESC, p.sort_order""",
+            (count,),
+        )
+        return [_row_to_dict(r) for r in await cursor.fetchall()]
 
 
 async def get_effective_strategies(limit: int = 10) -> list[dict]:

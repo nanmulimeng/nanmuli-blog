@@ -154,12 +154,11 @@ class TaskExecutor:
                 await repo.fail_task(task_id, f"Unknown task type: {task['task_type']}")
                 return
 
-            # 质量过滤（日报跳过：来源已由搜索结果保证质量）
-            if task["task_type"] != "digest":
-                from crawler.dedup import DedupEngine
-                sim_threshold = settings.content_dedup_deep_threshold if task["task_type"] == "deep" else settings.content_dedup_simhash_threshold
-                dedup_engine = DedupEngine(simhash_threshold=sim_threshold) if settings.content_dedup_enabled else None
-                results = self._filter_low_quality(results, task["task_type"], dedup_engine=dedup_engine)
+            # 质量过滤（所有任务类型，日报使用宽松阈值）
+            from crawler.dedup import DedupEngine
+            sim_threshold = settings.content_dedup_deep_threshold if task["task_type"] == "deep" else settings.content_dedup_simhash_threshold
+            dedup_engine = DedupEngine(simhash_threshold=sim_threshold) if settings.content_dedup_enabled else None
+            results = self._filter_low_quality(results, task["task_type"], dedup_engine=dedup_engine)
 
             # 保存爬取结果
             total_words = await repo.save_pages(task_id, results)
@@ -438,6 +437,7 @@ class TaskExecutor:
         from crawler.quality import evaluate_content
 
         is_deep = (task_type == "deep")
+        is_digest = (task_type == "digest")
         deep_min_score = settings.deep_eval_review_threshold
 
         # 过滤统计
@@ -455,7 +455,12 @@ class TaskExecutor:
             markdown = getattr(r, "markdown", "") or ""
 
             # [1] 内容太短直接标记失败
-            min_content = settings.min_content_length if not is_deep else settings.filter_deep_min_content
+            if is_deep:
+                min_content = settings.filter_deep_min_content
+            elif is_digest:
+                min_content = settings.digest_filter_min_content
+            else:
+                min_content = settings.min_content_length
             if len(markdown) < min_content:
                 r.success = False
                 r.error_message = f"Content too short ({len(markdown)} chars)"
@@ -497,7 +502,7 @@ class TaskExecutor:
             final_score = evaluation["final_score"]
 
             should_reject = False
-            if is_deep:
+            if is_deep or is_digest:
                 source_level = evaluation["source"]["level"]
                 if source_level == "spam" and final_score < deep_min_score:
                     should_reject = True

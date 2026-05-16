@@ -20,8 +20,10 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -36,6 +38,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/admin/collector")
 @RequiredArgsConstructor
+@Validated
 public class WebCollectorController {
 
     private final WebCollectorAppService collectorAppService;
@@ -252,7 +255,8 @@ public class WebCollectorController {
      */
     @Operation(summary = "按日期查询日报")
     @GetMapping("/digest/{date}")
-    public Result<Object> getDigestByDate(@PathVariable String date) {
+    public Result<Object> getDigestByDate(
+            @PathVariable @Pattern(regexp = "^\\d{4}-\\d{2}-\\d{2}$", message = "日期格式不正确") String date) {
         try {
             return Result.success(crawlerTaskClient.proxyGet("/api/v1/digests/" + date));
         } catch (Exception e) {

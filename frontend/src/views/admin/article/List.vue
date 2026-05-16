@@ -64,7 +64,7 @@ async function handleDelete(row: Article): Promise<void> {
       return
     }
     // API 错误已由 request.ts 拦截器处理，这里不需要额外提示
-    console.error('删除文章失败:', error)
+    console.error('[Article Delete]', { id: row.id, error: String(error) })
   }
 }
 

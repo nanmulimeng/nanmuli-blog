@@ -76,8 +76,11 @@ async def execute_digest_crawl(task: dict, config, task_executor) -> list:
             except Exception as e:
                 logger.warning("Digest section '%s' failed: %s", section["name"], e)
 
-        # 日报自动优化（可选）
-        if settings.optimization_enabled and settings.optimization_mode in ("digest", "both"):
+        # 日报自动优化（可选，需显式启用）
+        if (settings.optimization_enabled
+                and settings.optimization_mode in ("digest", "both")
+                and settings.digest_optimization_enabled
+                and len(all_results) >= settings.digest_optimization_min_sections * settings.digest_optimization_min_results_per_section):
             try:
                 all_results = await run_digest_optimization(
                     task=task, all_results=all_results, seen_urls=seen_urls,
@@ -92,29 +95,19 @@ async def execute_digest_crawl(task: dict, config, task_executor) -> list:
 async def build_digest_history_engine():
     """从最近几次成功日报中加载 URL/标题/内容指纹，用于跨日去重"""
     from crawler.dedup import DedupEngine
-    from standalone.task_executor import repo
-    from standalone.models import TaskStatus
+    from standalone import repository as repo
 
     engine = DedupEngine()
     try:
-        records, _ = await repo.list_tasks(task_type="digest", page=1, size=5)
-        loaded = 0
-        for r in records:
-            if r.get("status") != TaskStatus.COMPLETED:
-                continue
-            pages = await repo.get_pages_by_task(r["id"])
-            for p in pages:
-                url = p.get("url", "")
-                title = p.get("page_title", "")
-                content = p.get("raw_markdown", "")
-                if url:
-                    engine.add_reference(url, title=title, content=content)
-            logger.info("Loaded %d history URLs from digest task %d", len(pages), r["id"])
-            loaded += 1
-            if loaded >= settings.digest_history_load_count:
-                break
-        if loaded:
-            logger.info("Digest history engine: %d reference records loaded", loaded)
+        pages = await repo.get_history_digest_pages(count=settings.digest_history_load_count)
+        for p in pages:
+            url = p.get("url", "")
+            title = p.get("page_title", "")
+            content = p.get("raw_markdown", "")
+            if url:
+                engine.add_reference(url, title=title, content=content)
+        if pages:
+            logger.info("Digest history engine: %d reference pages loaded", len(pages))
     except Exception as e:
         logger.warning("Failed to load digest history for dedup: %s", e)
     return engine
@@ -137,7 +130,10 @@ async def run_digest_optimization(
     strategy_gen = StrategyGenerator()
     kb = KnowledgeBase()
     breaker = BubbleBreaker(organizer if organizer.is_available else None)
-    loop = FeedbackLoop(evaluator, strategy_gen, kb, bubble_breaker=breaker)
+    loop = FeedbackLoop(
+        evaluator, strategy_gen, kb, bubble_breaker=breaker,
+        target_score=settings.digest_optimization_target_score,
+    )
 
     final_results, rounds = await loop.execute(
         keyword=task.get("keyword", "digest"),

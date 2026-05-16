@@ -10,7 +10,6 @@ import {
   getSubscriptionUrl,
   updateSubscriptionUrl,
   refreshSubscription,
-  updateConfig,
 } from '@/api/config'
 import type { ProxyStatus, ProxyGroup, NodeDelay } from '@/types/config'
 
@@ -98,7 +97,7 @@ async function handleRefreshSubscription(): Promise<void> {
   }
 }
 
-function getDelayColor(delay: number | undefined): string {
+function getDelayColor(delay: number | undefined): 'info' | 'success' | 'warning' | 'danger' {
   if (delay === undefined || delay === 0) return 'info'
   if (delay < 100) return 'success'
   if (delay < 300) return 'warning'

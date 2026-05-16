@@ -84,13 +84,3 @@ crawler:
       max-total: 20
       max-per-route: 10
 
-logging:
-  level:
-    root: warn
-    com.nanmuli.blog: info
-  pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] [%X{traceId}] %-5level %logger{36} - %msg%n"
-  file:
-    name: /opt/nanmuli-blog/logs/blog.log
-    max-size: 100MB
-    max-history: 30

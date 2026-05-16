@@ -31,12 +31,19 @@ public class InternalCallbackController {
     private final AesEncryptor aesEncryptor;
     private final ConfigService configService;
 
+    private volatile boolean apiKeyBlankWarned = false;
+
     /** 认证失败时返回 true，成功时返回 false */
     private boolean authRequired(String callbackKey) {
         String expectedKey = configService.get("crawler.callback.api-key", "");
         if (expectedKey.isBlank()) {
+            if (!apiKeyBlankWarned) {
+                log.warn("[Auth] crawler.callback.api-key is blank — callback endpoints are unauthenticated");
+                apiKeyBlankWarned = true;
+            }
             return false;
         }
+        apiKeyBlankWarned = false;
         return !expectedKey.equals(callbackKey);
     }
 

@@ -64,6 +64,7 @@ const SUB_LABELS: Record<string, string> = {
   'bubble': '茧房突破', 'callback': '回调', 'db': '数据库',
   'keyword': '关键词', 'limit': '爬取限制', 'proxy': '代理',
   'service': '服务连接', 'http.pool': 'HTTP 连接池',
+  'pipeline': '过滤管线',
   '': '基础',
 }
 

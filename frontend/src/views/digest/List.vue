@@ -31,6 +31,7 @@ function handlePageChange(page: number): void {
 }
 
 function handleView(row: DigestListItem): void {
+  if (row.status !== 3) return
   if (row.digest_date) {
     router.push(`/digest/${row.digest_date}`)
   }
@@ -56,7 +57,8 @@ onMounted(fetchData)
         <div
           v-for="item in digests"
           :key="item.id"
-          class="group cursor-pointer rounded-xl border border-border bg-surface-secondary p-5 shadow-sm transition-all hover:border-primary/30 hover:shadow-md"
+          class="group rounded-xl border border-border bg-surface-secondary p-5 shadow-sm transition-all"
+          :class="item.status === 3 ? 'cursor-pointer hover:border-primary/30 hover:shadow-md' : 'opacity-60'"
           @click="handleView(item)"
         >
           <div class="flex items-start justify-between gap-4">
@@ -64,6 +66,8 @@ onMounted(fetchData)
               <div class="flex items-center gap-3">
                 <span class="text-sm font-medium text-primary">{{ formatDate(item.digest_date) }}</span>
                 <el-tag v-if="item.status === 3" type="success" size="small">已完成</el-tag>
+                <el-tag v-else-if="item.status === 4" type="danger" size="small">失败</el-tag>
+                <el-tag v-else type="info" size="small">生成中</el-tag>
               </div>
               <h3 v-if="item.ai_title" class="mt-2 text-lg font-semibold text-content-primary group-hover:text-primary transition-colors">
                 {{ item.ai_title }}

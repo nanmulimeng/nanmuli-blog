@@ -933,7 +933,7 @@ VALUES
     ('crawler.callback.api-key', '', '', '回调认证密钥（Java/Python共享）', 'crawler', FALSE, 'password', TRUE, TRUE),
     ('crawler.callback.sources_timeout', '5.0', '5.0', '订阅源API超时(秒)', 'crawler', FALSE, 'text', FALSE, FALSE),
     ('crawler.callback.timeout', '5.0', '5.0', '回调超时(秒)', 'crawler', FALSE, 'text', FALSE, FALSE),
-    ('crawler.callback.url', '', '', '任务完成回调URL', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.callback.url', 'http://localhost:8081/api/internal/collector/callback', 'http://localhost:8081/api/internal/collector/callback', '任务完成回调URL', 'crawler', FALSE, 'text', FALSE, FALSE),
     -- SQLite 数据库 (3)
     ('crawler.db.busy_timeout', '5000', '5000', 'SQLite忙等待超时(ms)', 'crawler', FALSE, 'text', FALSE, FALSE),
     ('crawler.db.max_concurrent_tasks', '3', '3', '最大并发任务数', 'crawler', FALSE, 'text', FALSE, FALSE),
@@ -951,7 +951,7 @@ VALUES
     ('crawler.digest.inter_section_delay', '2.0', '2.0', '日报板块间延迟(秒)', 'crawler', FALSE, 'text', FALSE, FALSE),
     ('crawler.digest.search_engine', 'bing', 'bing', '日报专用搜索引擎', 'crawler', FALSE, 'text', FALSE, FALSE),
     ('crawler.digest.section_result_multiplier', '2', '2', '日报板块结果倍数', 'crawler', FALSE, 'text', FALSE, FALSE),
-    ('crawler.digest.sections', '[{"name":"news","keyword":"tech news","time_range":"day","max_items":5}]', '[{"name":"news","keyword":"tech news","time_range":"day","max_items":5}]', '日报板块配置(JSON)', 'crawler', FALSE, 'textarea', FALSE, FALSE),
+    ('crawler.digest.sections', '[{"name":"news","keyword":"tech news 最新技术动态","time_range":"day","max_items":5},{"name":"articles","keyword":"技术文章 教程 tutorial","time_range":"week","max_items":5},{"name":"opensource","keyword":"open source 开源项目 GitHub","time_range":"week","max_items":5}]', '[{"name":"news","keyword":"tech news 最新技术动态","time_range":"day","max_items":5},{"name":"articles","keyword":"技术文章 教程 tutorial","time_range":"week","max_items":5},{"name":"opensource","keyword":"open source 开源项目 GitHub","time_range":"week","max_items":5}]', '日报板块配置(JSON)', 'crawler', FALSE, 'textarea', FALSE, FALSE),
     -- Java 侧 HTTP 连接池 (2)
     ('crawler.http.pool.max-per-route', '10', '10', '单路由最大连接数', 'crawler', FALSE, 'text', FALSE, FALSE),
     ('crawler.http.pool.max-total', '20', '20', 'HTTP连接池最大连接数', 'crawler', FALSE, 'text', FALSE, FALSE),
@@ -967,8 +967,21 @@ VALUES
     ('crawler.optimization.enabled', 'false', 'false', '自动优化引擎开关', 'crawler', FALSE, 'switch', FALSE, FALSE),
     ('crawler.optimization.max_rounds', '3', '3', '最大优化轮数', 'crawler', FALSE, 'text', FALSE, FALSE),
     ('crawler.optimization.min_improvement', '0.03', '0.03', '最小改进阈值', 'crawler', FALSE, 'text', FALSE, FALSE),
-    ('crawler.optimization.mode', 'keyword', 'keyword', '优化模式(keyword/digest/both)', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.optimization.mode', 'both', 'both', '优化模式(keyword/digest/both)', 'crawler', FALSE, 'text', FALSE, FALSE),
     ('crawler.optimization.target_score', '0.7', '0.7', '优化目标分数', 'crawler', FALSE, 'text', FALSE, FALSE),
+    -- 日报优化 (4)
+    ('crawler.digest.filter_min_content', '50', '50', '日报质量过滤最低字符数', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.digest.optimization_enabled', 'false', 'false', '日报优化独立开关', 'crawler', FALSE, 'switch', FALSE, FALSE),
+    ('crawler.digest.optimization_min_sections', '2', '2', '触发优化最少板块数', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.digest.optimization_target_score', '0.65', '0.65', '日报优化目标分', 'crawler', FALSE, 'text', FALSE, FALSE),
+    -- 过滤管线 (7)
+    ('crawler.pipeline.ai_organization_enabled', 'true', 'true', 'AI整理开关', 'crawler', FALSE, 'switch', FALSE, FALSE),
+    ('crawler.pipeline.content_dedup_deep_threshold', '3', '3', '深度爬取去重汉明距离', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.pipeline.content_dedup_enabled', 'true', 'true', '内容去重开关', 'crawler', FALSE, 'switch', FALSE, FALSE),
+    ('crawler.pipeline.content_dedup_simhash_threshold', '5', '5', '去重汉明距离阈值', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.pipeline.filter_deep_min_content', '20', '20', '深度爬取最小内容长度', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.pipeline.page_classifier_enabled', 'true', 'true', '页面分类器开关', 'crawler', FALSE, 'switch', FALSE, FALSE),
+    ('crawler.pipeline.filter_skip_header_chars', '200', '200', '去重指纹跳过头部字符数', 'crawler', FALSE, 'text', FALSE, FALSE),
     -- 代理 (3)
     ('crawler.proxy.enabled', 'false', '', '是否启用代理', 'crawler', FALSE, 'switch', FALSE, FALSE),
     ('crawler.proxy.subscription_url', '', '', '代理订阅地址', 'crawler', FALSE, 'text', FALSE, FALSE),
