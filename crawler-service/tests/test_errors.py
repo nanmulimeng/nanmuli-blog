@@ -29,7 +29,7 @@ from api.errors import (
     invalid_url,
     search_blocked,
     register_error_handlers,
-    register_request_id_middleware,
+    register_middlewares,
 )
 
 
@@ -38,7 +38,7 @@ from api.errors import (
 def _make_app() -> FastAPI:
     """创建注册了中间件 + 异常处理器的测试 app"""
     app = FastAPI()
-    register_request_id_middleware(app)
+    register_middlewares(app)
     register_error_handlers(app)
     return app
 
@@ -167,7 +167,7 @@ class TestExceptionHandlers:
         assert resp.status_code == 500
         body = resp.json()
         assert body["code"] == "INTERNAL_ERROR"
-        assert body["message"] == "Internal server error"
+        assert "RuntimeError" in body["message"]
 
     def test_unhandled_exception_includes_request_id(self):
         resp = self.client.get("/raise-unhandled")
