@@ -119,11 +119,10 @@ class Settings(BaseSettings):
     digest_cron: str = "0 8 * * 1-5"  # 工作日 8:00
     digest_search_engine: str = "sogou"  # 日报专用搜索引擎（sogou 对中文技术内容搜索效果好于 bing）
     digest_sections: str = (
-        '[{"name":"hot_news","keyword":"技术新闻 科技资讯 今日热点","time_range":"day","max_items":5},'
-        '{"name":"ai_llm","keyword":"人工智能 大模型 最新动态 深度学习","time_range":"week","max_items":4},'
-        '{"name":"opensource","keyword":"开源项目 最新发布 热门仓库","time_range":"week","max_items":4},'
-        '{"name":"dev_tools","keyword":"开发工具 IDE 插件 编程工具","time_range":"week","max_items":3},'
-        '{"name":"tech_articles","keyword":"技术博客 教程 最佳实践 深度解析","time_range":"week","max_items":3}]'
+        '[{"name":"hot_trend","keyword":"技术新闻 OR 科技资讯 OR 今日热点 OR 版本发布 OR 人工智能 OR 大模型 OR LLM OR 深度学习 OR AI agent","time_range":"week","max_items":6},'
+        '{"name":"open_source","keyword":"开源项目 OR 最新发布 OR 热门仓库 OR GitHub trending","time_range":"week","max_items":4},'
+        '{"name":"dev_tool","keyword":"开发工具 OR IDE OR 插件 OR 编程工具 OR VS Code","time_range":"week","max_items":3},'
+        '{"name":"tech_article","keyword":"技术博客 OR 教程 OR 最佳实践 OR 深度解析 OR 源码分析","time_range":"week","max_items":3}]'
     )
     digest_parallel_sections: int = 2  # 板块并行爬取上限
     digest_global_timeout: int = 600  # 板块并行总时限（秒），超时返回已有结果
@@ -138,9 +137,10 @@ class Settings(BaseSettings):
     # 自动优化引擎配置
     optimization_enabled: bool = False
     optimization_target_score: float = 0.7
-    optimization_max_rounds: int = 3
+    optimization_max_rounds: int = 3       # 深度优化独立预算
     optimization_min_improvement: float = 0.03
     optimization_mode: str = "both"  # keyword / digest / both — 默认启用所有任务类型的优化
+    breadth_max_rounds: int = 3            # 广度扩展独立预算
 
     # 信息茧房突破配置
     bubble_breaker_enabled: bool = False

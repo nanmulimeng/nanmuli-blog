@@ -33,6 +33,11 @@ public class WebCollectSource extends BaseAggregateRoot<Long> {
     private LocalDateTime lastRunAt;
     private String lastRunStatus;   // success / failed
     private Integer runCount;
+    private Integer successCount;
+    private Integer failCount;
+    private Double avgQualityScore;
+    private Integer lastResultCount;
+    private String lastError;
     private Long userId;
 
     public boolean isActive() {

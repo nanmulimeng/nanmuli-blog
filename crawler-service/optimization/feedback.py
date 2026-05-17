@@ -1,4 +1,8 @@
-"""反馈循环控制器 — 编排搜索→评估→策略→再搜索的迭代"""
+"""深度优化反馈循环 — 编排搜索→评估→深度策略→再搜索的迭代
+
+只关注 depth/angle/temporal 三个深度维度。
+广度维度由 BreadthExpander 处理。
+"""
 
 import asyncio
 import logging
@@ -8,9 +12,9 @@ from dataclasses import dataclass
 
 from config import settings
 from optimization.evaluator import CoverageEvaluator, CoverageEvaluation
-from crawler.utils import get_result_url, get_result_success, dedup_results_into
-from optimization.strategy import StrategyGenerator, SearchStrategy
+from optimization.strategy import DepthStrategyGen, SearchStrategy
 from optimization.knowledge_base import KnowledgeBase
+from crawler.utils import get_result_url, get_result_success, dedup_results_into
 
 logger = logging.getLogger(__name__)
 
@@ -26,25 +30,32 @@ class OptimizationRound:
 
 
 class FeedbackLoop:
-    """反馈循环控制器"""
+    """深度优化反馈循环"""
 
     def __init__(
         self,
         evaluator: CoverageEvaluator,
-        strategy_gen: StrategyGenerator,
+        strategy_gen: DepthStrategyGen,
         knowledge_base: KnowledgeBase,
         max_rounds: int | None = None,
         target_score: float | None = None,
         min_improvement: float | None = None,
-        bubble_breaker=None,
     ):
         self._evaluator = evaluator
         self._strategy_gen = strategy_gen
         self._kb = knowledge_base
-        self._bubble_breaker = bubble_breaker
         self._max_rounds = max_rounds if max_rounds is not None else settings.optimization_max_rounds
         self._target_score = target_score if target_score is not None else settings.optimization_target_score
         self._min_improvement = min_improvement if min_improvement is not None else settings.optimization_min_improvement
+
+    @staticmethod
+    def _depth_score(evaluation: CoverageEvaluation) -> float:
+        """深度三维的加权平均分"""
+        return (
+            evaluation.depth_coverage * 0.4
+            + evaluation.angle_coverage * 0.35
+            + evaluation.temporal_coverage * 0.25
+        )
 
     async def execute(
         self,
@@ -53,23 +64,11 @@ class FeedbackLoop:
         crawl_fn: Callable,
         task_id: int = 0,
         context: dict | None = None,
+        **kwargs,
     ) -> tuple[list, list[OptimizationRound]]:
         ctx = context or {}
         engine = ctx.get("engine", "bing")
         time_range = ctx.get("time_range", "week")
-
-        # 从知识库获取策略提示
-        kb_hint = None
-        try:
-            kb_hint = await self._kb.get_strategy_hint(keyword, engine, time_range)
-            if kb_hint:
-                logger.info(
-                    "[Optimization] KB hint: recommended_engine=%s, recommended_type=%s",
-                    kb_hint.get("recommended_engine"),
-                    kb_hint.get("recommended_strategy_type"),
-                )
-        except Exception as e:
-            logger.debug("[Optimization] KB hint unavailable: %s", e)
 
         all_results = list(initial_results)
         rounds: list[OptimizationRound] = []
@@ -86,7 +85,7 @@ class FeedbackLoop:
         initial_strategy = SearchStrategy(
             keyword=keyword, engine=engine,
             time_range=time_range, site_scope=None,
-            strategy_type="initial", reason="初始搜索",
+            strategy_type="depth_initial", reason="深度基线评估",
         )
         rounds.append(OptimizationRound(
             round_num=1,
@@ -94,25 +93,34 @@ class FeedbackLoop:
             strategy=initial_strategy,
             urls_before=0,
             urls_after=len(seen_urls),
-            score_delta=0.0,  # Round 1 是基线，无增量
+            score_delta=0.0,
         ))
 
+        depth_base = self._depth_score(eval_result)
         logger.info(
-            "[Optimization] Round 1: overall=%.2f, weaknesses=%s",
-            eval_result.overall_score, eval_result.weaknesses,
+            "[DepthOptimization] Round 1: depth=%.2f (depth=%.2f angle=%.2f temporal=%.2f)",
+            depth_base, eval_result.depth_coverage,
+            eval_result.angle_coverage, eval_result.temporal_coverage,
         )
 
         await self._save_round(task_id, rounds[-1])
 
         if eval_result.overall_score >= self._target_score:
-            logger.info("[Optimization] Target reached in round 1: %.2f", eval_result.overall_score)
+            logger.info("[DepthOptimization] Target reached in round 1: %.2f", eval_result.overall_score)
             return all_results, rounds
 
-        # === Round 2+: 反馈循环 ===
+        # === Round 2+: 深度循环 ===
         strategy_history: list[SearchStrategy] = [initial_strategy]
         consecutive_failures = 0
 
         for round_num in range(2, self._max_rounds + 1):
+            # 知识库提示
+            kb_hint = None
+            try:
+                kb_hint = await self._kb.get_strategy_hint(keyword, engine, time_range)
+            except Exception as e:
+                logger.debug("[DepthOptimization] KB hint unavailable: %s", e)
+
             strategy = self._strategy_gen.generate(
                 keyword=keyword,
                 evaluation=eval_result,
@@ -124,33 +132,17 @@ class FeedbackLoop:
             )
 
             if strategy is None:
-                logger.info("[Optimization] No strategy available, stopping at round %d", round_num - 1)
+                logger.info("[DepthOptimization] No strategy available, stopping at round %d", round_num - 1)
                 break
 
             strategy_history.append(strategy)
 
             logger.info(
-                "[Optimization] Round %d: type=%s keyword='%s' engine=%s",
+                "[DepthOptimization] Round %d: type=%s keyword='%s' engine=%s",
                 round_num, strategy.strategy_type, strategy.keyword, strategy.engine,
             )
 
-            # 跨语言策略：翻译关键词后搜索，翻译失败则跳过本轮
-            if strategy.strategy_type == "cross_language" and self._bubble_breaker:
-                translated = await self._bubble_breaker.translate_keyword(strategy.keyword)
-                if translated:
-                    strategy = SearchStrategy(
-                        keyword=translated, engine=strategy.engine,
-                        time_range=strategy.time_range, strategy_type="cross_language",
-                        reason=strategy.reason, site_scope=None,
-                    )
-                    logger.info("[Optimization] Cross-language translated: '%s'", translated)
-                else:
-                    logger.info("[Optimization] Cross-language translation failed, skipping round %d", round_num)
-                    continue
-            elif strategy.strategy_type == "cross_language" and not self._bubble_breaker:
-                logger.info("[Optimization] Cross-language requested but BubbleBreaker unavailable, skipping round %d", round_num)
-                continue
-
+            # === 执行深度搜索 ===
             try:
                 new_results = await crawl_fn(
                     keyword=strategy.keyword,
@@ -163,15 +155,16 @@ class FeedbackLoop:
                 consecutive_failures = 0
             except Exception as e:
                 consecutive_failures += 1
-                logger.warning("[Optimization] Round %d search failed (%d consecutive): %s",
+                logger.warning("[DepthOptimization] Round %d search failed (%d consecutive): %s",
                                round_num, consecutive_failures, e)
                 if consecutive_failures >= 2:
-                    logger.warning("[Optimization] 2 consecutive search failures, stopping")
+                    logger.warning("[DepthOptimization] 2 consecutive search failures, stopping")
                     break
                 continue
 
             added = dedup_results_into(new_results, seen_urls, all_results)
 
+            # === 评估 + 保存 + 检查 ===
             prev_score = eval_result.overall_score
             eval_result = await self._evaluator.evaluate(keyword, all_results, ctx)
             score_delta = eval_result.overall_score - prev_score
@@ -186,19 +179,19 @@ class FeedbackLoop:
             ))
 
             logger.info(
-                "[Optimization] Round %d: overall=%.2f (delta=%.3f), added=%d URLs",
+                "[DepthOptimization] Round %d: overall=%.2f (delta=%.3f), added=%d URLs",
                 round_num, eval_result.overall_score, score_delta, added,
             )
 
             await self._save_round(task_id, rounds[-1])
 
             if eval_result.overall_score >= self._target_score:
-                logger.info("[Optimization] Target reached: %.2f", eval_result.overall_score)
+                logger.info("[DepthOptimization] Target reached: %.2f", eval_result.overall_score)
                 break
 
             if round_num >= 2 and score_delta < self._min_improvement:
                 logger.info(
-                    "[Optimization] Diminishing returns: delta=%.3f < min=%.3f",
+                    "[DepthOptimization] Diminishing returns: delta=%.3f < min=%.3f",
                     score_delta, self._min_improvement,
                 )
                 break
@@ -234,4 +227,4 @@ class FeedbackLoop:
                 score_delta=r.score_delta,
             )
         except Exception as e:
-            logger.warning("[Optimization] Failed to save round: %s", e)
+            logger.warning("[DepthOptimization] Failed to save round: %s", e)

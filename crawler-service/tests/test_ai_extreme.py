@@ -811,3 +811,160 @@ class TestExtremeInput:
         prompt_arg = mock_ai.call_args[0][1]
         assert "日报日期" in prompt_arg
         assert "来源内容" in prompt_arg
+
+
+# ============== Step 6: sourceUrl 校验极端测试 ==============
+
+
+class TestSourceUrlValidation:
+    """_validate_digest 中 sourceUrl 合法性校验的极端测试"""
+
+    def _make_digest_with_items(self, items):
+        """构造含指定 items 的 DigestContent 供 _validate_digest 测试"""
+        c = DigestContent(
+            title="技术日报 | 2026-05-16",
+            summary="这是一份技术日报摘要，包含最新技术动态和开源项目更新信息。",
+            highlight="今日热点",
+            tags=["技术"],
+            full_content="# 日报内容\n\n这是足够长的正文内容" * 5,
+            sections=[
+                DigestSection(
+                    category="hot_trend",
+                    category_name="热点动态",
+                    emoji="🔥",
+                    items=[
+                        DigestItem(
+                            title=item["title"],
+                            one_liner=item.get("one_liner", "描述"),
+                            source_url=item.get("source_url", ""),
+                            source_name=item.get("source_name", "source"),
+                        )
+                        for item in items
+                    ],
+                )
+            ],
+        )
+        return c
+
+    @pytest.fixture
+    def org(self):
+        return ContentOrganizer(settings=_make_configured_settings())
+
+    def _validate(self, content):
+        """直接调用 _validate_digest"""
+        return org._validate_digest(content) if False else content
+
+    @pytest.mark.asyncio
+    async def test_xss_url_filtered(self, org):
+        """javascript: XSS URL 被过滤"""
+        c = self._make_digest_with_items([
+            {"title": "XSS Attack", "source_url": "javascript:alert(document.cookie)"},
+            {"title": "Valid", "source_url": "https://example.com/article", "one_liner": "有效条目"},
+        ])
+        org._validate_digest(c)
+        urls = [it.source_url for it in c.sections[0].items]
+        assert "javascript:alert(document.cookie)" not in urls
+        assert "https://example.com/article" in urls
+
+    @pytest.mark.asyncio
+    async def test_data_uri_filtered(self, org):
+        """data: URI 被过滤"""
+        c = self._make_digest_with_items([
+            {"title": "Data URI", "source_url": "data:text/html,<script>alert(1)</script>"},
+            {"title": "Valid", "source_url": "https://example.com/valid", "one_liner": "有效"},
+        ])
+        org._validate_digest(c)
+        assert all(not it.source_url.startswith("data:") for it in c.sections[0].items)
+
+    @pytest.mark.asyncio
+    async def test_ftp_url_filtered(self, org):
+        """ftp:// URL 被过滤"""
+        c = self._make_digest_with_items([
+            {"title": "FTP", "source_url": "ftp://files.example.com/pub"},
+            {"title": "Valid", "source_url": "https://example.com/valid", "one_liner": "有效"},
+        ])
+        org._validate_digest(c)
+        urls = [it.source_url for it in c.sections[0].items]
+        assert "ftp://files.example.com/pub" not in urls
+
+    @pytest.mark.asyncio
+    async def test_fabricated_url_no_dot_filtered(self, org):
+        """无点的 http:// URL（明显编造）被过滤"""
+        c = self._make_digest_with_items([
+            {"title": "No Domain", "source_url": "http://localhost"},
+            {"title": "Valid", "source_url": "https://example.com/valid", "one_liner": "有效"},
+        ])
+        org._validate_digest(c)
+        urls = [it.source_url for it in c.sections[0].items]
+        assert "http://localhost" not in urls
+
+    @pytest.mark.asyncio
+    async def test_empty_source_url_preserved(self, org):
+        """source_url 为空的条目 URL 校验通过，但因缺少完整字段触发 missing valid items"""
+        c = self._make_digest_with_items([
+            {"title": "Empty URL", "source_url": "", "one_liner": "无来源"},
+        ])
+        with pytest.raises(InvalidOutputError, match="missing valid items"):
+            org._validate_digest(c)
+
+    @pytest.mark.asyncio
+    async def test_extremely_long_url_accepted(self, org):
+        """超长 URL（>2000字符）仍被接受（只要格式合法）"""
+        long_url = "https://example.com/path?" + "a" * 2500
+        c = self._make_digest_with_items([
+            {"title": "Long URL", "source_url": long_url, "one_liner": "超长链接"},
+        ])
+        org._validate_digest(c)
+        assert c.sections[0].items[0].source_url == long_url
+
+    @pytest.mark.asyncio
+    async def test_cross_section_url_dedup(self, org):
+        """跨板块 sourceUrl 去重：同一 URL 出现在两个板块，保留 oneLiner 更长的"""
+        c = DigestContent(
+            title="技术日报 | 2026-05-16",
+            summary="摘要内容" * 10,
+            highlight="热点",
+            tags=["技术"],
+            full_content="正文内容" * 10,
+            sections=[
+                DigestSection(
+                    category="hot_trend", category_name="热点", emoji="🔥",
+                    items=[DigestItem(
+                        title="短描述", one_liner="短",
+                        source_url="https://example.com/same", source_name="ex",
+                    )],
+                ),
+                DigestSection(
+                    category="open_source", category_name="开源", emoji="🌟",
+                    items=[DigestItem(
+                        title="长描述", one_liner="这是更完整的描述内容，信息量更大",
+                        source_url="https://example.com/same", source_name="ex",
+                    )],
+                ),
+            ],
+        )
+        org._validate_digest(c)
+        total_items = sum(len(s.items) for s in c.sections)
+        assert total_items == 1
+        remaining = c.sections[0].items[0]
+        assert "更完整" in remaining.one_liner
+
+    @pytest.mark.asyncio
+    async def test_all_items_invalid_urls_section_removed(self, org):
+        """所有条目 URL 都不合法时，sections 被清空 → missing valid items"""
+        c = self._make_digest_with_items([
+            {"title": "Bad1", "source_url": "ftp://a.com"},
+            {"title": "Bad2", "source_url": "javascript:void(0)"},
+        ])
+        with pytest.raises(InvalidOutputError, match="missing valid items"):
+            org._validate_digest(c)
+
+    @pytest.mark.asyncio
+    async def test_valid_http_url_accepted(self, org):
+        """http:// 格式（非 https）的合法 URL 被接受"""
+        c = self._make_digest_with_items([
+            {"title": "HTTP URL", "source_url": "http://example.com/article", "one_liner": "有效"},
+        ])
+        org._validate_digest(c)
+        assert len(c.sections[0].items) == 1
+        assert c.sections[0].items[0].source_url == "http://example.com/article"

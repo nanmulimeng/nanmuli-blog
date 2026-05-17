@@ -233,6 +233,8 @@ def _apply_optimization_settings(config: dict[str, str]) -> None:
         settings.optimization_min_improvement = _to_float(config["optimization.min_improvement"])
     if config.get("optimization.mode", ""):
         settings.optimization_mode = config["optimization.mode"]
+    if config.get("optimization.breadth_max_rounds", ""):
+        settings.breadth_max_rounds = _to_int(config["optimization.breadth_max_rounds"])
 
 
 def _apply_bubble_settings(config: dict[str, str]) -> None:

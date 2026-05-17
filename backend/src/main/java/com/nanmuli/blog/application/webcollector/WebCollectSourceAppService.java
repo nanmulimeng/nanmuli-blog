@@ -12,6 +12,7 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Slf4j
@@ -100,6 +101,40 @@ public class WebCollectSourceAppService {
         source.setIsActive(!source.isActive());
         sourceRepository.save(source);
         log.info("[Source] Toggled: id={}, isActive={}", id, source.isActive());
+    }
+
+    /**
+     * 更新信息源运行状态（供 Python 爬虫服务回调）
+     */
+    @Transactional
+    public void updateSourceRunStatus(Long sourceId, String status, String error,
+                                       Double qualityScore, Integer resultCount) {
+        WebCollectSource source = sourceRepository.findById(sourceId)
+                .orElseThrow(() -> new BusinessException("订阅源不存在: " + sourceId));
+        source.setLastRunAt(LocalDateTime.now());
+        source.setLastRunStatus(status);
+        source.setRunCount(source.getRunCount() != null ? source.getRunCount() + 1 : 1);
+
+        if ("success".equals(status)) {
+            source.setSuccessCount(source.getSuccessCount() != null ? source.getSuccessCount() + 1 : 1);
+            if (resultCount != null) {
+                source.setLastResultCount(resultCount);
+            }
+            if (qualityScore != null) {
+                double prev = source.getAvgQualityScore() != null ? source.getAvgQualityScore() : 0;
+                double avg = prev == 0 ? qualityScore : 0.7 * prev + 0.3 * qualityScore;
+                source.setAvgQualityScore(Math.round(avg * 100.0) / 100.0);
+            }
+        } else {
+            source.setFailCount(source.getFailCount() != null ? source.getFailCount() + 1 : 1);
+            if (error != null && !error.isBlank()) {
+                source.setLastError(error.length() > 500 ? error.substring(0, 500) : error);
+            }
+        }
+
+        sourceRepository.save(source);
+        log.info("[Source] Run status updated: id={}, status={}, successCount={}, failCount={}, avgQuality={}",
+                sourceId, status, source.getSuccessCount(), source.getFailCount(), source.getAvgQualityScore());
     }
 
     private WebCollectSource getSourceOrThrow(Long id, Long userId) {

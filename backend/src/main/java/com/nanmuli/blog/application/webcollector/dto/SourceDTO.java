@@ -22,6 +22,11 @@ public class SourceDTO {
     private LocalDateTime lastRunAt;
     private String lastRunStatus;
     private Integer runCount;
+    private Integer successCount;
+    private Integer failCount;
+    private Double avgQualityScore;
+    private Integer lastResultCount;
+    private String lastError;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

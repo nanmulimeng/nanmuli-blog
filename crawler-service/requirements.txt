@@ -33,3 +33,6 @@ aiosqlite>=0.19.0
 
 # Scheduler for periodic digest generation
 apscheduler>=3.10.0
+
+# RSS/Atom feed parser
+feedparser>=6.0.0

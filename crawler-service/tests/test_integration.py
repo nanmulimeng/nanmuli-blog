@@ -207,7 +207,7 @@ class TestKeywordTaskIntegration:
 class TestTaskExecutorHelpers:
     def test_extract_source_name(self):
         from standalone.task_executor import extract_source_name
-        assert extract_source_name("https://github.com/user/repo") == "github.com"
+        assert extract_source_name("https://github.com/user/repo") == "GitHub"
         assert extract_source_name("https://www.example.com/path") == "example.com"
         assert extract_source_name("") == "未知来源"
 

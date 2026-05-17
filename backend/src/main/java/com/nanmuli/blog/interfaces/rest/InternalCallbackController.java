@@ -106,4 +106,31 @@ public class InternalCallbackController {
         log.info("[Config] Returning {} crawler configs", configMap.size());
         return Result.success(configMap);
     }
+
+    /**
+     * 更新信息源运行状态（供 Python 定时任务完成后回调）
+     */
+    @PostMapping("/sources/{sourceId}/run-status")
+    public Result<Void> updateSourceRunStatus(
+            @RequestHeader(value = "X-Callback-Key", required = false) String callbackKey,
+            @PathVariable Long sourceId,
+            @RequestBody Map<String, Object> payload) {
+
+        if (authRequired(callbackKey)) {
+            log.warn("[SourceStatus] Unauthorized: requestKey={}", callbackKey);
+            return Result.error(403, "Invalid callback key");
+        }
+
+        String status = (String) payload.get("status");
+        if (status == null || status.isBlank()) {
+            return Result.error(400, "Missing 'status' field");
+        }
+
+        String error = (String) payload.get("error");
+        Double qualityScore = payload.get("qualityScore") instanceof Number n ? n.doubleValue() : null;
+        Integer resultCount = payload.get("resultCount") instanceof Number n ? n.intValue() : null;
+
+        sourceAppService.updateSourceRunStatus(sourceId, status, error, qualityScore, resultCount);
+        return Result.success();
+    }
 }

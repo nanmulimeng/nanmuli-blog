@@ -307,44 +307,63 @@ class TaskExecutor:
         self, task: dict, initial_results: list,
         keyword: str, engine: str, time_range: str, config,
     ) -> list:
-        """执行自动优化反馈循环"""
+        """先广后深优化：广度扩展 → 深度优化"""
         from ai import content_organizer as organizer
         from optimization.evaluator import CoverageEvaluator
-        from optimization.strategy import StrategyGenerator
+        from optimization.strategy import DepthStrategyGen, BreadthStrategyGen
         from optimization.feedback import FeedbackLoop
+        from optimization.bubble_breaker import BreadthExpander, BubbleBreaker
         from optimization.knowledge_base import KnowledgeBase
-        from optimization.bubble_breaker import BubbleBreaker
         from crawler.search import crawl_by_keyword
 
         evaluator = CoverageEvaluator(organizer if organizer.is_available else None)
-        strategy_gen = StrategyGenerator()
+        depth_gen = DepthStrategyGen()
+        breadth_gen = BreadthStrategyGen()
         kb = KnowledgeBase()
         breaker = BubbleBreaker(organizer if organizer.is_available else None)
 
-        loop = FeedbackLoop(
+        ctx = {"engine": engine, "time_range": time_range, "config": config}
+
+        # Phase 1: 广度扩展（先广）
+        breadth_expander = BreadthExpander(
             evaluator=evaluator,
-            strategy_gen=strategy_gen,
+            strategy_gen=breadth_gen,
             knowledge_base=kb,
             bubble_breaker=breaker,
         )
-
-        final_results, rounds = await loop.execute(
+        results, breadth_rounds = await breadth_expander.execute(
             keyword=keyword,
             initial_results=initial_results,
             crawl_fn=crawl_by_keyword,
             task_id=task["id"],
-            context={
-                "engine": engine,
-                "time_range": time_range,
-                "config": config,
-            },
+            context=ctx,
+        )
+        if breadth_rounds:
+            last = breadth_rounds[-1]
+            logger.info(
+                "[Optimization] Breadth: %d rounds, breadth_score=%.2f, total URLs=%d",
+                len(breadth_rounds), BreadthExpander._breadth_score(last.evaluation), last.urls_after,
+            )
+
+        # Phase 2: 深度优化（后深）
+        depth_loop = FeedbackLoop(
+            evaluator=evaluator,
+            strategy_gen=depth_gen,
+            knowledge_base=kb,
+        )
+        final_results, depth_rounds = await depth_loop.execute(
+            keyword=keyword,
+            initial_results=results,
+            crawl_fn=crawl_by_keyword,
+            task_id=task["id"],
+            context=ctx,
         )
 
-        if rounds:
-            last = rounds[-1]
+        if depth_rounds:
+            last = depth_rounds[-1]
             logger.info(
-                "[Optimization] Completed: %d rounds, final score=%.2f, total URLs=%d",
-                len(rounds), last.evaluation.overall_score, last.urls_after,
+                "[Optimization] Depth: %d rounds, final score=%.2f, total URLs=%d",
+                len(depth_rounds), last.evaluation.overall_score, last.urls_after,
             )
 
         return final_results
@@ -555,6 +574,65 @@ class TaskExecutor:
 
 # ============== Helpers ==============
 
+_FRIENDLY_SOURCE_NAMES: dict[str, str] = {
+    # 官方文档
+    "docs.spring.io": "Spring", "spring.io": "Spring",
+    "docs.python.org": "Python", "python.org": "Python",
+    "developer.mozilla.org": "MDN",
+    "kubernetes.io": "Kubernetes", "istio.io": "Istio",
+    "react.dev": "React", "vuejs.org": "Vue.js",
+    "docs.github.com": "GitHub Docs", "github.blog": "GitHub Blog",
+    "aws.amazon.com": "AWS", "cloud.google.com": "Google Cloud",
+    "azure.microsoft.com": "Azure",
+    "docs.oracle.com": "Oracle", "dev.mysql.com": "MySQL",
+    "postgresql.org": "PostgreSQL", "redis.io": "Redis",
+    "mongodb.com": "MongoDB",
+    "openai.com": "OpenAI", "anthropic.com": "Anthropic",
+    "huggingface.co": "Hugging Face",
+    # 技术社区
+    "news.ycombinator.com": "Hacker News",
+    "stackoverflow.com": "Stack Overflow",
+    "infoq.com": "InfoQ", "infoq.cn": "InfoQ中文",
+    "juejin.cn": "掘金", "segmentfault.com": "思否",
+    "csdn.net": "CSDN", "blog.csdn.net": "CSDN",
+    "zhihu.com": "知乎", "v2ex.com": "V2EX",
+    "lobste.rs": "Lobsters",
+    "reddit.com": "Reddit",
+    "producthunt.com": "Product Hunt",
+    "techcrunch.com": "TechCrunch",
+    "theverge.com": "The Verge",
+    "arstechnica.com": "Ars Technica",
+    "medium.com": "Medium", "dev.to": "DEV Community",
+    "freecodecamp.org": "freeCodeCamp",
+    "baeldung.com": "Baeldung",
+    "martinfowler.com": "Martin Fowler",
+    "ruanyifeng.com": "阮一峰",
+    # 开源平台
+    "github.com": "GitHub", "gitlab.com": "GitLab",
+    "gitee.com": "Gitee", "npmjs.com": "npm",
+    "pypi.org": "PyPI", "crates.io": "crates.io",
+    "pkg.go.dev": "Go Packages",
+    "deno.land": "Deno", "bun.sh": "Bun",
+    "rust-lang.org": "Rust",
+    "nodejs.org": "Node.js",
+    # 学术
+    "arxiv.org": "arXiv", "paperswithcode.com": "Papers With Code",
+    "scholar.google.com": "Google Scholar",
+    # 工具
+    "jetbrains.com": "JetBrains",
+    "code.visualstudio.com": "VS Code",
+    "docker.com": "Docker",
+    "postman.com": "Postman",
+    "figma.com": "Figma",
+    "vercel.com": "Vercel", "vercel.app": "Vercel",
+    "netlify.app": "Netlify",
+    # 中文资讯
+    "36kr.com": "36氪", "ithome.com": "IT之家",
+    "sspai.com": "少数派",
+    "thenewstack.io": "The New Stack",
+}
+
+
 def extract_source_name(url: str) -> str:
     if not url:
         return "未知来源"
@@ -564,6 +642,13 @@ def extract_source_name(url: str) -> str:
         domain = parsed.netloc.lower()
         if domain.startswith("www."):
             domain = domain[4:]
+        # 精确匹配
+        if domain in _FRIENDLY_SOURCE_NAMES:
+            return _FRIENDLY_SOURCE_NAMES[domain]
+        # 后缀匹配（如 myproject.github.io → GitHub Pages）
+        for suffix, name in _FRIENDLY_SOURCE_NAMES.items():
+            if domain.endswith("." + suffix):
+                return name
         return domain or "未知来源"
     except Exception:
         return "未知来源"
@@ -584,6 +669,16 @@ _SOURCE_CATEGORY_MAP: dict[str, str] = {
     "netlify.app": "open_source",
     "vercel.app": "open_source",
     "huggingface.co": "open_source",
+    "ossinsight.io": "open_source",
+    "openjsf.org": "open_source",
+    "apache.org": "open_source",
+    "cncf.io": "open_source",
+    "rust-lang.org": "open_source",
+    "python.org": "open_source",
+    "nodejs.org": "open_source",
+    "deno.land": "open_source",
+    "bun.sh": "open_source",
+    "dev.to": "open_source",
     # 学术论文
     "arxiv.org": "paper",
     "paperswithcode.com": "paper",
@@ -591,10 +686,22 @@ _SOURCE_CATEGORY_MAP: dict[str, str] = {
     "ieeexplore.ieee.org": "paper",
     "scholar.google.com": "paper",
     "academic.microsoft.com": "paper",
+    "semanticscholar.org": "paper",
+    "openreview.net": "paper",
+    "dblp.org": "paper",
     # 开发工具
     "producthunt.com": "dev_tool",
     "jetbrains.com": "dev_tool",
     "code.visualstudio.com": "dev_tool",
+    "marketplace.visualstudio.com": "dev_tool",
+    "docker.com": "dev_tool",
+    "postman.com": "dev_tool",
+    "figma.com": "dev_tool",
+    "notion.so": "dev_tool",
+    "linear.app": "dev_tool",
+    "vercel.com": "dev_tool",
+    "render.com": "dev_tool",
+    "fly.io": "dev_tool",
     # 热点动态
     "hackernewsletter.com": "hot_trend",
     "news.ycombinator.com": "hot_trend",
@@ -603,6 +710,21 @@ _SOURCE_CATEGORY_MAP: dict[str, str] = {
     "thenewstack.io": "hot_trend",
     "infoq.com": "hot_trend",
     "infoq.cn": "hot_trend",
+    "36kr.com": "hot_trend",
+    "ithome.com": "hot_trend",
+    "sspai.com": "hot_trend",
+    "theverge.com": "hot_trend",
+    "arstechnica.com": "hot_trend",
+    "wired.com": "hot_trend",
+    "bleepingcomputer.com": "hot_trend",
+    "thehackernews.com": "hot_trend",
+    "openai.com": "hot_trend",
+    "anthropic.com": "hot_trend",
+    "blog.google": "hot_trend",
+    "blogs.microsoft.com": "hot_trend",
+    "aws.amazon.com": "hot_trend",
+    "cloud.google.com": "hot_trend",
+    "meta.ai": "hot_trend",
     # 技术文章
     "lobste.rs": "tech_article",
     "stackoverflow.com": "tech_article",
@@ -613,22 +735,34 @@ _SOURCE_CATEGORY_MAP: dict[str, str] = {
     "zhihu.com": "tech_article",
     "v2ex.com": "tech_article",
     "ruanyifeng.com": "tech_article",
+    "martinfowler.com": "tech_article",
+    "medium.com": "tech_article",
+    "towardsdatascience.com": "tech_article",
+    "freecodecamp.org": "tech_article",
+    "baeldung.com": "tech_article",
+    "digginginto.dev": "tech_article",
+    "iximiuz.com": "tech_article",
+    "mysql.com": "tech_article",
+    "redis.io": "tech_article",
+    "postgresql.org": "tech_article",
+    "docs.spring.io": "tech_article",
+    "kubernetes.io": "tech_article",
 }
 
 _TITLE_PATTERNS: list[tuple] = [
     # 学术论文（优先匹配，避免 "paper" 出现在其他上下文被误匹配）
     (re.compile(r'(?:论文|(?:paper|arxiv)\b)'), "paper"),
-    # 开源项目
+    # 开源项目（版本发布归入开源而非热点）
     (re.compile(r'(?:开源|open[- ]?source)\s*(?:项目|库|工具|release|发布)'), "open_source"),
-    # AI 相关动态
-    (re.compile(r'(?:\b(?:LLM|GPT|AI\s*agent|RAG|embedding|transformer)\b|大\s*模型|语言模型)'), "hot_trend"),
-    # 版本发布/重大事件
-    (re.compile(r'(?:发布|(?:released?|launch)\b).*?(?:v?\d+\.\d+)'), "hot_trend"),
-    (re.compile(r'(?:新版本|新功能|(?:breaking\s*change)\b|发布\s*v?\d)'), "hot_trend"),
-    # 开发工具
-    (re.compile(r'(?:工具推荐|开发工具|(?:devtool|插件|extension|vscode|编辑器)\b)'), "dev_tool"),
+    (re.compile(r'(?:github\s+(?:trending|starred|release)|awesome\s+\w+|(?:npm|pypi|cargo)\s+(?:publish|release))'), "open_source"),
+    # 版本发布归入开源（v?\d+\.\d+ 版本号模式）
+    (re.compile(r'(?:release[d]?|发布|launch|新版本|新功能)\b.*?(?:v?\d+\.\d+)'), "open_source"),
+    # AI 相关动态（精确边界匹配，避免 "动态规划" 误匹配；注意 title 已 .lower()）
+    (re.compile(r'(?:\b(?:llm|gpt|claude|gemini|qwen|sora|ai\s*agent|rag|embedding|transformer|diffusion|multimodal|agi|o1|o3|o4|deepseek|qwen2|mistral|llama)\b|大\s*模型|语言模型|深度学习|机器学习|神经网络)'), "hot_trend"),
+    # 开发工具（title 已 .lower()，所有英文模式用小写）
+    (re.compile(r'(?:工具推荐|开发工具|(?:devtool|插件|extension|vscode|编辑器|ide|终端|shell|docker|k8s|kubernetes)\b)'), "dev_tool"),
     # 技术文章（放后面，避免抢先匹配 "教程" 等泛词）
-    (re.compile(r'(?:教程|指南|(?:best\s*practice)\b|入门|进阶|原理分析|源码解析)'), "tech_article"),
+    (re.compile(r'(?:教程|指南|(?:best\s*practice)\b|入门|进阶|原理分析|源码解析|实战|踩坑|避坑)'), "tech_article"),
     # 创意发现
     (re.compile(r'(?:创意|有趣|(?:hackathon)\b)'), "creative"),
 ]
@@ -700,19 +834,127 @@ async def get_digest_sections() -> list[dict]:
 
 
 def _sources_to_sections(sources: list[dict]) -> list[dict]:
-    """将 Java 订阅源转换为日报 section 格式（仅 keyword 类型）"""
-    sections = []
+    """将 Java 订阅源转换为日报 section 格式，支持 keyword/url/rss 三种类型。
+
+    按 contentCategory 分组：同分类的多源合并为一个 section。
+    """
+    # 1. 按 contentCategory 分组
+    groups: dict[str, dict] = {}
+    freshness_hours_list: dict[str, list[int]] = {}
+    max_pages_list: dict[str, list[int]] = {}
+
     for src in sources:
-        if src.get("type") != "keyword":
+        cat = src.get("contentCategory") or "tech_article"
+        group = groups.setdefault(cat, {"keywords": [], "url_sources": [], "rss_sources": []})
+        freshness_hours_list.setdefault(cat, [])
+        max_pages_list.setdefault(cat, [])
+
+        src_type = src.get("type", "keyword")
+        effectiveness = {
+            "source_id": src.get("id"),
+            "success_count": src.get("successCount", 0) or 0,
+            "fail_count": src.get("failCount", 0) or 0,
+            "avg_quality_score": src.get("avgQualityScore", 0) or 0,
+            "last_result_count": src.get("lastResultCount", 0) or 0,
+        }
+        if src_type == "keyword":
+            group["keywords"].append(src["value"])
+        elif src_type == "url":
+            group["url_sources"].append({
+                "url": src["value"],
+                "crawl_mode": src.get("crawlMode", "single"),
+                "max_depth": src.get("maxDepth", 1),
+                "max_pages": src.get("maxPages", 10),
+                "source_id": src.get("id"),
+                "source_name": src.get("name", ""),
+                "effectiveness": effectiveness,
+            })
+        elif src_type == "rss":
+            group["rss_sources"].append({
+                "feed_url": src["value"],
+                "freshness_hours": src.get("freshnessHours", 24),
+                "max_entries": src.get("maxPages", 10) or 10,
+                "source_id": src.get("id"),
+                "source_name": src.get("name", ""),
+                "effectiveness": effectiveness,
+            })
+
+        fh = src.get("freshnessHours", 24)
+        if fh:
+            freshness_hours_list[cat].append(fh)
+        mp = src.get("maxPages", 10)
+        if mp:
+            max_pages_list[cat].append(mp)
+
+    # 2. 每组生成一个 section
+    sections = []
+    for cat, group in groups.items():
+        if not group["keywords"] and not group["url_sources"] and not group["rss_sources"]:
             continue
-        category = src.get("contentCategory") or "tech_article"
-        sections.append({
-            "name": category,
-            "keyword": src["value"],
-            "time_range": _freshness_to_time_range(src.get("freshnessHours", 24)),
-            "max_items": src.get("maxPages", 10),
-        })
+
+        has_kw = bool(group["keywords"])
+        has_url = bool(group["url_sources"])
+        has_rss = bool(group["rss_sources"])
+
+        source_type = "keyword"
+        if has_url and has_kw or has_url and has_rss or has_kw and has_rss:
+            source_type = "mixed"
+        elif has_url:
+            source_type = "url"
+        elif has_rss:
+            source_type = "rss"
+
+        section: dict = {
+            "name": cat,
+            "source_type": source_type,
+            "max_items": max(max_pages_list.get(cat, [5])) if max_pages_list.get(cat) else 5,
+        }
+
+        if has_kw:
+            section["keyword"] = " OR ".join(group["keywords"])
+
+        if freshness_hours_list.get(cat):
+            min_fh = min(freshness_hours_list[cat])
+            section["time_range"] = _freshness_to_time_range(min_fh)
+
+        if has_url:
+            section["url_sources"] = group["url_sources"]
+        if has_rss:
+            section["rss_sources"] = group["rss_sources"]
+
+        section["effectiveness"] = _compute_section_effectiveness(group)
+        sections.append(section)
     return sections
+
+
+def _compute_section_effectiveness(group: dict) -> dict:
+    """从板块内各信息源聚合效能数据。"""
+    all_sources = group.get("url_sources", []) + group.get("rss_sources", [])
+    if not all_sources:
+        return {"avg_quality": 0, "success_rate": 0, "total_runs": 0, "dead": True}
+
+    qualities = []
+    successes = 0
+    failures = 0
+    for src in all_sources:
+        eff = src.get("effectiveness", {})
+        q = eff.get("avg_quality_score", 0)
+        if q > 0:
+            qualities.append(q)
+        successes += eff.get("success_count", 0)
+        failures += eff.get("fail_count", 0)
+
+    avg_quality = sum(qualities) / len(qualities) if qualities else 0
+    total = successes + failures
+    success_rate = successes / total if total > 0 else 0
+    dead = total >= 3 and success_rate < 0.2
+
+    return {
+        "avg_quality": round(avg_quality, 1),
+        "success_rate": round(success_rate, 2),
+        "total_runs": total,
+        "dead": dead,
+    }
 
 
 def _freshness_to_time_range(hours: int) -> str:

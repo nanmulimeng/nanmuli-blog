@@ -120,7 +120,7 @@ DIGEST_SYSTEM_PROMPT = """你是一位资深技术资讯编辑，负责生成每
 1. 严格输出 JSON，不要包裹在 markdown 代码块中
 2. fullContent 使用 Markdown 格式，包含标题、列表和链接
 3. 每个条目用一句话提炼核心信息（是谁做了什么、有什么影响、对开发者意味着什么）
-4. 对同一事件的多次报道合并为一条，优先保留信息最完整的来源
+4. 对同一事件的多次报道合并为一条，优先保留信息最完整的来源。多个来源报道同一事件时，优先选择官方来源（标注为 official 的来源），其次选择高质量社区来源（标注为 high 的来源）
 5. 使用中文表达，保留技术专有名词原文（如 React 19、Claude 4、Rust 2024）
 6. tags 使用具体技术关键词，5-10 个
 7. sourceUrl 必须原样复制输入中提供的 URL，不可修改、截断或编造
@@ -278,6 +278,7 @@ class DigestPageContent:
     summary: str = ""
     category: str = ""
     source_name: str = ""
+    source_level: str = ""  # official / high / medium / spam
 
 
 @dataclass
@@ -557,6 +558,25 @@ class ContentOrganizer:
         _order_map = {cat: i for i, cat in enumerate(_DIGEST_CATEGORY_ORDER)}
         sorted_cats = sorted(by_category.keys(), key=lambda c: _order_map.get(c, 99))
 
+        # 分类优先级权重：高优先级分类获得更多全文配额
+        _priority_weights = {"hot_trend": 3.0, "open_source": 2.5, "tech_article": 2.0, "dev_tool": 1.5, "paper": 1.5, "creative": 1.0}
+
+        # 来源可信度排序权重
+        _source_level_order = {"official": 0, "high": 1, "medium": 2, "low": 3, "spam": 4}
+
+        # 计算每个分类的全文配额：按权重分配总配额
+        total_pages = sum(len(ps) for ps in by_category.values())
+        total_full_slots = max(total_pages // 2, len(sorted_cats) * 2)
+        weight_sum = sum(_priority_weights.get(c, 1.0) * len(by_category[c]) for c in sorted_cats)
+
+        cat_full_count: dict[str, int] = {}
+        for cat in sorted_cats:
+            cat_pages_count = len(by_category[cat])
+            weight = _priority_weights.get(cat, 1.0)
+            # 按权重比例分配全文配额，每分类至少 2 条
+            allocated = round(total_full_slots * (weight * cat_pages_count / weight_sum)) if weight_sum > 0 else 2
+            cat_full_count[cat] = max(2, min(allocated, cat_pages_count))
+
         # 每分类预算下限：防止高优先级分类耗尽总预算导致其他分类被截断
         num_cats = len(sorted_cats)
         min_cat_budget = budget // max(num_cats, 1)
@@ -565,14 +585,21 @@ class ContentOrganizer:
         summary_only_count = 0
         budget_exhausted = False
         for cat in sorted_cats:
-            cat_pages = sorted(by_category[cat], key=lambda p: p.title or "")
-            # 每分类保留前半（至少 3 条）完整 markdown，后半仅发 summary
-            full_detail_count = max(3, len(cat_pages) // 2)
+            # 按来源可信度排序：official > high > medium > low
+            cat_pages = sorted(
+                by_category[cat],
+                key=lambda p: (_source_level_order.get(p.source_level, 2), p.title or ""),
+            )
+            full_detail_count = cat_full_count[cat]
             cat_info = DIGEST_CATEGORY_MAP.get(cat, ("技术文章", "📖"))
             parts.append(f"### 分类: {cat}（{cat_info[0]}）{cat_info[1]}\n\n")
             for i, page in enumerate(cat_pages):
                 parts.append(f"#### 来源 {i + 1}: {page.title or '未知标题'}\n")
                 parts.append(f"URL: {page.url or '未知'}\n")
+                if page.source_name:
+                    parts.append(f"信息源: {page.source_name}\n")
+                if page.source_level and page.source_level in ("official", "high"):
+                    parts.append(f"来源可信度: {page.source_level}\n")
 
                 # 超过 full_detail_count 的条目：仅发 summary，节省 token
                 if i >= full_detail_count and page.summary:
@@ -793,7 +820,7 @@ class ContentOrganizer:
         c.sections = [sec for sec in c.sections if sec.items]
 
         # sourceUrl 合法性校验：移除非 HTTP URL 和明显编造的 URL
-        _URL_RE = re.compile(r"^https?://\S+\.\S+", re.IGNORECASE)
+        _URL_RE = re.compile(r"^https?://[a-zA-Z0-9][-a-zA-Z0-9]*(\.[a-zA-Z0-9][-a-zA-Z0-9]*)+", re.IGNORECASE)
         for sec in c.sections:
             sec.items = [
                 item for item in sec.items

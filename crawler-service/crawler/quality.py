@@ -171,9 +171,12 @@ class ContentQuality:
         return cls._cached_paywall_list
 
     @classmethod
-    def score(cls, title: str, content: str, url: str) -> Dict:
+    def score(cls, title: str, content: str, url: str, digest_mode: bool = False) -> Dict:
         """
         综合内容质量评分
+
+        Args:
+            digest_mode: 日报模式，降低代码密度权重（新闻类内容通常无代码）
 
         Returns:
             {
@@ -245,6 +248,10 @@ class ContentQuality:
             dimensions['code_density'] = max(5, int(code_ratio / 0.05 * 25))
         else:
             dimensions['code_density'] = 5  # 几乎无代码
+
+        # 日报模式补偿：新闻/公告类内容无代码是正常的，给予中性分
+        if digest_mode and dimensions['code_density'] < 10:
+            dimensions['code_density'] = 15
 
         # 4. 广告占比评分 (0-25分，反向：25=无广告)
         cls._ad_keywords()  # ensure cache populated
@@ -361,7 +368,7 @@ def evaluate_content(url: str, title: str, content: str, task_type: str = None) 
         }
     """
     source = SourceAuthority.score(url)
-    quality = ContentQuality.score(title, content, url)
+    quality = ContentQuality.score(title, content, url, digest_mode=(task_type == "digest"))
 
     # 日报任务：提高来源权重、降低内容质量权重
     # 新闻类内容天然缺少代码块和结构化格式，内容质量分低不代表无价值
