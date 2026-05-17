@@ -980,6 +980,7 @@ VALUES
     ('crawler.optimization.min_improvement', '0.03', '0.03', '最小改进阈值', 'crawler', FALSE, 'text', FALSE, FALSE),
     ('crawler.optimization.mode', 'both', 'both', '优化模式(keyword/digest/both)', 'crawler', FALSE, 'text', FALSE, FALSE),
     ('crawler.optimization.target_score', '0.7', '0.7', '优化目标分数', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.optimization.breadth_max_rounds', '3', '3', '广度扩展最大轮数', 'crawler', FALSE, 'text', FALSE, FALSE),
     -- 日报优化 (4)
     ('crawler.digest.filter_min_content', '50', '50', '日报质量过滤最低字符数', 'crawler', FALSE, 'text', FALSE, FALSE),
     ('crawler.digest.optimization_enabled', 'false', 'false', '日报优化独立开关', 'crawler', FALSE, 'switch', FALSE, FALSE),

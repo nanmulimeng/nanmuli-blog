@@ -10,3 +10,8 @@ COMMENT ON COLUMN web_collect_source.fail_count IS '失败执行次数';
 COMMENT ON COLUMN web_collect_source.avg_quality_score IS '质量分指数移动平均(0-100)';
 COMMENT ON COLUMN web_collect_source.last_result_count IS '最近一次成功运行产出的有效页面数';
 COMMENT ON COLUMN web_collect_source.last_error IS '最近一次失败错误信息';
+
+-- 补充缺失的广度优化轮数配置项
+INSERT INTO sys_config (config_key, config_value, default_value, description, group_name, is_public, input_type, is_encrypted, is_sensitive)
+VALUES ('crawler.optimization.breadth_max_rounds', '3', '3', '广度扩展最大轮数', 'crawler', FALSE, 'text', FALSE, FALSE)
+ON CONFLICT (config_key) DO NOTHING;
