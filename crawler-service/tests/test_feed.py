@@ -265,9 +265,12 @@ class TestFeedParseExtreme:
     @pytest.mark.asyncio
     async def test_future_dated_entries_included(self, mock_httpx_get):
         """未来日期的条目被包含（在 freshness 窗口内）"""
+        # 使用"现在 + 30 分钟"确保在 1 小时容差内
+        future_time = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=30)
+        published_str = future_time.strftime("%a, %d %b %Y %H:%M:%S GMT")
         xml = _make_rss_xml([
             {"title": "Future", "link": "https://example.com/future",
-             "published": "Sat, 17 May 2026 23:00:00 GMT"},
+             "published": published_str},
         ])
         mock_httpx_get.get.return_value.status_code = 200
         mock_httpx_get.get.return_value.text = xml

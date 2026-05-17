@@ -22,7 +22,14 @@ from config import settings
 # ============ 来源可信度数据库 ============
 
 class SourceAuthority:
-    """来源可信度评分体系"""
+    """来源可信度评分体系
+
+    优先从 Java API 查询数据库中的评分（缓存 1 小时），兜底使用硬编码列表。
+    """
+
+    # API 缓存：domain -> (score_dict, timestamp)
+    _api_cache: dict[str, tuple[dict, float]] = {}
+    _cache_ttl: float = 3600.0  # 1 小时
 
     # 官方/权威来源 (90-100分)
     OFFICIAL_DOMAINS = {
@@ -71,15 +78,16 @@ class SourceAuthority:
     @classmethod
     def score(cls, url: str) -> Dict:
         """
-        评估来源可信度
-
-        Returns:
-            {
-                "score": float,        # 0-100
-                "level": str,          # "official" | "high" | "medium" | "low" | "spam"
-                "reason": str,         # 评分理由
-            }
+        评估来源可信度（优先 Java API，兜底硬编码）
         """
+        domain = cls._extract_domain(url)
+
+        # 0. 优先从 Java API 查询（带缓存）
+        api_result = cls._query_from_api(domain)
+        if api_result:
+            return api_result
+
+        # 1. 硬编码兜底
         domain = cls._extract_domain(url)
 
         # 精确匹配
@@ -108,6 +116,54 @@ class SourceAuthority:
         if domain.startswith('www.'):
             domain = domain[4:]
         return domain
+
+    @classmethod
+    def _query_from_api(cls, domain: str) -> Dict | None:
+        """从内存缓存查询来源可信度（预热后不发起网络请求）"""
+        import time as _time
+        cached = cls._api_cache.get(domain)
+        if cached:
+            result, ts = cached
+            if _time.time() - ts < cls._cache_ttl:
+                return result
+        return None
+
+    @classmethod
+    async def preload_authority_cache(cls):
+        """从 Java API 一次性加载全量来源可信度到内存缓存。
+
+        应在日报任务开始前调用，后续 score() 只读缓存，不阻塞事件循环。
+        """
+        try:
+            from config import settings
+            import httpx
+            java_url = getattr(settings, 'java_api_url', '')
+            if not java_url:
+                return
+            headers = {"Content-Type": "application/json"}
+            api_key = getattr(settings, 'callback_api_key', '')
+            if api_key:
+                headers["X-Callback-Key"] = api_key
+            timeout = getattr(settings, 'sources_api_timeout', 5.0)
+            import time as _time
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                resp = await client.get(
+                    f"{java_url}/api/internal/collector/source-authority/all",
+                    headers=headers,
+                )
+                if resp.status_code == 200:
+                    data_list = resp.json().get("data", [])
+                    now = _time.time()
+                    for item in data_list:
+                        if isinstance(item, dict) and item.get("domain"):
+                            cls._api_cache[item["domain"]] = ({
+                                "score": item.get("score", 50),
+                                "level": item.get("level", "medium"),
+                                "reason": f"数据库来源({item.get('level', 'medium')}): {item['domain']}",
+                            }, now)
+                    logger.info("[SourceAuthority] Preloaded %d authority records", len(data_list))
+        except Exception as e:
+            logger.debug("[SourceAuthority] Preload failed (will use hardcoded): %s", e)
 
 
 # ============ 预编译正则 ============
@@ -260,6 +316,20 @@ class ContentQuality:
         ad_ratio = min(ad_count / 5, 1.0)  # 5个以上广告词视为满广告
         dimensions['ad_ratio'] = 25 * (1 - ad_ratio)
 
+        # 日报模式：增加来源权威性维度，用来源评分替代代码密度
+        if digest_mode:
+            source_auth = SourceAuthority.score(url)
+            dimensions['source_authority'] = min(25, int(source_auth['score'] / 4))
+            # 总分 = 字数 + 结构 + 来源权威 + 广告（去掉代码密度）
+            base_score = (
+                dimensions['length']
+                + dimensions['structure']
+                + dimensions['source_authority']
+                + dimensions['ad_ratio']
+            )
+        else:
+            base_score = sum(dimensions.values())
+
         # 5. 标题党惩罚
         cls._clickbait_keywords()  # ensure cache populated
         clickbait_re = cls._cached_clickbait_re
@@ -283,7 +353,6 @@ class ContentQuality:
         freshness = cls._detect_freshness(url, content)
 
         # 总分计算（时效性作为 bonus，不直接扣分）
-        base_score = sum(dimensions.values())
         total_score = base_score - clickbait_penalty - ad_penalty + freshness.get('bonus', 0)
         total_score = max(0, min(100, total_score))
 
@@ -373,8 +442,8 @@ def evaluate_content(url: str, title: str, content: str, task_type: str = None) 
     # 日报任务：提高来源权重、降低内容质量权重
     # 新闻类内容天然缺少代码块和结构化格式，内容质量分低不代表无价值
     if task_type == "digest":
-        src_weight = 0.6
-        cnt_weight = 0.4
+        src_weight = 0.55
+        cnt_weight = 0.45
     else:
         src_weight = settings.quality_source_weight
         cnt_weight = settings.quality_content_weight

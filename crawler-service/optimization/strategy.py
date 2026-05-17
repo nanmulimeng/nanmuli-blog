@@ -6,6 +6,7 @@ StrategyGenerator: 向后兼容的合并入口
 """
 
 import logging
+import random
 from dataclasses import dataclass
 
 from crawler.utils import detect_cjk
@@ -14,6 +15,16 @@ logger = logging.getLogger(__name__)
 
 # 搜索引擎优先级（与 crawler/search.py 一致）
 ENGINE_PRIORITY = ["bing", "baidu", "sogou", "google"]
+
+# 维度策略触发阈值（language 天然偏低，降低阈值避免过度优化）
+_DIMENSION_THRESHOLDS = {
+    "source_diversity": 0.6,
+    "perspective": 0.6,
+    "language": 0.3,
+    "depth": 0.6,
+    "angle": 0.6,
+    "temporal": 0.6,
+}
 
 
 @dataclass
@@ -26,6 +37,7 @@ class SearchStrategy:
     reason: str = ""
     source_expand_section: dict | None = None
     source_expand_overrides: dict | None = None
+    target_dimension: str = ""
 
 
 class DepthStrategyGen:
@@ -49,30 +61,48 @@ class DepthStrategyGen:
         **kwargs,
     ) -> SearchStrategy | None:
         dims = {name: getattr(evaluation, attr) for name, attr in self.DEPTH_DIMENSIONS.items()}
-        weakest = min(dims, key=dims.get)
-        weakest_score = dims[weakest]
-
-        if weakest_score >= 0.6:
-            return None
-
-        strategy_map = {
-            "temporal": self._strategy_temporal,
-            "depth": self._strategy_depth,
-            "angle": self._strategy_angle,
-        }
-
-        handler = strategy_map.get(weakest)
-        if not handler:
-            return None
+        sorted_dims = sorted(dims.items(), key=lambda x: x[1])
 
         history = history or []
-        return handler(
-            keyword=keyword,
-            score=weakest_score,
-            current_engine=current_engine,
-            current_time_range=current_time_range,
-            history=history,
-        )
+
+        for weakest, weakest_score in sorted_dims:
+            threshold = _DIMENSION_THRESHOLDS.get(weakest, 0.6)
+            if weakest_score >= threshold:
+                continue
+
+            if self._is_dimension_exhausted(weakest, history):
+                continue
+
+            strategy_map = {
+                "temporal": self._strategy_temporal,
+                "depth": self._strategy_depth,
+                "angle": self._strategy_angle,
+            }
+
+            handler = strategy_map.get(weakest)
+            if not handler:
+                continue
+
+            strategy = handler(
+                keyword=keyword,
+                score=weakest_score,
+                current_engine=current_engine,
+                current_time_range=current_time_range,
+                history=history,
+            )
+            if strategy is not None:
+                return strategy
+
+        return None
+
+    @staticmethod
+    def _is_dimension_exhausted(dimension: str, history: list) -> bool:
+        """某维度连续 2 轮被尝试且无效果，视为疲劳"""
+        if len(history) < 2:
+            return False
+        recent = history[-2:]
+        matching = sum(1 for h in recent if getattr(h, 'target_dimension', '') == dimension)
+        return matching >= 2
 
     # ============== 具体策略 ==============
 
@@ -90,8 +120,21 @@ class DepthStrategyGen:
                 time_range=expanded,
                 strategy_type="time_adjust",
                 reason=f"时效性覆盖仅 {score:.0%}，扩展时间范围 {current_time_range} → {expanded}",
+                target_dimension="temporal",
             )
         return None
+
+    # 深度限定词（基础 + 二级）
+    _CN_DEPTH = ["原理 源码分析", "内部实现 实战", "深入理解 底层原理", "源码解读 实现细节"]
+    _CN_DEPTH_SEC = ["架构设计 思路", "核心概念 详解", "实现原理 分析", "技术选型 方案"]
+    _EN_DEPTH = ["architecture deep dive", "internals implementation", "how it works under the hood", "in-depth tutorial"]
+    _EN_DEPTH_SEC = ["architecture design patterns", "core concepts explained", "implementation analysis", "technology selection"]
+
+    # 角度变体（基础 + 二级）
+    _CN_ANGLE = ["对比 评测", "最佳实践", "性能优化", "常见问题 解决方案"]
+    _CN_ANGLE_SEC = ["使用场景 案例", "进阶技巧 高级用法", "替代方案 迁移", "趋势 发展方向"]
+    _EN_ANGLE = ["comparison vs alternatives", "best practices", "performance optimization", "common issues troubleshooting"]
+    _EN_ANGLE_SEC = ["use cases examples", "advanced techniques", "alternatives migration", "trends roadmap"]
 
     def _strategy_depth(
         self, keyword: str, score: float,
@@ -100,9 +143,9 @@ class DepthStrategyGen:
     ) -> SearchStrategy | None:
         is_cn = detect_cjk(keyword)
         depth_modifiers = (
-            ["原理 源码分析", "内部实现 实战", "深入理解 底层原理", "源码解读 实现细节"]
+            self._CN_DEPTH + self._CN_DEPTH_SEC
             if is_cn else
-            ["architecture deep dive", "internals implementation", "how it works under the hood", "in-depth tutorial"]
+            self._EN_DEPTH + self._EN_DEPTH_SEC
         )
         used_keywords = {h.keyword for h in history}
         for mod in depth_modifiers:
@@ -114,7 +157,22 @@ class DepthStrategyGen:
                     time_range=current_time_range,
                     strategy_type="keyword_refine",
                     reason=f"深度覆盖仅 {score:.0%}，添加深度限定词 '{mod}'",
+                    target_dimension="depth",
                 )
+        # 年份限定 fallback
+        import datetime
+        year = datetime.datetime.now().year
+        suffix = "最新" if is_cn else "latest"
+        year_candidate = f"{keyword} {year} {suffix}"
+        if year_candidate not in used_keywords:
+            return SearchStrategy(
+                keyword=year_candidate,
+                engine=current_engine,
+                time_range=current_time_range,
+                strategy_type="keyword_refine",
+                reason=f"深度覆盖仅 {score:.0%}，添加年份限定",
+                target_dimension="depth",
+            )
         return None
 
     def _strategy_angle(
@@ -123,20 +181,12 @@ class DepthStrategyGen:
         history: list[SearchStrategy],
     ) -> SearchStrategy | None:
         is_cn = detect_cjk(keyword)
-        if is_cn:
-            angle_variants = [
-                f"{keyword} 对比 评测",
-                f"{keyword} 最佳实践",
-                f"{keyword} 性能优化",
-                f"{keyword} 常见问题 解决方案",
-            ]
-        else:
-            angle_variants = [
-                f"{keyword} comparison vs alternatives",
-                f"{keyword} best practices",
-                f"{keyword} performance optimization",
-                f"{keyword} common issues troubleshooting",
-            ]
+        suffixes = (
+            self._CN_ANGLE + self._CN_ANGLE_SEC
+            if is_cn else
+            self._EN_ANGLE + self._EN_ANGLE_SEC
+        )
+        angle_variants = [f"{keyword} {s}" for s in suffixes]
         used_keywords = {h.keyword for h in history}
         for variant in angle_variants:
             if variant not in used_keywords:
@@ -146,6 +196,7 @@ class DepthStrategyGen:
                     time_range=current_time_range,
                     strategy_type="keyword_refine",
                     reason=f"角度覆盖仅 {score:.0%}，搜索角度变体",
+                    target_dimension="angle",
                 )
         return None
 
@@ -180,44 +231,62 @@ class BreadthStrategyGen:
         **kwargs,
     ) -> SearchStrategy | None:
         dims = {name: getattr(evaluation, attr) for name, attr in self.BREADTH_DIMENSIONS.items()}
-        weakest = min(dims, key=dims.get)
-        weakest_score = dims[weakest]
-
-        # 知识库提示
-        if kb_hint and weakest_score < 0.6:
-            alt = self._pick_hinted_dimension(dims, kb_hint)
-            if alt:
-                weakest = alt
-                weakest_score = dims[weakest]
-
-        if weakest_score >= 0.6:
-            return None
-
-        # 广度优先：source_diversity 偏弱且有可扩展信息源时，优先走 source_expand
-        if sections and weakest == "source_diversity" and weakest_score < 0.6:
-            expand_section = self._pick_expand_section(sections, history or [])
-            if expand_section:
-                return self._strategy_source_expand(keyword, weakest, weakest_score, expand_section)
-
-        strategy_map = {
-            "source_diversity": self._strategy_diversity,
-            "perspective": self._strategy_perspective,
-            "language": self._strategy_language,
-        }
-
-        handler = strategy_map.get(weakest)
-        if not handler:
-            return None
+        sorted_dims = sorted(dims.items(), key=lambda x: x[1])
 
         history = history or []
-        return handler(
-            keyword=keyword,
-            score=weakest_score,
-            current_engine=current_engine,
-            current_time_range=current_time_range,
-            history=history,
-            kb_hint=kb_hint,
-        )
+
+        # 知识库提示
+        if kb_hint:
+            alt = self._pick_hinted_dimension(dims, kb_hint)
+            if alt:
+                # 将 KB 推荐维度移到前面
+                sorted_dims = [(alt, dims[alt])] + [(k, v) for k, v in sorted_dims if k != alt]
+
+        for weakest, weakest_score in sorted_dims:
+            threshold = _DIMENSION_THRESHOLDS.get(weakest, 0.6)
+            if weakest_score >= threshold:
+                continue
+
+            if self._is_dimension_exhausted(weakest, history):
+                continue
+
+            # source_diversity 偏弱且有可扩展信息源时，优先走 source_expand
+            if sections and weakest == "source_diversity" and weakest_score < 0.6:
+                expand_section = self._pick_expand_section(sections, history)
+                if expand_section:
+                    return self._strategy_source_expand(keyword, weakest, weakest_score, expand_section)
+
+            strategy_map = {
+                "source_diversity": self._strategy_diversity,
+                "perspective": self._strategy_perspective,
+                "language": self._strategy_language,
+            }
+
+            handler = strategy_map.get(weakest)
+            if not handler:
+                continue
+
+            strategy = handler(
+                keyword=keyword,
+                score=weakest_score,
+                current_engine=current_engine,
+                current_time_range=current_time_range,
+                history=history,
+                kb_hint=kb_hint,
+            )
+            if strategy is not None:
+                return strategy
+
+        return None
+
+    @staticmethod
+    def _is_dimension_exhausted(dimension: str, history: list) -> bool:
+        """某维度连续 2 轮被尝试且无效果，视为疲劳"""
+        if len(history) < 2:
+            return False
+        recent = history[-2:]
+        matching = sum(1 for h in recent if getattr(h, 'target_dimension', '') == dimension)
+        return matching >= 2
 
     # ============== 知识库提示辅助 ==============
 
@@ -264,6 +333,7 @@ class BreadthStrategyGen:
                 time_range=current_time_range,
                 strategy_type="engine_switch",
                 reason=f"来源多样性仅 {score:.0%}，切换到 {available[0]} 引入新来源",
+                target_dimension="source_diversity",
             )
 
         is_cn = detect_cjk(keyword)
@@ -283,6 +353,7 @@ class BreadthStrategyGen:
                     site_scope=scope,
                     strategy_type="site_scope",
                     reason=f"所有引擎已使用，添加 {scope} 引入特定来源",
+                    target_dimension="source_diversity",
                 )
         return None
 
@@ -314,6 +385,7 @@ class BreadthStrategyGen:
                     time_range=current_time_range,
                     strategy_type="keyword_refine",
                     reason=f"观点均衡仅 {score:.0%}，搜索对立观点",
+                    target_dimension="perspective",
                 )
         return None
 
@@ -332,6 +404,7 @@ class BreadthStrategyGen:
             time_range=current_time_range,
             strategy_type="cross_language",
             reason=f"语言覆盖仅 {score:.0%}，需补充跨语言搜索",
+            target_dimension="language",
         )
 
     # ============== 广度扩展策略 ==============
@@ -353,11 +426,11 @@ class BreadthStrategyGen:
                 candidates.append(section)
 
         if not candidates:
-            for section in sections:
-                if section.get("url_sources") or section.get("rss_sources"):
-                    candidates.append(section)
-            if not candidates:
+            fallback = [s for s in sections
+                        if s.get("url_sources") or s.get("rss_sources")]
+            if not fallback:
                 return None
+            return random.choice(fallback)
 
         def _section_score(sec: dict) -> float:
             eff = sec.get("effectiveness", {})
@@ -387,6 +460,7 @@ class BreadthStrategyGen:
             reason=f"{dimension}仅{score:.0%}，从板块'{name}'扩展来源（{'+'.join(sources)}）",
             source_expand_section=section,
             source_expand_overrides=overrides,
+            target_dimension="source_diversity",
         )
 
     def _generate_overrides(self, section: dict) -> dict | None:
@@ -476,7 +550,8 @@ class StrategyGenerator:
                             weakest = target_dim
                             weakest_score = target_score
 
-        if weakest_score >= 0.6:
+        threshold = _DIMENSION_THRESHOLDS.get(weakest, 0.6)
+        if weakest_score >= threshold:
             return None
 
         # 广度维度优先 source_expand

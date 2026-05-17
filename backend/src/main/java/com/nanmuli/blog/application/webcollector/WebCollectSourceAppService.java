@@ -105,36 +105,51 @@ public class WebCollectSourceAppService {
 
     /**
      * 更新信息源运行状态（供 Python 爬虫服务回调）
+     * 使用乐观锁重试防止并发更新丢失
      */
     @Transactional
     public void updateSourceRunStatus(Long sourceId, String status, String error,
                                        Double qualityScore, Integer resultCount) {
-        WebCollectSource source = sourceRepository.findById(sourceId)
-                .orElseThrow(() -> new BusinessException("订阅源不存在: " + sourceId));
-        source.setLastRunAt(LocalDateTime.now());
-        source.setLastRunStatus(status);
-        source.setRunCount(source.getRunCount() != null ? source.getRunCount() + 1 : 1);
+        int maxRetries = 3;
+        for (int attempt = 0; attempt < maxRetries; attempt++) {
+            try {
+                WebCollectSource source = sourceRepository.findById(sourceId)
+                        .orElseThrow(() -> new BusinessException("订阅源不存在: " + sourceId));
+                source.setLastRunAt(LocalDateTime.now());
+                source.setLastRunStatus(status);
+                source.setRunCount(source.getRunCount() != null ? source.getRunCount() + 1 : 1);
 
-        if ("success".equals(status)) {
-            source.setSuccessCount(source.getSuccessCount() != null ? source.getSuccessCount() + 1 : 1);
-            if (resultCount != null) {
-                source.setLastResultCount(resultCount);
-            }
-            if (qualityScore != null) {
-                double prev = source.getAvgQualityScore() != null ? source.getAvgQualityScore() : 0;
-                double avg = prev == 0 ? qualityScore : 0.7 * prev + 0.3 * qualityScore;
-                source.setAvgQualityScore(Math.round(avg * 100.0) / 100.0);
-            }
-        } else {
-            source.setFailCount(source.getFailCount() != null ? source.getFailCount() + 1 : 1);
-            if (error != null && !error.isBlank()) {
-                source.setLastError(error.length() > 500 ? error.substring(0, 500) : error);
+                if ("success".equals(status)) {
+                    source.setSuccessCount(source.getSuccessCount() != null ? source.getSuccessCount() + 1 : 1);
+                    if (resultCount != null) {
+                        source.setLastResultCount(resultCount);
+                    }
+                    if (qualityScore != null) {
+                        double prev = source.getAvgQualityScore() != null ? source.getAvgQualityScore() : 0;
+                        double avg = prev == 0 ? qualityScore : 0.7 * prev + 0.3 * qualityScore;
+                        source.setAvgQualityScore(Math.round(avg * 100.0) / 100.0);
+                    }
+                } else {
+                    source.setFailCount(source.getFailCount() != null ? source.getFailCount() + 1 : 1);
+                    if (error != null && !error.isBlank()) {
+                        source.setLastError(error.length() > 500 ? error.substring(0, 500) : error);
+                    }
+                }
+
+                sourceRepository.save(source);
+                log.info("[Source] Run status updated: id={}, status={}, successCount={}, failCount={}, avgQuality={}",
+                        sourceId, status, source.getSuccessCount(), source.getFailCount(), source.getAvgQualityScore());
+                return;
+            } catch (org.springframework.dao.OptimisticLockingFailureException e) {
+                log.warn("[Source] Optimistic lock conflict for sourceId={}, attempt {}/{}",
+                        sourceId, attempt + 1, maxRetries);
+                if (attempt == maxRetries - 1) {
+                    log.error("[Source] Failed to update source run status after {} retries: sourceId={}",
+                            maxRetries, sourceId);
+                    throw e;
+                }
             }
         }
-
-        sourceRepository.save(source);
-        log.info("[Source] Run status updated: id={}, status={}, successCount={}, failCount={}, avgQuality={}",
-                sourceId, status, source.getSuccessCount(), source.getFailCount(), source.getAvgQualityScore());
     }
 
     private WebCollectSource getSourceOrThrow(Long id, Long userId) {

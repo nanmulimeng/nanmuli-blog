@@ -1,6 +1,7 @@
 package com.nanmuli.blog.domain.webcollector;
 
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.Version;
 import com.nanmuli.blog.shared.domain.BaseAggregateRoot;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
@@ -39,6 +40,9 @@ public class WebCollectSource extends BaseAggregateRoot<Long> {
     private Integer lastResultCount;
     private String lastError;
     private Long userId;
+
+    @Version
+    private Integer version;
 
     public boolean isActive() {
         return Boolean.TRUE.equals(isActive);

@@ -25,6 +25,32 @@ from api.ssrf_guard import validate_url_ssrf
 
 logger = logging.getLogger(__name__)
 
+# ============== 搜索引擎健康度监控 ==============
+
+_selector_health: dict[str, dict] = {}
+
+
+def _record_selector_result(engine: str, result_count: int):
+    """记录搜索引擎选择器结果数量，用于健康度监控"""
+    if engine not in _selector_health:
+        _selector_health[engine] = {
+            "total_attempts": 0, "zero_results": 0, "last_zero_time": 0,
+            "last_result_count": 0, "last_attempt_time": 0,
+        }
+    health = _selector_health[engine]
+    import time as _time
+    health["total_attempts"] += 1
+    health["last_result_count"] = result_count
+    health["last_attempt_time"] = int(_time.time())
+    if result_count == 0:
+        health["zero_results"] += 1
+        health["last_zero_time"] = int(_time.time())
+
+
+def get_selector_health() -> dict:
+    """获取搜索引擎选择器健康度数据（供 /stats API 使用）"""
+    return dict(_selector_health)
+
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
@@ -534,6 +560,7 @@ async def _get_search_results(keyword: str, engine: str, max_results: int, time_
                         headers=headers,
                         client=None,
                     )
+                    _record_selector_result(engine, raw_count)
                 elif engine == "sogou":
                     if page == 0:
                         try:
@@ -564,6 +591,7 @@ async def _get_search_results(keyword: str, engine: str, max_results: int, time_
                                 headers=headers,
                                 client=shared_client,
                             )
+                            _record_selector_result(engine, raw_count)
                             last_exc = None
                             break
                         except Exception as exc:
@@ -596,6 +624,7 @@ async def _get_search_results(keyword: str, engine: str, max_results: int, time_
                                 headers=headers,
                                 client=shared_client,
                             )
+                            _record_selector_result(engine, raw_count)
                             last_exc = None
                             break
                         except Exception as exc:
@@ -772,8 +801,11 @@ async def crawl_by_keyword(
             "[Search] Deadline reached (%ss elapsed of %ss), returning partial results",
             elapsed, deadline
         )
-        # 超时时返回已收集但未爬取的 URL 的错误结果
+        # 超时时仅为尚未成功爬取的 URL 添加错误条目
+        crawled_urls = {r.url for r in results if r.success}
         for rank_0, url in enumerate(all_search_urls):
+            if url in crawled_urls:
+                continue
             rank = rank_0 + 1
             results.append(CrawlResult(
                 success=False,

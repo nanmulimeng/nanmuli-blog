@@ -136,11 +136,23 @@ class Settings(BaseSettings):
 
     # 自动优化引擎配置
     optimization_enabled: bool = False
-    optimization_target_score: float = 0.7
+    optimization_target_score: float = 0.7  # deprecated: 展示用，实际使用 depth/breadth target
     optimization_max_rounds: int = 3       # 深度优化独立预算
     optimization_min_improvement: float = 0.03
     optimization_mode: str = "both"  # keyword / digest / both — 默认启用所有任务类型的优化
     breadth_max_rounds: int = 3            # 广度扩展独立预算
+    optimization_total_budget_seconds: int = 120  # 优化总时间预算（秒）
+    # 深度子循环内部权重（三者之和应为 1.0）
+    optimization_depth_weight_primary: float = 0.4      # depth 维度
+    optimization_depth_weight_secondary: float = 0.35   # angle 维度
+    optimization_depth_weight_tertiary: float = 0.25    # temporal 维度
+    # 广度子循环内部权重（三者之和应为 1.0）
+    optimization_breadth_weight_primary: float = 0.4    # source_diversity 维度
+    optimization_breadth_weight_secondary: float = 0.35 # perspective 维度
+    optimization_breadth_weight_tertiary: float = 0.25  # language 维度
+    # 子循环独立达标线（低于全局 0.7，因为子循环只控制 3 维）
+    optimization_depth_target_score: float = 0.6
+    optimization_breadth_target_score: float = 0.6
 
     # 信息茧房突破配置
     bubble_breaker_enabled: bool = False

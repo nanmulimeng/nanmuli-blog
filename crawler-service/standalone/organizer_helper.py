@@ -169,7 +169,8 @@ def _build_task_context(task: dict, pages: list[dict] | None = None) -> str | No
 
 
 async def organize_content_and_save(
-    task_id: int, task: dict, pages: list[dict], organizer
+    task_id: int, task: dict, pages: list[dict], organizer,
+    max_tokens_override: int | None = None
 ):
     """非日报：AI 整理 + 持久化"""
     page_contents = build_page_contents(pages)
@@ -180,9 +181,15 @@ async def organize_content_and_save(
     keyword_context = _build_task_context(task, pages)
 
     if len(page_contents) == 1:
-        result = await organizer.organize(page_contents[0].markdown, template, keyword_context)
+        result = await organizer.organize(
+            page_contents[0].markdown, template, keyword_context,
+            max_tokens_override=max_tokens_override,
+        )
     else:
-        result = await organizer.organize_multiple(page_contents, template, keyword_context=keyword_context)
+        result = await organizer.organize_multiple(
+            page_contents, template, keyword_context=keyword_context,
+            max_tokens_override=max_tokens_override,
+        )
 
     await repo.save_ai_results(
         task_id,
@@ -199,15 +206,24 @@ async def organize_content_and_save(
 
 
 async def organize_digest_and_save(
-    task_id: int, task: dict, pages: list[dict], organizer
+    task_id: int, task: dict, pages: list[dict], organizer,
+    max_tokens_override: int | None = None
 ):
     """日报：AI 整理 + 持久化"""
     digest_pages = build_digest_pages(pages)
     if not digest_pages:
         raise ValueError("没有成功的页面可整理")
 
-    date = task.get("keyword") or datetime.date.today().isoformat()
-    result = await organizer.generate_digest(digest_pages, date)
+    date = task.get("digest_date") or task.get("keyword") or datetime.date.today().isoformat()
+    input_urls = frozenset(p.url for p in digest_pages if p.url)
+
+    # 获取最近 highlight 用于 AI 多样性检测
+    recent_highlights = await repo.get_recent_highlights(count=3)
+
+    result = await organizer.generate_digest(
+        digest_pages, date, input_urls=input_urls, recent_highlights=recent_highlights,
+        max_tokens_override=max_tokens_override
+    )
     sections_data = serialize_digest_sections(result)
 
     await repo.save_digest_results(

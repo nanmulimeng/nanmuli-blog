@@ -4,7 +4,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from dataclasses import dataclass
 
-from optimization.evaluator import CoverageEvaluator, CoverageEvaluation, WEIGHTS
+from optimization.evaluator import CoverageEvaluator, CoverageEvaluation, _get_weights
 from optimization.strategy import StrategyGenerator, SearchStrategy, ENGINE_PRIORITY
 from optimization.feedback import FeedbackLoop, OptimizationRound
 from optimization.knowledge_base import KnowledgeBase
@@ -58,13 +58,12 @@ class TestEvaluatorEndToEnd:
         assert meta["total_content_length"] == 3500
 
     def test_shannon_entropy_realistic_scenario(self):
-        """模拟 10 个结果来自 2 个域名的场景"""
+        """模拟 10 个结果来自 2 个域名的场景（含样本量校正）"""
         domains = ["github.com"] * 7 + ["stackoverflow.com"] * 3
         entropy = CoverageEvaluator._calc_shannon_entropy(domains)
-        # 10 个结果: max_entropy = log2(10) ≈ 3.32
-        # 实际 entropy = -0.7*log2(0.7) - 0.3*log2(0.3) ≈ 0.881
-        # 归一化 = 0.881 / 3.32 ≈ 0.265
-        assert 0.2 < entropy < 0.35
+        # 10 个结果, 2 unique domains < 5 threshold → sample_penalty = 0.4
+        # 原始归一化 ≈ 0.265, 修正后 ≈ 0.106
+        assert 0.05 < entropy < 0.15
 
     def test_language_mix_bilingual(self):
         titles = [
@@ -363,13 +362,14 @@ class TestWeightedScore:
         source_diversity = CoverageEvaluator._calc_shannon_entropy(meta["domains"])
         language = CoverageEvaluator._calc_language_mix(meta["titles"])
 
+        weights = _get_weights()
         expected = (
-            WEIGHTS["angle"] * heuristic["angle"]
-            + WEIGHTS["source_diversity"] * source_diversity
-            + WEIGHTS["depth"] * heuristic["depth"]
-            + WEIGHTS["temporal"] * heuristic["temporal"]
-            + WEIGHTS["perspective"] * heuristic["perspective"]
-            + WEIGHTS["language"] * language
+            weights["angle"] * heuristic["angle"]
+            + weights["source_diversity"] * source_diversity
+            + weights["depth"] * heuristic["depth"]
+            + weights["temporal"] * heuristic["temporal"]
+            + weights["perspective"] * heuristic["perspective"]
+            + weights["language"] * language
         )
 
         # 运行完整评估

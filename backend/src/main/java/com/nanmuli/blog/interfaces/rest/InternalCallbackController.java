@@ -4,13 +4,18 @@ import com.nanmuli.blog.application.webcollector.WebCollectorAppService;
 import com.nanmuli.blog.application.webcollector.WebCollectSourceAppService;
 import com.nanmuli.blog.application.webcollector.dto.SourceDTO;
 import com.nanmuli.blog.domain.config.ConfigRepository;
+import com.nanmuli.blog.domain.webcollector.DigestFingerprint;
+import com.nanmuli.blog.domain.webcollector.SourceAuthority;
 import com.nanmuli.blog.infrastructure.config.ConfigService;
 import com.nanmuli.blog.infrastructure.config.security.AesEncryptor;
+import com.nanmuli.blog.infrastructure.persistence.webcollector.DigestFingerprintRepositoryImpl;
+import com.nanmuli.blog.infrastructure.persistence.webcollector.SourceAuthorityMapper;
 import com.nanmuli.blog.shared.result.Result;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,6 +35,8 @@ public class InternalCallbackController {
     private final ConfigRepository configRepository;
     private final AesEncryptor aesEncryptor;
     private final ConfigService configService;
+    private final DigestFingerprintRepositoryImpl fingerprintRepository;
+    private final SourceAuthorityMapper sourceAuthorityMapper;
 
     private volatile boolean apiKeyBlankWarned = false;
 
@@ -132,5 +139,96 @@ public class InternalCallbackController {
 
         sourceAppService.updateSourceRunStatus(sourceId, status, error, qualityScore, resultCount);
         return Result.success();
+    }
+
+    /**
+     * 查询最近 N 天的日报去重指纹（供 Python 跨日去重）
+     */
+    @GetMapping("/digest/fingerprints")
+    public Result<List<DigestFingerprint>> getDigestFingerprints(
+            @RequestHeader(value = "X-Callback-Key", required = false) String callbackKey,
+            @RequestParam(defaultValue = "3") int days) {
+
+        if (authRequired(callbackKey)) {
+            return Result.error(403, "Invalid callback key");
+        }
+
+        LocalDate since = LocalDate.now().minusDays(days);
+        List<DigestFingerprint> fingerprints = fingerprintRepository.findByDigestDateAfter(since);
+        return Result.success(fingerprints);
+    }
+
+    /**
+     * 批量保存日报去重指纹（供 Python 日报生成完成后回调）
+     */
+    @PostMapping("/digest/fingerprints")
+    public Result<Void> saveDigestFingerprints(
+            @RequestHeader(value = "X-Callback-Key", required = false) String callbackKey,
+            @RequestBody List<Map<String, Object>> payload) {
+
+        if (authRequired(callbackKey)) {
+            return Result.error(403, "Invalid callback key");
+        }
+
+        List<DigestFingerprint> fingerprints = payload.stream().map(m -> {
+            DigestFingerprint fp = new DigestFingerprint();
+            fp.setTaskId(m.get("taskId") instanceof Number n ? n.longValue() : null);
+            fp.setUrlHash((String) m.getOrDefault("urlHash", ""));
+            fp.setUrl((String) m.getOrDefault("url", ""));
+            fp.setTitle((String) m.getOrDefault("title", ""));
+            fp.setSimhash(m.get("simhash") instanceof Number n ? n.longValue() : null);
+            String dateStr = (String) m.getOrDefault("digestDate", "");
+            if (!dateStr.isBlank()) {
+                fp.setDigestDate(LocalDate.parse(dateStr));
+            }
+            return fp;
+        }).toList();
+
+        fingerprintRepository.saveAll(fingerprints);
+        log.info("[Fingerprints] Saved {} digest fingerprints", fingerprints.size());
+        return Result.success();
+    }
+
+    /**
+     * 查询来源可信度（供 Python 评分时优先查库）
+     */
+    @GetMapping("/source-authority")
+    public Result<SourceAuthority> getSourceAuthority(
+            @RequestHeader(value = "X-Callback-Key", required = false) String callbackKey,
+            @RequestParam String domain) {
+
+        if (authRequired(callbackKey)) {
+            return Result.error(403, "Invalid callback key");
+        }
+
+        com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<SourceAuthority> wrapper =
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<>();
+        wrapper.eq(SourceAuthority::getDomain, domain)
+               .eq(SourceAuthority::getIsActive, true)
+               .eq(SourceAuthority::getIsDeleted, false)
+               .last("LIMIT 1");
+        SourceAuthority authority = sourceAuthorityMapper.selectOne(wrapper);
+        if (authority == null) {
+            return Result.success();
+        }
+        return Result.success(authority);
+    }
+
+    /**
+     * 批量获取所有活跃来源可信度（供 Python 预热缓存）
+     */
+    @GetMapping("/source-authority/all")
+    public Result<List<SourceAuthority>> getAllSourceAuthorities(
+            @RequestHeader(value = "X-Callback-Key", required = false) String callbackKey) {
+
+        if (authRequired(callbackKey)) {
+            return Result.error(403, "Invalid callback key");
+        }
+
+        com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<SourceAuthority> wrapper =
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<>();
+        wrapper.eq(SourceAuthority::getIsActive, true)
+               .eq(SourceAuthority::getIsDeleted, false);
+        return Result.success(sourceAuthorityMapper.selectList(wrapper));
     }
 }

@@ -8,6 +8,9 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from config import settings
+
+# 日报生成防重入锁（防止 trigger_digest 并发创建重复日报）
+_digest_lock = asyncio.Lock()
 from standalone.models import TaskStatus
 from standalone import repository as repo
 from standalone.task_executor import executor
@@ -17,6 +20,23 @@ logger = logging.getLogger(__name__)
 
 _scheduler: AsyncIOScheduler | None = None
 _registered_source_jobs: set[str] = set()
+
+# 任务完成事件注册表（供 _wait_and_update_source_status 使用）
+_task_completion_events: dict[int, asyncio.Event] = {}
+
+
+def register_task_event(task_id: int) -> asyncio.Event:
+    """注册任务完成事件，供 TaskExecutor 完成时 set"""
+    event = asyncio.Event()
+    _task_completion_events[task_id] = event
+    return event
+
+
+def notify_task_completion(task_id: int):
+    """任务完成时通知等待者"""
+    event = _task_completion_events.pop(task_id, None)
+    if event:
+        event.set()
 
 
 def parse_cron(expr: str) -> dict:
@@ -45,29 +65,34 @@ async def generate_scheduled_digest(force: bool = False):
     Args:
         force: 为 True 时跳过防重复检查，允许重新生成当天日报
     """
-    today = datetime.date.today().isoformat()
-    logger.info("Scheduled digest generation triggered for %s (force=%s)", today, force)
+    if _digest_lock.locked():
+        logger.info("Digest generation already in progress, skipping")
+        return
 
-    try:
-        # 原子防重复检查：一条 SQL 检查活跃 + 已完成任务
-        if not force:
-            existing = await repo.get_digest_existing_non_failed(today)
-            if existing:
-                logger.info("Digest for %s already exists (task_id=%d, status=%d), skipping.",
-                            today, existing["id"], existing["status"])
-                return
+    async with _digest_lock:
+        today = datetime.date.today().isoformat()
+        logger.info("Scheduled digest generation triggered for %s (force=%s)", today, force)
 
-        task_id = await repo.create_task(
-            task_type="digest",
-            ai_template="daily_digest",
-            keyword=today,
-            digest_date=today,
-        )
-        await executor.submit(task_id)
-        logger.info("Scheduled digest task created: task_id=%d, date=%s", task_id, today)
+        try:
+            # 原子防重复检查：一条 SQL 检查活跃 + 已完成任务
+            if not force:
+                existing = await repo.get_digest_existing_non_failed(today)
+                if existing:
+                    logger.info("Digest for %s already exists (task_id=%d, status=%d), skipping.",
+                                today, existing["id"], existing["status"])
+                    return
 
-    except Exception as e:
-        logger.error("Scheduled digest generation failed: %s", e, exc_info=True)
+            task_id = await repo.create_task(
+                task_type="digest",
+                ai_template="daily_digest",
+                keyword=today,
+                digest_date=today,
+            )
+            await executor.submit(task_id)
+            logger.info("Scheduled digest task created: task_id=%d, date=%s", task_id, today)
+
+        except Exception as e:
+            logger.error("Scheduled digest generation failed: %s", e, exc_info=True)
 
 
 # ============== 信息源调度 ==============
@@ -186,15 +211,30 @@ async def execute_scheduled_source(source_id: int, source_config: dict):
 
 
 async def _wait_and_update_source_status(source_id: int, task_id: int, timeout: float = 300):
-    """等待任务完成后更新源运行状态。"""
+    """等待任务完成后更新源运行状态（事件通知 + 指数退避轮询 fallback）"""
+    event = _task_completion_events.get(task_id)
+    # 退避间隔：2→3→5→5→10→10...
+    intervals = [2, 3, 5, 5, 10, 10]
     elapsed = 0.0
-    interval = 5.0
+    idx = 0
+
     while elapsed < timeout:
-        await asyncio.sleep(interval)
+        interval = intervals[min(idx, len(intervals) - 1)]
+
+        # 同时等待 event 和 interval
+        try:
+            if event is not None:
+                await asyncio.wait_for(event.wait(), timeout=interval)
+        except asyncio.TimeoutError:
+            pass
+
         elapsed += interval
+        idx += 1
+
         task = await repo.get_task(task_id)
         if not task:
             await _update_source_run_status(source_id, "failed", error="Task not found")
+            _task_completion_events.pop(task_id, None)
             return
         status = task.get("status", 0)
         if status == TaskStatus.COMPLETED:
@@ -204,13 +244,16 @@ async def _wait_and_update_source_status(source_id: int, task_id: int, timeout: 
                 quality_score=stats.get("qualityScore"),
                 result_count=stats.get("resultCount"),
             )
+            _task_completion_events.pop(task_id, None)
             return
         if status == TaskStatus.FAILED:
             error = task.get("error_message", "Unknown error")
             await _update_source_run_status(source_id, "failed", error=error)
+            _task_completion_events.pop(task_id, None)
             return
 
     await _update_source_run_status(source_id, "failed", error="Timeout waiting for task completion")
+    _task_completion_events.pop(task_id, None)
 
 
 async def _collect_source_stats(task_id: int) -> dict:
@@ -305,20 +348,26 @@ async def _execute_rss_source(source_id: int, source_config: dict):
         search_engine=source_config.get("searchEngine", settings.digest_search_engine),
     )
 
-    # 3. 逐篇爬取（并发控制）
+    # 3. 逐篇爬取（并发控制 + 共享浏览器实例）
+    from crawl4ai import AsyncWebCrawler
+    from crawler.config import get_browser_config
+
     sem = asyncio.Semaphore(settings.max_concurrent_crawls)
     results: list[CrawlResult] = []
+    browser_config = await get_browser_config(text_mode=True, light_mode=True, proxy=settings.proxy_url)
 
-    async def _crawl_entry(entry_url: str) -> CrawlResult | None:
-        async with sem:
-            try:
-                return await crawl_single_page(url=entry_url, config=None, crawler=None)
-            except Exception as e:
-                logger.debug("RSS entry crawl failed: url=%s error=%s", entry_url, e)
-                return None
+    async with AsyncWebCrawler(config=browser_config) as shared_crawler:
 
-    tasks = [_crawl_entry(e.url) for e in entries]
-    page_results = await asyncio.gather(*tasks, return_exceptions=True)
+        async def _crawl_entry(entry_url: str) -> CrawlResult | None:
+            async with sem:
+                try:
+                    return await crawl_single_page(url=entry_url, config=None, crawler=shared_crawler)
+                except Exception as e:
+                    logger.debug("RSS entry crawl failed: url=%s error=%s", entry_url, e)
+                    return None
+
+        tasks = [_crawl_entry(e.url) for e in entries]
+        page_results = await asyncio.gather(*tasks, return_exceptions=True)
 
     for r in page_results:
         if isinstance(r, CrawlResult):
@@ -411,6 +460,26 @@ def start_scheduler():
         minutes=5,
         id="source_schedule_refresh",
         name="Source Schedule Refresh",
+        replace_existing=True,
+    )
+
+    # 优化记录定时清理（每天清理 90 天前的数据）
+    async def _cleanup_optimization_records():
+        from optimization.knowledge_base import KnowledgeBase
+        try:
+            kb = KnowledgeBase()
+            count = await kb.cleanup_old_records(days=90)
+            if count > 0:
+                logger.info("Cleaned up %d old optimization records", count)
+        except Exception as e:
+            logger.warning("Optimization cleanup failed: %s", e)
+
+    _scheduler.add_job(
+        _cleanup_optimization_records,
+        trigger="interval",
+        days=1,
+        id="optimization_cleanup",
+        name="Optimization Records Cleanup",
         replace_existing=True,
     )
 

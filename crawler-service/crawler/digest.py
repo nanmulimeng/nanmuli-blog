@@ -7,6 +7,7 @@
 import asyncio
 import copy
 import logging
+import time
 
 from config import settings
 
@@ -35,6 +36,11 @@ async def execute_digest_crawl(task: dict, config, task_executor) -> list:
     sections = await get_digest_sections()
     if not sections:
         raise ValueError("日报功能未配置")
+
+    # 任务级快照：深拷贝防止执行期间管理员修改配置导致不一致
+    sections = copy.deepcopy(sections)
+    logger.info("Digest sections snapshot: %d sections locked for task %d",
+                len(sections), task.get("id", "?"))
 
     history_engine = await build_digest_history_engine()
 
@@ -72,15 +78,26 @@ async def execute_digest_crawl(task: dict, config, task_executor) -> list:
 
                     # keyword 搜索（keyword 或 mixed 板块）
                     if source_type in ("keyword", "mixed") and section.get("keyword"):
-                        kw_results = await crawl_by_keyword(
-                            keyword=section["keyword"],
-                            engine=engine,
-                            max_results=section.get("max_items", 5) * settings.digest_section_result_multiplier,
-                            time_range=section.get("time_range", "week"),
-                            config=config_copy,
-                            crawler=shared_crawler,
-                        )
-                        results.extend(kw_results)
+                        # 独立搜索：拆分 OR 合并的关键词，逐个搜索提高相关性
+                        kw_raw = section["keyword"]
+                        kw_list = [kw.strip() for kw in kw_raw.split(" OR ") if kw.strip()]
+                        if not kw_list:
+                            kw_list = [kw_raw]
+                        per_kw_max = max(3, section.get("max_items", 5) * settings.digest_section_result_multiplier // len(kw_list))
+                        for kw in kw_list:
+                            try:
+                                kw_results = await crawl_by_keyword(
+                                    keyword=kw,
+                                    engine=engine,
+                                    max_results=per_kw_max,
+                                    time_range=section.get("time_range", "week"),
+                                    config=config_copy,
+                                    crawler=shared_crawler,
+                                )
+                                results.extend(kw_results)
+                            except Exception as e:
+                                logger.warning("Keyword search failed for '%s': %s", kw, e)
+                            await asyncio.sleep(1)
 
                     # URL 直爬（url 或 mixed 板块）
                     if source_type in ("url", "mixed") and section.get("url_sources"):
@@ -106,7 +123,17 @@ async def execute_digest_crawl(task: dict, config, task_executor) -> list:
                                    else getattr(r, 'url', ''))
                             success = (r.get('success', True) if isinstance(r, dict)
                                        else getattr(r, 'success', True))
-                            if not url or url in seen_urls or not success:
+                            if not url or not success:
+                                continue
+                            # 轻量预过滤：极短内容不进入 SimHash（避免垃圾占据指纹槽位）
+                            _content = (r.get('markdown', '') if isinstance(r, dict)
+                                        else getattr(r, 'markdown', ''))
+                            if len(_content) < 100:
+                                continue
+                            # URL 规范化去重（协议/www/尾部斜杠/追踪参数）
+                            from crawler.utils import normalize_url
+                            norm_url = normalize_url(url)
+                            if norm_url in seen_urls:
                                 continue
                             # SimHash 去重
                             content = (r.get('markdown', '') if isinstance(r, dict)
@@ -120,7 +147,7 @@ async def execute_digest_crawl(task: dict, config, task_executor) -> list:
                             dup = content_dedup.is_duplicate(url, title, preview)
                             if dup["is_duplicate"]:
                                 continue
-                            seen_urls.add(url)
+                            seen_urls.add(norm_url)
                             all_results.append(r)
                             content_dedup.add(url, title, preview)
                             added += 1
@@ -176,15 +203,55 @@ async def execute_digest_crawl(task: dict, config, task_executor) -> list:
             except Exception as e:
                 logger.warning("Digest optimization failed (non-critical): %s", e)
 
+    # 持久化指纹到 Java PostgreSQL（跨日去重）
+    digest_date = task.get("digest_date", "")
+    if digest_date and all_results:
+        try:
+            await save_digest_fingerprints(task["id"], all_results, digest_date)
+        except Exception as e:
+            logger.warning("Failed to save digest fingerprints (non-critical): %s", e)
+
     return all_results
 
 
 async def build_digest_history_engine():
-    """从最近几次成功日报中加载 URL/标题/内容指纹，用于跨日去重"""
+    """从 Java API 加载持久化指纹，回退到本地 SQLite 历史，用于跨日去重"""
     from crawler.dedup import DedupEngine
     from standalone import repository as repo
 
     engine = DedupEngine()
+
+    # 优先从 Java API 加载持久化指纹
+    java_url = settings.java_api_url
+    if java_url:
+        try:
+            import httpx
+            headers = {"Content-Type": "application/json"}
+            if settings.callback_api_key:
+                headers["X-Callback-Key"] = settings.callback_api_key
+            async with httpx.AsyncClient(timeout=settings.sources_api_timeout) as client:
+                resp = await client.get(
+                    f"{java_url}/api/internal/collector/digest/fingerprints?days=3",
+                    headers=headers,
+                )
+                if resp.status_code == 200:
+                    data = resp.json().get("data", [])
+                    for fp in data:
+                        url = fp.get("url", "")
+                        title = fp.get("title", "")
+                        simhash_val = fp.get("simhash")
+                        if url:
+                            if simhash_val and isinstance(simhash_val, (int, float)):
+                                engine.add_precomputed_simhash(url, title=title, simhash=int(simhash_val))
+                            else:
+                                engine.add_reference(url, title=title, content="")
+                    if data:
+                        logger.info("Digest history engine: %d fingerprints loaded from Java API", len(data))
+                    return engine
+        except Exception as e:
+            logger.warning("Failed to load fingerprints from Java API: %s, falling back to local", e)
+
+    # 回退：从本地 SQLite 加载历史日报页面
     try:
         pages = await repo.get_history_digest_pages(count=settings.digest_history_load_count)
         for p in pages:
@@ -194,10 +261,81 @@ async def build_digest_history_engine():
             if url:
                 engine.add_reference(url, title=title, content=content)
         if pages:
-            logger.info("Digest history engine: %d reference pages loaded", len(pages))
+            logger.info("Digest history engine: %d reference pages loaded from local SQLite", len(pages))
     except Exception as e:
         logger.warning("Failed to load digest history for dedup: %s", e)
     return engine
+
+
+async def save_digest_fingerprints(task_id: int, results: list, digest_date: str):
+    """日报完成后将指纹保存到 Java PostgreSQL（跨日持久化去重）"""
+    from crawler.dedup import ContentFingerprint
+
+    java_url = settings.java_api_url
+    if not java_url:
+        return
+
+    import hashlib
+    fingerprints = []
+    for r in results:
+        url = r.get('url', '') if isinstance(r, dict) else getattr(r, 'url', '')
+        title = r.get('title', '') if isinstance(r, dict) else getattr(r, 'title', '')
+        content = r.get('markdown', '') if isinstance(r, dict) else getattr(r, 'markdown', '')
+        if not url:
+            continue
+        url_hash = hashlib.sha256(url.encode('utf-8')).hexdigest()
+        simhash_val = ContentFingerprint(content).simhash if content and len(content) >= 100 else None
+        fingerprints.append({
+            "taskId": task_id,
+            "urlHash": url_hash,
+            "url": url,
+            "title": (title or "")[:500],
+            "simhash": simhash_val,
+            "digestDate": digest_date,
+        })
+
+    if not fingerprints:
+        return
+
+    try:
+        import httpx
+        headers = {"Content-Type": "application/json"}
+        if settings.callback_api_key:
+            headers["X-Callback-Key"] = settings.callback_api_key
+        async with httpx.AsyncClient(timeout=settings.sources_api_timeout) as client:
+            resp = await client.post(
+                f"{java_url}/api/internal/collector/digest/fingerprints",
+                json=fingerprints,
+                headers=headers,
+            )
+            if resp.status_code == 200:
+                logger.info("[DigestFingerprints] Saved %d fingerprints to Java API", len(fingerprints))
+            else:
+                logger.warning("[DigestFingerprints] Save failed: status=%d", resp.status_code)
+    except Exception as e:
+        logger.warning("[DigestFingerprints] Save failed: %s", e)
+
+
+def _extract_digest_keyword(sections: list[dict] | None) -> str:
+    """从板块配置中提取最具代表性的关键词用于优化评估"""
+    if not sections:
+        return "technology"
+    for section in sections:
+        kw = section.get("keyword", "")
+        if kw and section.get("source_type") in ("keyword", "mixed"):
+            parts = [p.strip() for p in kw.split(" OR ") if p.strip()]
+            if not parts:
+                continue
+            candidates = [p for p in parts if 2 <= len(p) <= 30]
+            if not candidates:
+                candidates = parts
+            candidates.sort(key=lambda p: len(p))
+            return candidates[0][:100]
+    for section in sections:
+        name = section.get("name", "")
+        if name:
+            return name
+    return "technology"
 
 
 async def run_digest_optimization(
@@ -218,6 +356,8 @@ async def run_digest_optimization(
     from optimization.knowledge_base import KnowledgeBase
     from crawler.search import crawl_by_keyword
 
+    eval_keyword = _extract_digest_keyword(sections)
+
     evaluator = CoverageEvaluator(organizer if organizer.is_available else None)
     depth_gen = DepthStrategyGen()
     breadth_gen = BreadthStrategyGen()
@@ -225,6 +365,7 @@ async def run_digest_optimization(
     breaker = BubbleBreaker(organizer if organizer.is_available else None)
 
     ctx = {"engine": engine, "time_range": "week", "config": config, "crawler": crawler}
+    deadline = time.monotonic() + settings.optimization_total_budget_seconds
 
     # === Phase 1: 广度扩展（先广）===
     breadth_expander = BreadthExpander(
@@ -235,12 +376,13 @@ async def run_digest_optimization(
         target_score=settings.digest_optimization_target_score,
     )
     results, breadth_rounds = await breadth_expander.execute(
-        keyword="digest",
+        keyword=eval_keyword,
         initial_results=all_results,
         crawl_fn=crawl_by_keyword,
         task_id=task["id"],
         context=ctx,
         sections=sections,
+        deadline=deadline,
     )
 
     if breadth_rounds:
@@ -251,6 +393,8 @@ async def run_digest_optimization(
         )
 
     # === Phase 2: 深度优化（后深）===
+    last_breadth_eval = breadth_rounds[-1].evaluation if breadth_rounds else None
+
     depth_loop = FeedbackLoop(
         evaluator=evaluator,
         strategy_gen=depth_gen,
@@ -258,11 +402,13 @@ async def run_digest_optimization(
         target_score=settings.digest_optimization_target_score,
     )
     final_results, depth_rounds = await depth_loop.execute(
-        keyword="digest",
+        keyword=eval_keyword,
         initial_results=results,
         crawl_fn=crawl_by_keyword,
         task_id=task["id"],
         context=ctx,
+        initial_evaluation=last_breadth_eval,
+        deadline=deadline,
     )
 
     total_rounds = len(breadth_rounds) + len(depth_rounds)
@@ -272,43 +418,9 @@ async def run_digest_optimization(
     logger.info(
         "[DigestOptimization] Done: %d rounds (breadth=%d, depth=%d), final score=%.2f, total URLs=%d",
         total_rounds, len(breadth_rounds), len(depth_rounds),
-        final_eval.overall_score if final_eval else 0, len(seen_urls),
+        final_eval.overall_score if final_eval else 0, len(final_results),
     )
     return final_results
-
-
-async def _save_optimization_round(
-    task_id: int, round_num: int, evaluation, strategy,
-    urls_before: int, urls_after: int, score_delta: float,
-):
-    """保存优化轮次到 DB"""
-    if task_id <= 0:
-        return
-    try:
-        from standalone import repository as repo
-        await repo.save_optimization_round(
-            task_id=task_id,
-            round_num=round_num,
-            angle_coverage=evaluation.angle_coverage,
-            source_diversity=evaluation.source_diversity,
-            depth_coverage=evaluation.depth_coverage,
-            temporal_coverage=evaluation.temporal_coverage,
-            perspective_balance=evaluation.perspective_balance,
-            language_coverage=evaluation.language_coverage,
-            overall_score=evaluation.overall_score,
-            search_keyword=strategy.keyword,
-            search_engine=strategy.engine,
-            time_range=strategy.time_range,
-            strategy_type=strategy.strategy_type,
-            strategy_detail=strategy.reason,
-            weaknesses=evaluation.weaknesses,
-            suggestions=evaluation.suggestions,
-            urls_before=urls_before,
-            urls_after=urls_after,
-            score_delta=round(score_delta, 4),
-        )
-    except Exception as e:
-        logger.warning("[DigestOptimization] Failed to save round: %s", e)
 
 
 async def _crawl_url_sources(section: dict, config, crawler) -> list:
@@ -426,6 +538,12 @@ async def _crawl_rss_sources(section: dict, config, crawler) -> list:
         # 并发爬取文章页面
         tasks = [_crawl_feed_entry(e.url, e.title) for e in entries]
         page_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # 统计异常数量
+        exception_count = sum(1 for r in page_results if isinstance(r, Exception))
+        if exception_count:
+            logger.warning("RSS feed '%s': %d/%d entries failed with exceptions",
+                           feed_url, exception_count, len(entries))
 
         for r in page_results:
             if isinstance(r, CrawlResult):

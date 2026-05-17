@@ -194,6 +194,10 @@ async def re_organize_task(task_id: int):
     if task["status"] not in (TaskStatus.COMPLETED, TaskStatus.FAILED):
         raise HTTPException(400, "只有已完成或失败的任务才能重新整理")
 
+    # 竞态保护：检查执行器是否正在处理该任务
+    if executor.is_running(task_id):
+        raise HTTPException(409, "任务正在执行中，请稍后重试")
+
     from ai import content_organizer as organizer
     if not organizer.is_available:
         raise HTTPException(503, "AI 服务未配置")
@@ -253,7 +257,10 @@ async def get_ai_config():
 @router.get("/stats")
 async def get_stats():
     """获取统计信息"""
-    return await repo.get_stats()
+    stats = await repo.get_stats()
+    from crawler.search import get_selector_health
+    stats["selector_health"] = get_selector_health()
+    return stats
 
 
 # ============== Optimization API ==============
@@ -264,7 +271,8 @@ async def get_optimization_config():
     from config import settings as s
     return {
         "enabled": s.optimization_enabled,
-        "target_score": s.optimization_target_score,
+        "depth_target_score": s.optimization_depth_target_score,
+        "breadth_target_score": s.optimization_breadth_target_score,
         "max_rounds": s.optimization_max_rounds,
         "min_improvement": s.optimization_min_improvement,
         "mode": s.optimization_mode,
@@ -329,6 +337,47 @@ async def get_bubble_breaker_status():
         "enabled": settings.bubble_breaker_enabled,
         "min_source_diversity": settings.bubble_min_source_diversity,
         "cross_language": settings.bubble_cross_language,
+    }
+
+
+@router.get("/optimization/active")
+async def get_active_optimizations():
+    """查看当前正在运行的优化循环"""
+    from standalone.task_executor import executor
+    from standalone.scheduler import get_scheduler_status
+
+    scheduler_info = get_scheduler_status()
+    running_tasks = []
+    for task_id, async_task in list(executor._running.items()):
+        if not async_task.done():
+            try:
+                task = await repo.get_task(task_id)
+                if task and task.get("status") in (1, 2):  # CRAWLING or PROCESSING
+                    records = await repo.get_optimization_records(task_id)
+                    latest_round = records[-1] if records else None
+                    running_tasks.append({
+                        "task_id": task_id,
+                        "task_type": task.get("task_type"),
+                        "status": task.get("status"),
+                        "optimization_rounds": len(records),
+                        "latest_score": latest_round.get("overall_score") if latest_round else None,
+                        "latest_strategy": latest_round.get("strategy_type") if latest_round else None,
+                    })
+            except Exception:
+                pass
+
+    return {
+        "scheduler": scheduler_info,
+        "active_optimizations": running_tasks,
+        "optimization_config": {
+            "enabled": settings.optimization_enabled,
+            "depth_target_score": settings.optimization_depth_target_score,
+            "breadth_target_score": settings.optimization_breadth_target_score,
+            "max_rounds": settings.optimization_max_rounds,
+            "breadth_max_rounds": settings.breadth_max_rounds,
+            "total_budget_seconds": settings.optimization_total_budget_seconds,
+            "mode": settings.optimization_mode,
+        },
     }
 
 

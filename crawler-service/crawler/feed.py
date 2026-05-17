@@ -117,6 +117,9 @@ async def parse_feed(
         # Freshness filter
         if published < cutoff:
             continue
+        # 未来日期过滤（容差1小时，应对时区偏差）
+        if published > now + datetime.timedelta(hours=1):
+            continue
 
         # Extract and resolve URL
         link = getattr(entry, "link", "")
@@ -135,8 +138,9 @@ async def parse_feed(
             feed_url=feed_url,
         ))
 
-    # Merge no-date entries (treated as recent), sort newest first, cap at max_entries
-    entries.extend(no_date_entries)
+    # Merge no-date entries (capped to avoid stale content flooding), sort newest first
+    no_date_cap = max(1, max_entries // 5)
+    entries.extend(no_date_entries[:no_date_cap])
     entries.sort(key=lambda e: e.published, reverse=True)
     entries = entries[:max_entries]
 

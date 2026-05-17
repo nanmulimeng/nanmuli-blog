@@ -35,20 +35,24 @@ class KnowledgeBase:
         单次查询 + Python 端聚合，避免多次数据库访问。
         知识库为空或无有效数据时返回 None。
         """
-        tokens = keyword.split()
-        like_pattern = f"%{_escape_like(tokens[0])}%" if tokens else "%"
+        tokens = keyword.split()[:3]
+        if not tokens:
+            return None
+
+        conditions = " OR ".join(["search_keyword LIKE ? ESCAPE '!'" for _ in tokens])
+        params = [f"%{_escape_like(t)}%" for t in tokens] + [time_range]
 
         async with get_db() as db:
             cursor = await db.execute(
-                """SELECT search_engine, strategy_type, score_delta,
+                f"""SELECT search_engine, strategy_type, score_delta,
                           search_keyword, time_range
                    FROM optimization_record
                    WHERE score_delta > 0
                      AND round_num > 1
-                     AND (search_keyword LIKE ? ESCAPE '!' OR time_range = ?)
+                     AND ({conditions} OR time_range = ?)
                    ORDER BY score_delta DESC
                    LIMIT 50""",
-                (like_pattern, time_range),
+                params,
             )
             rows = await cursor.fetchall()
 
@@ -73,10 +77,27 @@ class KnowledgeBase:
                 return None
             return max(scores, key=lambda k: sum(scores[k]) / len(scores[k]))
 
+        def _best_normalized(scores: dict[str, list[float]]) -> str | None:
+            """z-score 归一化后选最佳，避免不同策略类型的 delta 量级差异"""
+            if not scores:
+                return None
+            flat = [d for ds in scores.values() for d in ds]
+            if len(flat) < 3:
+                return _best(scores)  # 数据不足时退化为原始 avg
+            mean = sum(flat) / len(flat)
+            std = (sum((d - mean) ** 2 for d in flat) / max(1, len(flat) - 1)) ** 0.5
+            if std < 0.001:
+                return _best(scores)
+            normalized = {
+                k: (sum(v) / len(v) - mean) / std
+                for k, v in scores.items()
+            }
+            return max(normalized, key=normalized.get)
+
         return {
             "recommended_engine": _best(engine_deltas),
             "engine_scores": {k: round(sum(v) / len(v), 4) for k, v in engine_deltas.items()},
-            "recommended_strategy_type": _best(type_deltas),
+            "recommended_strategy_type": _best_normalized(type_deltas),
             "strategy_type_scores": {k: round(sum(v) / len(v), 4) for k, v in type_deltas.items()},
             "related_keywords": sorted(related_keywords)[:5],
         }

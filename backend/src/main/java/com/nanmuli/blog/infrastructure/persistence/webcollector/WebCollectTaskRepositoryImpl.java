@@ -7,6 +7,7 @@ import com.nanmuli.blog.domain.webcollector.WebCollectTaskRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -79,6 +80,17 @@ public class WebCollectTaskRepositoryImpl implements WebCollectTaskRepository {
                .eq(WebCollectTask::getIsDeleted, false)
                .last("LIMIT 1");
         return Optional.ofNullable(taskMapper.selectOne(wrapper));
+    }
+
+    @Override
+    public List<WebCollectTask> findStaleNonTerminal(List<Integer> statuses, LocalDateTime updatedBefore) {
+        LambdaQueryWrapper<WebCollectTask> wrapper = new LambdaQueryWrapper<>();
+        wrapper.in(WebCollectTask::getStatus, statuses)
+               .lt(WebCollectTask::getUpdatedAt, updatedBefore)
+               .isNotNull(WebCollectTask::getPythonTaskId)
+               .eq(WebCollectTask::getIsDeleted, false)
+               .last("LIMIT 20");
+        return taskMapper.selectList(wrapper);
     }
 
     @Override

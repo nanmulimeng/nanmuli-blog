@@ -373,7 +373,7 @@ public class WebCollectorAppService {
         return false;
     }
 
-    private void syncFromPythonSilent(WebCollectTask task) {
+    public void syncFromPythonSilent(WebCollectTask task) {
         try {
             crawlerTaskClient.getTask(task.getPythonTaskId()).ifPresent(pythonTask -> {
                 self.syncPythonTaskToDb(task.getId(), pythonTask);

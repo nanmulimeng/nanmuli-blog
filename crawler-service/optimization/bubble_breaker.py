@@ -8,6 +8,7 @@ import asyncio
 import copy
 import logging
 import random
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -15,7 +16,8 @@ from config import settings
 from optimization.evaluator import CoverageEvaluator, CoverageEvaluation
 from optimization.strategy import BreadthStrategyGen, SearchStrategy
 from optimization.knowledge_base import KnowledgeBase
-from crawler.utils import get_result_url, get_result_success, dedup_results_into
+from optimization.utils import save_optimization_round
+from crawler.utils import get_result_url, get_result_success, dedup_results_into, normalize_url
 
 logger = logging.getLogger(__name__)
 
@@ -39,12 +41,16 @@ TRANSLATE_TO_CN_PROMPT = """你是搜索关键词翻译专家。
 
 
 class BubbleBreaker:
-    """跨语言翻译组件"""
+    """跨语言翻译组件
+
+    注：check_and_expand() 已废弃，跨语言搜索由 BreadthExpander 直接编排。
+    """
 
     def __init__(self, organizer=None):
         self._organizer = organizer
         self._evaluator = CoverageEvaluator(organizer=organizer)
 
+    # deprecated: 保留以兼容旧测试，新代码使用 BreadthExpander 直接编排
     async def check_and_expand(
         self,
         keyword: str,
@@ -57,7 +63,7 @@ class BubbleBreaker:
 
         expanded = list(results)
         seen_urls = {
-            url
+            normalize_url(url)
             for r in results
             if get_result_success(r)
             for url in [get_result_url(r) or ""]
@@ -96,7 +102,7 @@ class BubbleBreaker:
             is_cn = detect_cjk(keyword)
             prompt = TRANSLATE_SYSTEM_PROMPT if is_cn else TRANSLATE_TO_CN_PROMPT
 
-            response = await self._organizer._call_ai(prompt, keyword, max_tokens=200)
+            response = await self._organizer._call_ai(prompt, keyword, max_tokens=settings.bubble_max_translate_tokens)
             translated = response.get("content", "").strip()
 
             if not translated or translated == keyword:
@@ -159,16 +165,16 @@ class BreadthExpander:
         self._kb = knowledge_base
         self._breaker = bubble_breaker
         self._max_rounds = max_rounds if max_rounds is not None else settings.breadth_max_rounds
-        self._target_score = target_score if target_score is not None else settings.optimization_target_score
+        self._target_score = target_score if target_score is not None else settings.optimization_breadth_target_score
         self._min_improvement = min_improvement if min_improvement is not None else settings.optimization_min_improvement
 
     @staticmethod
     def _breadth_score(evaluation: CoverageEvaluation) -> float:
         """广度三维的加权平均分"""
         return (
-            evaluation.source_diversity * 0.4
-            + evaluation.perspective_balance * 0.35
-            + evaluation.language_coverage * 0.25
+            evaluation.source_diversity * settings.optimization_breadth_weight_primary
+            + evaluation.perspective_balance * settings.optimization_breadth_weight_secondary
+            + evaluation.language_coverage * settings.optimization_breadth_weight_tertiary
         )
 
     async def execute(
@@ -179,10 +185,27 @@ class BreadthExpander:
         task_id: int = 0,
         context: dict | None = None,
         sections: list[dict] | None = None,
+        source_crawl_fn: Callable | None = None,
+        deadline: float | None = None,
     ) -> tuple[list, list[BreadthRound]]:
         ctx = context or {}
         engine = ctx.get("engine", "bing")
         time_range = ctx.get("time_range", "week")
+        budget_start = time.monotonic()
+        effective_deadline = deadline or (budget_start + settings.optimization_total_budget_seconds)
+
+        # source_crawl_fn 默认实现：从 digest 模块爬取 URL/RSS 源
+        if source_crawl_fn is None:
+            async def _default_source_crawl(section, config, crawler, overrides=None):
+                from crawler.digest import _apply_overrides, _crawl_url_sources, _crawl_rss_sources
+                sec = _apply_overrides(section, overrides)
+                results = []
+                if sec.get("url_sources"):
+                    results.extend(await _crawl_url_sources(sec, config, crawler))
+                if sec.get("rss_sources"):
+                    results.extend(await _crawl_rss_sources(sec, config, crawler))
+                return results
+            source_crawl_fn = _default_source_crawl
 
         all_results = list(initial_results)
         rounds: list[BreadthRound] = []
@@ -191,7 +214,7 @@ class BreadthExpander:
             url = get_result_url(r)
             success = get_result_success(r)
             if url and success:
-                seen_urls.add(url)
+                seen_urls.add(normalize_url(url))
 
         # === Round 1: 基线评估 ===
         eval_result = await self._evaluator.evaluate(keyword, all_results, ctx)
@@ -205,7 +228,7 @@ class BreadthExpander:
             round_num=1,
             evaluation=eval_result,
             strategy=initial_strategy,
-            urls_before=0,
+            urls_before=len(seen_urls),
             urls_after=len(seen_urls),
             score_delta=0.0,
         ))
@@ -217,7 +240,7 @@ class BreadthExpander:
             eval_result.perspective_balance, eval_result.language_coverage,
         )
 
-        await self._save_round(task_id, rounds[-1])
+        await save_optimization_round(task_id, rounds[-1])
 
         if breadth_base >= self._target_score:
             logger.info("[BreadthExpander] Target reached in round 1: %.2f", breadth_base)
@@ -225,7 +248,8 @@ class BreadthExpander:
 
         # === Round 2+: 广度循环 ===
         strategy_history: list[SearchStrategy] = [initial_strategy]
-        consecutive_failures = 0
+        search_failures = 0
+        source_failures = 0
 
         for round_num in range(2, self._max_rounds + 1):
             # 知识库提示
@@ -276,26 +300,21 @@ class BreadthExpander:
 
             # === 执行搜索/爬取 ===
             if strategy.strategy_type == "source_expand" and strategy.source_expand_section:
-                from crawler.digest import _apply_overrides
-                sec = _apply_overrides(strategy.source_expand_section, strategy.source_expand_overrides)
-                expand_results = []
                 try:
-                    from crawler.digest import _crawl_url_sources, _crawl_rss_sources
-                    if sec.get("url_sources"):
-                        url_res = await _crawl_url_sources(sec, ctx.get("config"), ctx.get("crawler"))
-                        expand_results.extend(url_res)
-                    if sec.get("rss_sources"):
-                        rss_res = await _crawl_rss_sources(sec, ctx.get("config"), ctx.get("crawler"))
-                        expand_results.extend(rss_res)
-                    consecutive_failures = 0
+                    new_results = await source_crawl_fn(
+                        strategy.source_expand_section,
+                        ctx.get("config"),
+                        ctx.get("crawler"),
+                        strategy.source_expand_overrides,
+                    )
+                    source_failures = 0
                 except Exception as e:
-                    consecutive_failures += 1
+                    source_failures += 1
                     logger.warning("[BreadthExpander] Source expand failed (%d consecutive): %s",
-                                   consecutive_failures, e)
-                    if consecutive_failures >= 2:
+                                   source_failures, e)
+                    if source_failures >= 2:
                         break
                     continue
-                new_results = expand_results
             else:
                 try:
                     new_results = await crawl_fn(
@@ -306,17 +325,18 @@ class BreadthExpander:
                         config=ctx.get("config"),
                         crawler=ctx.get("crawler"),
                     )
-                    consecutive_failures = 0
+                    search_failures = 0
                 except Exception as e:
-                    consecutive_failures += 1
+                    search_failures += 1
                     logger.warning("[BreadthExpander] Round %d search failed (%d consecutive): %s",
-                                   round_num, consecutive_failures, e)
-                    if consecutive_failures >= 2:
+                                   round_num, search_failures, e)
+                    if search_failures >= 2:
                         logger.warning("[BreadthExpander] 2 consecutive search failures, stopping")
                         break
                     continue
 
-            added = dedup_results_into(new_results, seen_urls, all_results)
+            added = dedup_results_into(new_results, seen_urls, all_results,
+                                       min_content_length=settings.min_content_length)
 
             # === 评估 + 保存 + 检查 ===
             prev_score = self._breadth_score(eval_result)
@@ -338,48 +358,25 @@ class BreadthExpander:
                 round_num, breadth_now, score_delta, added,
             )
 
-            await self._save_round(task_id, rounds[-1])
+            await save_optimization_round(task_id, rounds[-1])
 
             if breadth_now >= self._target_score:
                 logger.info("[BreadthExpander] Target reached: %.2f", breadth_now)
                 break
 
-            if round_num >= 2 and score_delta < self._min_improvement:
+            if round_num >= 3 and score_delta < self._min_improvement:
                 logger.info(
                     "[BreadthExpander] Diminishing returns: delta=%.3f < min=%.3f",
                     score_delta, self._min_improvement,
                 )
                 break
 
+            # 总时间预算检查
+            if time.monotonic() > effective_deadline:
+                elapsed_total = time.monotonic() - budget_start
+                logger.info("[BreadthExpander] Deadline exceeded (%.0fs), stopping", elapsed_total)
+                break
+
             await asyncio.sleep(random.uniform(settings.optimization_round_delay_min, settings.optimization_round_delay_max))
 
         return all_results, rounds
-
-    async def _save_round(self, task_id: int, r: BreadthRound):
-        if task_id <= 0:
-            return
-        try:
-            from standalone import repository as repo
-            await repo.save_optimization_round(
-                task_id=task_id,
-                round_num=r.round_num,
-                angle_coverage=r.evaluation.angle_coverage,
-                source_diversity=r.evaluation.source_diversity,
-                depth_coverage=r.evaluation.depth_coverage,
-                temporal_coverage=r.evaluation.temporal_coverage,
-                perspective_balance=r.evaluation.perspective_balance,
-                language_coverage=r.evaluation.language_coverage,
-                overall_score=r.evaluation.overall_score,
-                search_keyword=r.strategy.keyword,
-                search_engine=r.strategy.engine,
-                time_range=r.strategy.time_range,
-                strategy_type=r.strategy.strategy_type,
-                strategy_detail=r.strategy.reason,
-                weaknesses=r.evaluation.weaknesses,
-                suggestions=r.evaluation.suggestions,
-                urls_before=r.urls_before,
-                urls_after=r.urls_after,
-                score_delta=r.score_delta,
-            )
-        except Exception as e:
-            logger.warning("[BreadthExpander] Failed to save round: %s", e)

@@ -2,6 +2,7 @@ package com.nanmuli.blog.domain.webcollector;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -21,6 +22,8 @@ public interface WebCollectTaskRepository {
     IPage<WebCollectTask> findPageFiltered(IPage<WebCollectTask> page, Long userId, Integer status, String taskType, String keyword);
 
     Optional<WebCollectTask> findByPythonTaskId(Integer pythonTaskId);
+
+    List<WebCollectTask> findStaleNonTerminal(List<Integer> statuses, LocalDateTime updatedBefore);
 
     void deleteById(Long id);
 }

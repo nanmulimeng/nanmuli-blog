@@ -47,10 +47,6 @@ def _get_weights() -> dict:
     }
 
 
-# Backward-compatible WEIGHTS constant (initialized from settings at import time)
-WEIGHTS = _get_weights()
-
-
 # ============== AI Prompt ==============
 
 EVALUATOR_SYSTEM_PROMPT = """你是一位技术信息覆盖度分析专家。
@@ -83,14 +79,17 @@ EVALUATOR_SYSTEM_PROMPT = """你是一位技术信息覆盖度分析专家。
 - 单一(0.0-0.3)：全是正面或全是负面
 
 ## 输出格式（严格 JSON）
-{
-  "angle": 0.0-1.0,
-  "depth": 0.0-1.0,
-  "temporal": 0.0-1.0,
-  "perspective": 0.0-1.0,
-  "weaknesses": ["短板1", "短板2"],
-  "suggestions": ["建议1", "建议2"]
-}
+{"angle": 0.0-1.0, "depth": 0.0-1.0, "temporal": 0.0-1.0, "perspective": 0.0-1.0, "weaknesses": [...], "suggestions": [...]}
+
+## 示例
+
+关键词="Kubernetes"，2 条来自同一域名、内容浅层的介绍
+{"angle": 0.2, "depth": 0.1, "temporal": 0.3, "perspective": 0.2, "weaknesses": ["仅覆盖基础概念", "内容浅层无深度分析"], "suggestions": ["搜索 Kubernetes 架构对比", "添加 site:kubernetes.io"]}
+
+关键词="React hooks"，5 条来自 4 个域名，含入门教程和高级模式文章
+{"angle": 0.7, "depth": 0.7, "temporal": 0.5, "perspective": 0.6, "weaknesses": ["缺少历史背景"], "suggestions": ["扩展时间范围到 month"]}
+
+注意：利用"内容预览"列判断深度（入门 vs 专家级）、角度（教程 vs 对比）和观点（正面 vs 反面）。
 
 规则：
 1. 只输出 JSON，不要包裹在 markdown 代码块中
@@ -101,7 +100,7 @@ EVALUATOR_SYSTEM_PROMPT = """你是一位技术信息覆盖度分析专家。
 JSON_BLOCK_RE = re.compile(r"```(?:json)?\s*\n?([\s\S]*?)```")
 
 # 评估输出是简单 JSON，无需大量 token
-_EVALUATOR_MAX_TOKENS = 500
+_EVALUATOR_MAX_TOKENS = 600
 
 
 # ============== 评估器 ==============
@@ -214,6 +213,7 @@ class CoverageEvaluator:
                 "content_length": len(markdown),
                 "engine": metadata.get("search_engine", ""),
                 "search_rank": metadata.get("search_rank", 0),
+                "content_preview": markdown[:200].strip() if markdown else "",
             })
             domains.append(domain)
             titles.append(title)
@@ -237,7 +237,11 @@ class CoverageEvaluator:
         total = len(domains)
         entropy = -sum((c / total) * math.log2(c / total) for c in freq.values())
         max_entropy = math.log2(total) if total > 1 else 1.0
-        return min(1.0, entropy / max_entropy) if max_entropy > 0 else 0.0
+        if max_entropy <= 0:
+            return 0.0
+        # 样本量校正：unique_domains < 5 时按比例打折，避免少样本高分
+        sample_penalty = min(1.0, len(freq) / 5)
+        return min(1.0, (entropy / max_entropy) * sample_penalty)
 
     @staticmethod
     def _calc_language_mix(titles: list[str]) -> float:
@@ -253,11 +257,15 @@ class CoverageEvaluator:
         total = len(titles)
         chinese_ratio = has_chinese / total
         english_ratio = has_english / total
-        # 两种语言都有 → 1.0，只有一种 → 0.5，都没有 → 0.0
+
         if chinese_ratio > 0.1 and english_ratio > 0.1:
-            return min(1.0, chinese_ratio + english_ratio)
+            # 调和平均：中英比例越均衡分越高
+            harmonic = 2 * chinese_ratio * english_ratio / (chinese_ratio + english_ratio)
+            return round(min(1.0, harmonic * 1.4), 3)
         if chinese_ratio > 0.1 or english_ratio > 0.1:
-            return 0.4
+            # 单语言：少量结果 → 0.3，大量结果 → 0.45
+            base = 0.3 + 0.15 * min(1.0, total / 10)
+            return round(base, 3)
         return 0.0
 
     # ============== AI 评估 ==============
@@ -275,10 +283,10 @@ class CoverageEvaluator:
 
             raw = json.loads(_extract_json(content))
             return {
-                "angle": float(raw.get("angle", 0.5)),
-                "depth": float(raw.get("depth", 0.5)),
-                "temporal": float(raw.get("temporal", 0.5)),
-                "perspective": float(raw.get("perspective", 0.5)),
+                "angle": min(1.0, max(0.0, float(raw.get("angle", 0.5)))),
+                "depth": min(1.0, max(0.0, float(raw.get("depth", 0.5)))),
+                "temporal": min(1.0, max(0.0, float(raw.get("temporal", 0.5)))),
+                "perspective": min(1.0, max(0.0, float(raw.get("perspective", 0.5)))),
                 "weaknesses": [str(w) for w in raw.get("weaknesses", [])][:3],
                 "suggestions": [str(s) for s in raw.get("suggestions", [])][:3],
             }, tokens
@@ -298,11 +306,15 @@ class CoverageEvaluator:
             "## 搜索结果来源\n",
         ]
         if entries:
-            lines.append("| # | 标题 | 来源域名 | 内容长度 |")
-            lines.append("|---|------|---------|---------|")
+            lines.append("| # | 标题 | 来源域名 | 长度 | 内容预览 |")
+            lines.append("|---|------|---------|------|---------|")
             for i, e in enumerate(entries, 1):
-                title_display = (e["title"][:50] + "...") if len(e["title"]) > 50 else e["title"]
-                lines.append(f"| {i} | {title_display} | {e['domain']} | {e['content_length']}字 |")
+                title_display = (e["title"][:40] + "...") if len(e["title"]) > 40 else e["title"]
+                title_display = title_display.replace("|", "\\|")
+                preview = e.get("content_preview", "")
+                preview_display = (preview[:80] + "...") if len(preview) > 80 else preview
+                preview_display = preview_display.replace("|", "\\|")
+                lines.append(f"| {i} | {title_display} | {e['domain']} | {e['content_length']}字 | {preview_display} |")
         else:
             lines.append("（无搜索结果）")
 
@@ -326,15 +338,32 @@ class CoverageEvaluator:
             avg_len = sum(lengths) / len(lengths)
             has_short = any(l < 500 for l in lengths)
             has_long = any(l > 3000 for l in lengths)
-            depth = 0.3 + (0.3 if has_short else 0) + (0.4 if has_long else 0) + min(0.3, avg_len / 5000)
+            depth = 0.3 + (0.3 if has_short else 0) + (0.4 if has_long else 0) + min(0.15, avg_len / 10000)
         else:
             depth = 0.1
 
-        # 时效性覆盖：基于结果数量
-        temporal = min(1.0, total / 8) if total >= 2 else 0.2
+        # 时效性覆盖：结果数量 × 域名多样性修正（AI 不可用时的代理指标）
+        domain_count = len(domains)
+        domain_factor = min(1.0, domain_count / 4) if domain_count >= 2 else 0.3
+        count_factor = min(1.0, total / 6) if total >= 2 else 0.2
+        temporal = round(count_factor * 0.6 + domain_factor * 0.4, 3)
 
-        # 观点均衡：基于域名多样性
-        perspective = min(1.0, len(domains) / 3) if len(domains) >= 2 else 0.2
+        # 观点均衡：域名多样性 50% + 标题对立词检测 50%
+        domain_component = min(1.0, len(domains) / 3) if len(domains) >= 2 else 0.2
+        positive_words = {"推荐", "最佳", "优秀", "优点", "亮点", "best", "great", "awesome", "recommended"}
+        negative_words = {"缺点", "问题", "踩坑", "避坑", "风险", "限制", "downside", "issue", "problem", "limitation"}
+        title_words = set()
+        for t in meta["titles"]:
+            title_words.update(w.lower() for w in re.findall(r'[一-鿿a-zA-Z]+', t))
+        has_pos = bool(title_words & positive_words)
+        has_neg = bool(title_words & negative_words)
+        if has_pos and has_neg:
+            keyword_component = 0.8
+        elif has_pos or has_neg:
+            keyword_component = 0.4
+        else:
+            keyword_component = 0.2
+        perspective = round(domain_component * 0.5 + keyword_component * 0.5, 3)
 
         weaknesses = []
         suggestions = []

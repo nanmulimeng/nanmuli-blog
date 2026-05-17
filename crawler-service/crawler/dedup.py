@@ -76,23 +76,34 @@ class ContentFingerprint:
 
     @staticmethod
     def _extract_features(text: str) -> List[str]:
-        """提取文本特征词（简化版：按2-gram分词）"""
+        """提取文本特征：中文 3-gram + 英文 word 2-gram。
+
+        中文连续字符间无空格，空格分词后几乎无特征；
+        改为按字符级 3-gram 提取中文特征，英文仍用空格分词后的 2-gram。
+        """
         if not text:
             return []
 
-        # 清理文本
-        cleaned = re.sub(r'[^一-鿿\w\s]', ' ', text.lower())
+        features: List[str] = []
+
+        # 中文片段：字符级 3-gram
+        chinese_segments = re.findall(r'[一-鿿]+', text)
+        for segment in chinese_segments:
+            if len(segment) >= 3:
+                for i in range(len(segment) - 2):
+                    features.append(f"zh_{segment[i:i+3]}")
+            elif segment:
+                features.append(f"zh_{segment}")
+
+        # 英文/数字：空格分词后 2-gram
+        cleaned = re.sub(r'[^a-zA-Z0-9\s]', ' ', text)
         cleaned = re.sub(r'\s+', ' ', cleaned).strip()
-
         words = cleaned.split()
-        if len(words) < 2:
-            return words
-
-        # 2-gram特征
-        features = []
-        for i in range(len(words) - 1):
-            bigram = f"{words[i]}_{words[i + 1]}"
-            features.append(bigram)
+        if len(words) >= 2:
+            for i in range(len(words) - 1):
+                features.append(f"en_{words[i].lower()}_{words[i+1].lower()}")
+        elif words:
+            features.append(f"en_{words[0].lower()}")
 
         return features
 
@@ -106,7 +117,7 @@ class DedupEngine:
     """去重引擎"""
 
     # 类级默认值（保持向后兼容）
-    SIMHASH_THRESHOLD = 5
+    SIMHASH_THRESHOLD = 12
     TITLE_SIMILARITY_THRESHOLD = 0.8
     # SimHash 分桶数（64位哈希分为 4 × 16位桶，减少比较次数）
     _BUCKET_COUNT = 4
@@ -128,6 +139,16 @@ class DedupEngine:
             self._title_seen.append(title.lower().strip())
         if content and len(content) >= 100:
             self._add_fingerprint(ContentFingerprint(content))
+
+    def add_precomputed_simhash(self, url: str, title: str = "", simhash: int = 0):
+        """直接加载预计算的 simhash 指纹（从 Java API 恢复跨日去重）。"""
+        self._url_seen.add(self._normalize_url(url))
+        if title:
+            self._title_seen.append(title.lower().strip())
+        if simhash and simhash != 0:
+            fp = ContentFingerprint.__new__(ContentFingerprint)
+            fp.simhash = simhash
+            self._add_fingerprint(fp)
 
     def is_duplicate(self, url: str, title: str = "", content: str = "") -> dict:
         """

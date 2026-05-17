@@ -222,7 +222,7 @@ DIGEST_SYSTEM_PROMPT = """你是一位资深技术资讯编辑，负责生成每
   ],
   "highlight": "React 19 正式发布，Server Components 进入稳定阶段，前端开发者需要评估现有项目的迁移成本",
   "tags": ["React 19", "Bun 1.2", "Linux调度器", "WASM", "组件模型"],
-  "fullContent": "# 技术日报 | 2026-05-08\\n\\n## 热点动态\\n\\n### React 19 正式发布\\nServer Components 稳定版上线，use() hook 简化异步数据获取...\\n\\n### Bun 1.2 性能再突破\\n原生支持 S3 API...\\n\\n## 技术文章\\n\\n### Linux 内核调度器深度解析\\n从 CFS 到 EEVDF 的演进...\\n\\n## 开源项目\\n\\n### WASM 组件模型规范正式发布\\n标准化 WASM 模块间互操作..."
+  "fullContent": "# 技术日报 | 2026-05-08\\n\\n## 热点动态\\n\\n### React 19 正式发布\\nServer Components 稳定版上线，use() hook 简化异步数据获取，并发渲染性能提升40%。主要变更包括：use() hook 支持Promise和Context、useFormStatus等新API、以及Server Actions的正式支持。\\n\\n### Bun 1.2 性能再突破\\n原生支持S3 API，新增WebSocket客户端，包管理器速度比npm快30倍。同时引入了bun.lockb二进制锁文件格式，提升了依赖解析的确定性。\\n\\n## 技术文章\\n\\n### Linux 内核调度器深度解析\\n从CFS到EEVDF的演进：CFS以虚拟运行时间实现公平调度，但无法区分任务延迟敏感度。EEVDF引入延迟权重和虚拟截止时间，让交互式任务获得更快响应。\\n\\n## 开源项目\\n\\n### WASM 组件模型规范正式发布\\n标准化WASM模块间互操作：定义了组件接口描述语言(WIT)、规范化的导入导出机制、以及跨语言绑定生成工具链。支持Rust、Go、C等语言的原生组件开发。\\n\\n## 开发工具\\n\\n### Turbopack 进入Beta阶段\\nVite兼容模式开启测试，增量构建速度比Webpack快700倍。已支持Next.js开发模式的主要特性。"
 }"""
 
 TEMPLATE_PROMPTS = {
@@ -347,11 +347,12 @@ class ContentOrganizer:
 
     async def organize(
         self, raw_markdown: str, template: str = "tech_summary",
-        keyword_context: str = None
+        keyword_context: str = None, max_tokens_override: int | None = None
     ) -> OrganizedContent:
         start = time.monotonic()
         user_prompt = self._build_single_page_prompt(raw_markdown, template, keyword_context)
-        response = await self._call_ai(SYSTEM_PROMPT, user_prompt)
+        max_tokens = max_tokens_override or self._settings.ai_max_tokens
+        response = await self._call_ai(SYSTEM_PROMPT, user_prompt, max_tokens=max_tokens)
         result = self._parse_organized_content(response["content"])
         result.duration_ms = int((time.monotonic() - start) * 1000)
         result.tokens_used = response.get("total_tokens", 0)
@@ -363,11 +364,12 @@ class ContentOrganizer:
 
     async def organize_multiple(
         self, pages: list[PageContent], template: str = "tech_summary",
-        keyword_context: str = None
+        keyword_context: str = None, max_tokens_override: int | None = None
     ) -> OrganizedContent:
         start = time.monotonic()
         user_prompt = self._build_multi_page_prompt(pages, template, keyword_context)
-        response = await self._call_ai(SYSTEM_PROMPT, user_prompt)
+        max_tokens = max_tokens_override or self._settings.ai_max_tokens
+        response = await self._call_ai(SYSTEM_PROMPT, user_prompt, max_tokens=max_tokens)
         result = self._parse_organized_content(response["content"])
         result.duration_ms = int((time.monotonic() - start) * 1000)
         result.tokens_used = response.get("total_tokens", 0)
@@ -467,13 +469,15 @@ class ContentOrganizer:
     # --- Digest ---
 
     async def generate_digest(
-        self, pages: list[DigestPageContent], date: str
+        self, pages: list[DigestPageContent], date: str, *,
+        input_urls: frozenset | None = None, recent_highlights: list[str] | None = None,
+        max_tokens_override: int | None = None
     ) -> DigestContent:
         start = time.monotonic()
-        user_prompt = self._build_digest_prompt(pages, date)
-        digest_max_tokens = getattr(self._settings, "ai_digest_max_tokens", self._settings.ai_max_tokens)
+        user_prompt = self._build_digest_prompt(pages, date, recent_highlights=recent_highlights)
+        digest_max_tokens = max_tokens_override or self._settings.ai_digest_max_tokens
         response = await self._call_ai(DIGEST_SYSTEM_PROMPT, user_prompt, max_tokens=digest_max_tokens)
-        result = self._parse_digest_content(response["content"])
+        result = self._parse_digest_content(response["content"], input_urls=input_urls)
         result.duration_ms = int((time.monotonic() - start) * 1000)
         result.tokens_used = response.get("total_tokens", 0)
         logger.info("[AiOrganizer] Digest generated: title=%s, sections=%d, duration=%dms",
@@ -540,7 +544,8 @@ class ContentOrganizer:
         return "".join(parts)
 
     def _build_digest_prompt(
-        self, pages: list[DigestPageContent], date: str
+        self, pages: list[DigestPageContent], date: str, *,
+        recent_highlights: list[str] | None = None
     ) -> str:
         parts = [f"## 日报日期\n{date}\n\n", "## 来源内容\n\n"]
 
@@ -554,32 +559,22 @@ class ContentOrganizer:
         budget = getattr(self._settings, "ai_digest_total_budget", self._settings.ai_multi_page_total_budget)
         per_max = getattr(self._settings, "ai_digest_per_max_chars", self._settings.ai_multi_page_per_max_chars)
 
+        # 预留 system prompt + 结构开销 + recent_highlights 缓冲区
+        _SYSTEM_PROMPT_RESERVE = 8000
+        budget = max(budget - _SYSTEM_PROMPT_RESERVE, budget // 2)
+
         # 按 _DIGEST_CATEGORY_ORDER 优先级排序，未知分类放末尾
         _order_map = {cat: i for i, cat in enumerate(_DIGEST_CATEGORY_ORDER)}
         sorted_cats = sorted(by_category.keys(), key=lambda c: _order_map.get(c, 99))
 
-        # 分类优先级权重：高优先级分类获得更多全文配额
-        _priority_weights = {"hot_trend": 3.0, "open_source": 2.5, "tech_article": 2.0, "dev_tool": 1.5, "paper": 1.5, "creative": 1.0}
-
+        # 分类优先级权重：仅影响排序顺序，不影响 token 分配
         # 来源可信度排序权重
         _source_level_order = {"official": 0, "high": 1, "medium": 2, "low": 3, "spam": 4}
 
-        # 计算每个分类的全文配额：按权重分配总配额
-        total_pages = sum(len(ps) for ps in by_category.values())
-        total_full_slots = max(total_pages // 2, len(sorted_cats) * 2)
-        weight_sum = sum(_priority_weights.get(c, 1.0) * len(by_category[c]) for c in sorted_cats)
-
-        cat_full_count: dict[str, int] = {}
-        for cat in sorted_cats:
-            cat_pages_count = len(by_category[cat])
-            weight = _priority_weights.get(cat, 1.0)
-            # 按权重比例分配全文配额，每分类至少 2 条
-            allocated = round(total_full_slots * (weight * cat_pages_count / weight_sum)) if weight_sum > 0 else 2
-            cat_full_count[cat] = max(2, min(allocated, cat_pages_count))
-
-        # 每分类预算下限：防止高优先级分类耗尽总预算导致其他分类被截断
+        # 均分策略：每个分类均分全文配额
         num_cats = len(sorted_cats)
-        min_cat_budget = budget // max(num_cats, 1)
+        per_cat_full_count = {cat: max(2, len(by_category[cat]) // 2) for cat in sorted_cats}
+        per_cat_budget = budget // max(num_cats, 1)
         cat_budget_used = {cat: 0 for cat in sorted_cats}
 
         summary_only_count = 0
@@ -590,7 +585,7 @@ class ContentOrganizer:
                 by_category[cat],
                 key=lambda p: (_source_level_order.get(p.source_level, 2), p.title or ""),
             )
-            full_detail_count = cat_full_count[cat]
+            full_detail_count = per_cat_full_count[cat]
             cat_info = DIGEST_CATEGORY_MAP.get(cat, ("技术文章", "📖"))
             parts.append(f"### 分类: {cat}（{cat_info[0]}）{cat_info[1]}\n\n")
             for i, page in enumerate(cat_pages):
@@ -611,10 +606,10 @@ class ContentOrganizer:
                 if page.summary:
                     parts.append(f"摘要: {page.summary}\n")
 
-                # 计算当前分类剩余预算：取总预算和分类最低保证的较大值
+                # 计算当前分类剩余预算：取总预算剩余和分类均分配额的较小值（防止超额）
                 remaining_total = budget - sum(cat_budget_used.values())
-                cat_remaining = min_cat_budget - cat_budget_used[cat]
-                available = max(remaining_total, cat_remaining)
+                cat_remaining = per_cat_budget - cat_budget_used[cat]
+                available = min(remaining_total, cat_remaining)
                 page_budget = min(per_max, max(0, available))
                 if page_budget <= 0:
                     logger.warning("[DigestPrompt] Budget exhausted, %d pages in '%s' omitted",
@@ -630,7 +625,7 @@ class ContentOrganizer:
                 cat_budget_used[cat] += consumed
                 # 全局预算检查
                 if budget_used_total >= budget:
-                    remaining_cats = [c for c in sorted_cats if cat_budget_used[c] < min_cat_budget * 0.5]
+                    remaining_cats = [c for c in sorted_cats if cat_budget_used[c] < per_cat_budget * 0.5]
                     if not remaining_cats:
                         budget_exhausted = True
                         break
@@ -639,6 +634,11 @@ class ContentOrganizer:
 
         if summary_only_count:
             logger.info("[DigestPrompt] %d pages sent as summary-only (token optimization)", summary_only_count)
+        if recent_highlights:
+            parts.append("\n## 最近几日的 highlight（请避免重复主题）\n")
+            for h in recent_highlights:
+                parts.append(f"- {h}\n")
+
         parts.append("\n请根据以上内容生成结构化技术日报。")
         return "".join(parts)
 
@@ -692,7 +692,10 @@ class ContentOrganizer:
     # ============== Response Parsing ==============
 
     def _parse_organized_content(self, response: str) -> OrganizedContent:
-        raw = json.loads(_extract_json(response))
+        try:
+            raw = json.loads(_extract_json(response))
+        except (json.JSONDecodeError, ValueError) as e:
+            raise InvalidOutputError(f"JSON parse failed: {e}") from e
 
         content = OrganizedContent()
         content.title = _normalize(raw.get("title", ""))
@@ -735,8 +738,11 @@ class ContentOrganizer:
         if c.category not in ALLOWED_CATEGORIES:
             raise InvalidOutputError(f"Invalid category '{c.category}', allowed: {', '.join(sorted(ALLOWED_CATEGORIES))}")
 
-    def _parse_digest_content(self, response: str) -> DigestContent:
-        raw = json.loads(_extract_json(response))
+    def _parse_digest_content(self, response: str, *, input_urls: frozenset | None = None) -> DigestContent:
+        try:
+            raw = json.loads(_extract_json(response))
+        except (json.JSONDecodeError, ValueError) as e:
+            raise InvalidOutputError(f"JSON parse failed: {e}") from e
 
         content = DigestContent()
         content.title = _normalize(raw.get("title", ""))
@@ -766,10 +772,10 @@ class ContentOrganizer:
                 ))
             content.sections.append(section)
 
-        self._validate_digest(content)
+        self._validate_digest(content, input_urls=input_urls)
         return content
 
-    def _validate_digest(self, c: DigestContent):
+    def _validate_digest(self, c: DigestContent, *, input_urls: frozenset | None = None):
         min_s = _cfg_min_summary_length()
         min_f = _cfg_min_full_content_length()
 
@@ -796,19 +802,25 @@ class ContentOrganizer:
                 sec.emoji = cat_info[1]
 
         # 跨板块 sourceUrl 去重：保留 oneLiner 最完整的条目
-        seen_urls: dict[str, tuple[int, int]] = {}  # url -> (section_idx, item_idx)
+        # url -> (section_idx, item_idx) 指向当前胜出者
+        seen_urls: dict[str, tuple[int, int]] = {}
         for si, sec in enumerate(c.sections):
             items_to_keep = []
             for item in sec.items:
                 url = item.source_url
+                if not url:
+                    items_to_keep.append(item)
+                    continue
                 if url in seen_urls:
                     prev_si, prev_ii = seen_urls[url]
                     prev_item = c.sections[prev_si].items[prev_ii]
-                    if len(item.one_liner) > len(prev_item.one_liner):
-                        # 新条目更完整，从旧板块移除旧条目
+                    if prev_item is not None and len(item.one_liner) > len(prev_item.one_liner):
+                        # 新条目更完整，标记旧条目为 None，更新 seen_urls 指向新胜者
                         c.sections[prev_si].items[prev_ii] = None
-                    else:
-                        continue  # 旧条目更完整，跳过新条目
+                        seen_urls[url] = (si, len(items_to_keep))
+                        items_to_keep.append(item)
+                    # else: 旧条目更完整或已被替换，跳过新条目
+                    continue
                 seen_urls[url] = (si, len(items_to_keep))
                 items_to_keep.append(item)
             sec.items = items_to_keep
@@ -827,6 +839,11 @@ class ContentOrganizer:
                 if not item.source_url or _URL_RE.match(item.source_url)
             ]
         c.sections = [sec for sec in c.sections if sec.items]
+
+        # sourceUrl 原始输入校验：修正或清除 LLM 篡改的 URL
+        if input_urls:
+            _validate_source_urls(c.sections, input_urls)
+            c.sections = [sec for sec in c.sections if sec.items]
 
         has_valid = any(
             item.title and item.one_liner and item.source_url and item.source_name
@@ -860,6 +877,41 @@ class InvalidOutputError(OrganizerError):
 
 
 # ============== Utility Functions ==============
+
+def _validate_source_urls(sections: list[DigestSection], input_urls: frozenset):
+    """校验 AI 输出的 sourceUrl 是否来自输入，修正 LLM 篡改。
+
+    匹配策略：精确 → 前缀 → 路径后缀。无法匹配时清空 sourceUrl。
+    """
+    for sec in sections:
+        for item in sec.items:
+            url = item.source_url
+            if not url:
+                continue
+
+            # 精确匹配
+            if url in input_urls:
+                continue
+
+            # 前缀匹配：LLM 可能截断 URL（去掉 query 参数或路径尾部）
+            prefix_match = next((u for u in input_urls if u.startswith(url)), None)
+            if prefix_match:
+                item.source_url = prefix_match
+                continue
+
+            # 路径后缀匹配：LLM 可能修改了协议或 www 前缀
+            url_path = url.split("://", 1)[-1].rstrip("/")
+            suffix_match = next(
+                (u for u in input_urls if u.split("://", 1)[-1].rstrip("/") == url_path),
+                None,
+            )
+            if suffix_match:
+                item.source_url = suffix_match
+                continue
+
+            logger.warning("[DigestValidate] Unmatched sourceUrl dropped: %s", url)
+            item.source_url = ""
+
 
 def _extract_message_content(content) -> str:
     if isinstance(content, str):
@@ -900,6 +952,15 @@ def _extract_json(response: str) -> str:
     else:
         start = min(obj_start, arr_start)
 
+    # 优先使用标准库 raw_decode，正确处理嵌套转义
+    decoder = json.JSONDecoder()
+    try:
+        obj, end = decoder.raw_decode(response, idx=start)
+        return response[start:end]
+    except json.JSONDecodeError:
+        pass
+
+    # Fallback: 手工括号匹配（覆盖 raw_decode 失败的边缘情况）
     open_ch = response[start]
     close_ch = "}" if open_ch == "{" else "]"
 

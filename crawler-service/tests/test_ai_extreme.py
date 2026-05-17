@@ -681,7 +681,7 @@ class TestExtremeInput:
         with patch.object(configured_organizer, "_call_ai", new_callable=AsyncMock) as mock_ai:
             mock_ai.return_value = {"content": "This is just plain text, no JSON", "total_tokens": 10, "finish_reason": "stop"}
 
-            with pytest.raises(ValueError, match="No JSON found"):
+            with pytest.raises(InvalidOutputError, match="No JSON found"):
                 await configured_organizer.organize("content")
 
     @pytest.mark.asyncio

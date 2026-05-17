@@ -137,6 +137,20 @@ async def get_latest_completed_digest() -> dict | None:
         return _row_to_dict(row) if row else None
 
 
+async def get_recent_highlights(count: int = 5) -> list[str]:
+    """获取最近 N 条已完成日报的 highlight（用于 AI 多样性检测）"""
+    async with get_db() as db:
+        cursor = await db.execute(
+            """SELECT digest_highlight FROM crawl_task
+               WHERE task_type = 'digest' AND status = 3
+                 AND digest_highlight IS NOT NULL AND digest_highlight != ''
+               ORDER BY created_at DESC LIMIT ?""",
+            (count,)
+        )
+        rows = await cursor.fetchall()
+        return [row["digest_highlight"] for row in rows if row["digest_highlight"]]
+
+
 async def get_digest_today_pending_or_running() -> list[dict]:
     """获取今日已有的活跃日报任务（PENDING/CRAWLING/PROCESSING，防并发 + 防重复）"""
     import datetime
@@ -500,8 +514,8 @@ async def save_optimization_round(
              overall_score,
              search_keyword, search_engine, time_range,
              strategy_type, strategy_detail,
-             json.dumps(weaknesses, ensure_ascii=False) if weaknesses else None,
-             json.dumps(suggestions, ensure_ascii=False) if suggestions else None,
+             json.dumps(weaknesses or [], ensure_ascii=False),
+             json.dumps(suggestions or [], ensure_ascii=False),
              urls_before, urls_after, score_delta),
         )
         await db.commit()

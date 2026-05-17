@@ -266,7 +266,7 @@ def _apply_auth_settings(config: dict[str, str]) -> None:
 def _apply_db_settings(config: dict[str, str]) -> None:
     """SQLite 配置: db.* → db_* / max_concurrent_tasks"""
     if config.get("db.path", ""):
-        settings.db_path = config["db.path"]
+        logger.warning("db.path change ignored at runtime — requires service restart")
     if config.get("db.busy_timeout", ""):
         settings.db_busy_timeout = _to_int(config["db.busy_timeout"])
     # 特殊: db.max_concurrent_tasks → max_concurrent_tasks（无 db_ 前缀）
@@ -295,17 +295,19 @@ def _apply_limit_settings(config: dict[str, str]) -> None:
 
 
 def _apply_top_level_settings(config: dict[str, str]) -> None:
-    """顶级配置: host/port/debug/log_level/standalone"""
+    """顶级配置: host/port/debug/log_level/standalone
+    注意: host/port/debug/standalone 需重启生效
+    """
     if config.get("host", ""):
-        settings.host = config["host"]
+        logger.warning("host change ignored at runtime — requires service restart")
     if config.get("port", ""):
-        settings.port = _to_int(config["port"])
+        logger.warning("port change ignored at runtime — requires service restart")
     if config.get("debug", ""):
-        settings.debug = _to_bool(config["debug"])
+        logger.warning("debug change ignored at runtime — requires service restart")
     if config.get("log_level", ""):
         settings.log_level = config["log_level"]
     if config.get("standalone", ""):
-        settings.standalone = _to_bool(config["standalone"])
+        logger.warning("standalone change ignored at runtime — requires service restart")
 
 
 def _apply_pipeline_settings(config: dict[str, str]) -> None:

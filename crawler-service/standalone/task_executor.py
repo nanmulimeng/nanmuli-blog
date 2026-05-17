@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+import time
 import uuid
 from typing import Dict
 
@@ -18,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 async def _fire_callback(task_id: int, status: int):
-    """任务完成/失败后通知 Java 后端（fire-and-forget）"""
+    """任务完成/失败后通知 Java 后端（指数退避重试，最多 3 次）"""
     url = settings.callback_url
     if not url:
         return
@@ -28,13 +29,28 @@ async def _fire_callback(task_id: int, status: int):
     if settings.callback_api_key:
         headers["X-Callback-Key"] = settings.callback_api_key
 
-    try:
-        import httpx
-        async with httpx.AsyncClient(timeout=settings.callback_timeout) as client:
-            resp = await client.post(url, json=payload, headers=headers)
-            logger.info("Callback fired: task_id=%d status=%d -> %d", task_id, status, resp.status_code)
-    except Exception as e:
-        logger.warning("Callback failed (non-critical): task_id=%d error=%s", task_id, e)
+    import httpx
+    async with httpx.AsyncClient(timeout=settings.callback_timeout) as client:
+        for attempt in range(3):
+            try:
+                resp = await client.post(url, json=payload, headers=headers)
+                if 200 <= resp.status_code < 300:
+                    logger.info("Callback fired: task_id=%d status=%d -> %d (attempt=%d)",
+                                task_id, status, resp.status_code, attempt + 1)
+                    return
+                if 400 <= resp.status_code < 500:
+                    logger.warning("Callback rejected (unrecoverable): task_id=%d -> %d",
+                                   task_id, resp.status_code)
+                    return
+                # 5xx: retry
+                logger.warning("Callback server error: task_id=%d status=%d -> %d (attempt=%d)",
+                               task_id, status, resp.status_code, attempt + 1)
+            except Exception as e:
+                logger.warning("Callback attempt %d failed: task_id=%d error=%s",
+                               attempt + 1, task_id, e)
+            if attempt < 2:
+                await asyncio.sleep(2 ** attempt)
+    logger.warning("Callback failed after 3 retries: task_id=%d status=%d", task_id, status)
 
 
 class TaskExecutor:
@@ -153,11 +169,19 @@ class TaskExecutor:
 
             else:
                 await repo.fail_task(task_id, f"Unknown task type: {task['task_type']}")
+                await _fire_callback(task_id, TaskStatus.FAILED)
                 return
 
             # 质量过滤（所有任务类型，日报使用宽松阈值）
             # 日报任务已在 execute_digest_crawl() 内做过去重，跳过 SimHash 二次去重
             is_digest = task["task_type"] == "digest"
+            # 日报任务：预热来源可信度缓存，避免后续同步 HTTP 阻塞事件循环
+            if is_digest:
+                try:
+                    from crawler.quality import SourceAuthority
+                    await SourceAuthority.preload_authority_cache()
+                except Exception:
+                    pass
             from crawler.dedup import DedupEngine
             if is_digest:
                 dedup_engine = None
@@ -170,7 +194,7 @@ class TaskExecutor:
             total_words = await repo.save_pages(task_id, results)
 
             success_count = sum(1 for r in results if r.success)
-            crawl_duration = sum(r.crawl_time_ms for r in results)
+            crawl_duration = sum(r.crawl_time_ms for r in results if r.success)
 
             if success_count == 0:
                 error = next((r.error_message for r in results if r.error_message), None)
@@ -210,6 +234,13 @@ class TaskExecutor:
             error_msg = str(e).strip() if str(e).strip() else f"未知错误: {type(e).__name__}"
             await repo.fail_task(task_id, error_msg)
             await _fire_callback(task_id, TaskStatus.FAILED)
+        finally:
+            # 通知信息源调度器：任务已完成（无论成功/失败）
+            try:
+                from standalone.scheduler import notify_task_completion
+                notify_task_completion(task_id)
+            except Exception:
+                pass
 
     async def _execute_keyword_crawl(self, task: dict, config) -> list:
         """关键词搜索爬取（含 AI 关键词优化/扩展）"""
@@ -315,6 +346,8 @@ class TaskExecutor:
         from optimization.bubble_breaker import BreadthExpander, BubbleBreaker
         from optimization.knowledge_base import KnowledgeBase
         from crawler.search import crawl_by_keyword
+        from crawler.config import get_browser_config
+        from crawl4ai import AsyncWebCrawler
 
         evaluator = CoverageEvaluator(organizer if organizer.is_available else None)
         depth_gen = DepthStrategyGen()
@@ -322,51 +355,61 @@ class TaskExecutor:
         kb = KnowledgeBase()
         breaker = BubbleBreaker(organizer if organizer.is_available else None)
 
-        ctx = {"engine": engine, "time_range": time_range, "config": config}
+        browser_config = await get_browser_config(
+            text_mode=True, light_mode=True, proxy=settings.proxy_url,
+        )
+        async with AsyncWebCrawler(config=browser_config) as shared_crawler:
+            ctx = {"engine": engine, "time_range": time_range, "config": config, "crawler": shared_crawler}
+            deadline = time.monotonic() + settings.optimization_total_budget_seconds
 
-        # Phase 1: 广度扩展（先广）
-        breadth_expander = BreadthExpander(
-            evaluator=evaluator,
-            strategy_gen=breadth_gen,
-            knowledge_base=kb,
-            bubble_breaker=breaker,
-        )
-        results, breadth_rounds = await breadth_expander.execute(
-            keyword=keyword,
-            initial_results=initial_results,
-            crawl_fn=crawl_by_keyword,
-            task_id=task["id"],
-            context=ctx,
-        )
-        if breadth_rounds:
-            last = breadth_rounds[-1]
-            logger.info(
-                "[Optimization] Breadth: %d rounds, breadth_score=%.2f, total URLs=%d",
-                len(breadth_rounds), BreadthExpander._breadth_score(last.evaluation), last.urls_after,
+            # Phase 1: 广度扩展（先广）
+            breadth_expander = BreadthExpander(
+                evaluator=evaluator,
+                strategy_gen=breadth_gen,
+                knowledge_base=kb,
+                bubble_breaker=breaker,
+            )
+            results, breadth_rounds = await breadth_expander.execute(
+                keyword=keyword,
+                initial_results=initial_results,
+                crawl_fn=crawl_by_keyword,
+                task_id=task["id"],
+                context=ctx,
+                deadline=deadline,
+            )
+            if breadth_rounds:
+                last = breadth_rounds[-1]
+                logger.info(
+                    "[Optimization] Breadth: %d rounds, breadth_score=%.2f, total URLs=%d",
+                    len(breadth_rounds), BreadthExpander._breadth_score(last.evaluation), last.urls_after,
+                )
+
+            # Phase 2: 深度优化（后深）
+            last_breadth_eval = breadth_rounds[-1].evaluation if breadth_rounds else None
+
+            depth_loop = FeedbackLoop(
+                evaluator=evaluator,
+                strategy_gen=depth_gen,
+                knowledge_base=kb,
+            )
+            final_results, depth_rounds = await depth_loop.execute(
+                keyword=keyword,
+                initial_results=results,
+                crawl_fn=crawl_by_keyword,
+                task_id=task["id"],
+                context=ctx,
+                initial_evaluation=last_breadth_eval,
+                deadline=deadline,
             )
 
-        # Phase 2: 深度优化（后深）
-        depth_loop = FeedbackLoop(
-            evaluator=evaluator,
-            strategy_gen=depth_gen,
-            knowledge_base=kb,
-        )
-        final_results, depth_rounds = await depth_loop.execute(
-            keyword=keyword,
-            initial_results=results,
-            crawl_fn=crawl_by_keyword,
-            task_id=task["id"],
-            context=ctx,
-        )
+            if depth_rounds:
+                last = depth_rounds[-1]
+                logger.info(
+                    "[Optimization] Depth: %d rounds, final score=%.2f, total URLs=%d",
+                    len(depth_rounds), last.evaluation.overall_score, last.urls_after,
+                )
 
-        if depth_rounds:
-            last = depth_rounds[-1]
-            logger.info(
-                "[Optimization] Depth: %d rounds, final score=%.2f, total URLs=%d",
-                len(depth_rounds), last.evaluation.overall_score, last.urls_after,
-            )
-
-        return final_results
+            return final_results
 
     async def _organize_with_ai(self, task_id: int, task: dict) -> bool:
         """AI 内容整理（含重试）"""
@@ -401,10 +444,30 @@ class TaskExecutor:
                 return True
 
             except TruncatedError as e:
-                msg = f"AI 输出被截断，请调整内容长度或增加 max_tokens：{e}"
-                logger.warning("Task %d AI truncated: %s, skipping retry", task_id, e)
-                await repo.save_ai_error(task_id, msg)
-                return False
+                # 截断不等于失败——增大 max_tokens 重试一次（直接传参，不修改全局状态）
+                logger.warning("Task %d AI truncated, retrying with larger max_tokens: %s",
+                               task_id, e)
+                try:
+                    original_max = ai_settings.ai_digest_max_tokens
+                    retry_max_tokens = int(original_max * 1.5)
+                    if task_type == "digest":
+                        result = await organize_digest_and_save(
+                            task_id, task, pages, organizer,
+                            max_tokens_override=retry_max_tokens,
+                        )
+                    else:
+                        result = await organize_content_and_save(
+                            task_id, task, pages, organizer,
+                            max_tokens_override=retry_max_tokens,
+                        )
+                    logger.info("Task %d AI re-organized after truncation recovery: title='%s'",
+                                task_id, result.title)
+                    return True
+                except Exception as retry_err:
+                    msg = f"AI 输出被截断且重试失败，原始爬取结果已保留：{retry_err}"
+                    logger.warning("Task %d AI truncation retry also failed: %s", task_id, retry_err)
+                    await repo.save_ai_error(task_id, msg)
+                    return False
 
             except UnrecoverableError as e:
                 msg = f"AI API 请求被拒绝：{e}"
@@ -419,8 +482,8 @@ class TaskExecutor:
                 return False
 
             except RateLimitError as e:
-                backoff = 10.0
-                logger.warning("Task %d AI rate limited, retry in %.0fs (attempt %d/%d)",
+                backoff = settings.ai_rate_limit_backoff_ms / 1000.0 * (attempt + 1)
+                logger.warning("Task %d AI rate limited, retry in %.1fs (attempt %d/%d)",
                                task_id, backoff, attempt + 1, max_retries + 1)
                 if attempt < max_retries:
                     await asyncio.sleep(backoff)
@@ -468,6 +531,8 @@ class TaskExecutor:
         is_deep = (task_type == "deep")
         is_digest = (task_type == "digest")
         deep_min_score = settings.deep_eval_review_threshold
+        # 日报独立质量阈值：比 deep 更严格，避免低质量内容浪费 AI token
+        digest_min_score = getattr(settings, 'digest_eval_reject_threshold', 35)
 
         # 过滤统计
         stats = {"total": len(results), "too_short": 0, "non_article": 0,
@@ -530,7 +595,14 @@ class TaskExecutor:
             final_score = evaluation["final_score"]
 
             should_reject = False
-            if is_deep or is_digest:
+            if is_digest:
+                # 日报：使用独立阈值，spam 直接拒绝
+                source_level = evaluation["source"]["level"]
+                if source_level == "spam":
+                    should_reject = True
+                elif final_score < digest_min_score and source_level != "official":
+                    should_reject = True
+            elif is_deep:
                 source_level = evaluation["source"]["level"]
                 if source_level == "spam" and final_score < deep_min_score:
                     should_reject = True
@@ -749,6 +821,20 @@ _SOURCE_CATEGORY_MAP: dict[str, str] = {
     "kubernetes.io": "tech_article",
 }
 
+# URL 路径级分类规则（优先于域名级匹配）
+_PATH_CATEGORY_RULES: list[tuple[re.Pattern, str]] = [
+    # GitHub：博客/文档 → 技术文章
+    (re.compile(r'github\.com/[^/]+/[^/]+/(?:blob|tree)/main/(?:docs?|blog|posts?|_posts)'), "tech_article"),
+    # GitHub：Issues/Discussions → 技术文章
+    (re.compile(r'github\.com/[^/]+/[^/]+/(?:issues|discussions)/\d+'), "tech_article"),
+    # GitHub：Releases → 开源项目
+    (re.compile(r'github\.com/[^/]+/[^/]+/releases/tag/'), "open_source"),
+    # Medium：文章 → 技术文章
+    (re.compile(r'medium\.com/[^/]+/(?:[^/]+-)?[a-f0-9]{8,}'), "tech_article"),
+    # Reddit：帖子 → 热点动态
+    (re.compile(r'reddit\.com/r/\w+/comments/'), "hot_trend"),
+]
+
 _TITLE_PATTERNS: list[tuple] = [
     # 学术论文（优先匹配，避免 "paper" 出现在其他上下文被误匹配）
     (re.compile(r'(?:论文|(?:paper|arxiv)\b)'), "paper"),
@@ -763,8 +849,8 @@ _TITLE_PATTERNS: list[tuple] = [
     (re.compile(r'(?:工具推荐|开发工具|(?:devtool|插件|extension|vscode|编辑器|ide|终端|shell|docker|k8s|kubernetes)\b)'), "dev_tool"),
     # 技术文章（放后面，避免抢先匹配 "教程" 等泛词）
     (re.compile(r'(?:教程|指南|(?:best\s*practice)\b|入门|进阶|原理分析|源码解析|实战|踩坑|避坑)'), "tech_article"),
-    # 创意发现
-    (re.compile(r'(?:创意|有趣|(?:hackathon)\b)'), "creative"),
+    # 创意发现（"有趣" 需搭配名词，避免 "有趣的现象" 等泛用误匹配）
+    (re.compile(r'(?:创意|有趣\s*(?:项目|工具|实验|应用|想法|发现|库)|(?:hackathon)\b)'), "creative"),
 ]
 
 
@@ -781,11 +867,16 @@ def _extract_domain(url: str) -> str:
 
 
 def infer_category(url: str, title: str) -> str:
-    """基于域名优先 + 标题词边界匹配的分类推断
+    """基于 URL 路径 → 域名 → 标题词边界匹配的分类推断
 
-    域名命中 → 直接返回；否则按标题正则匹配。
+    优先级：路径级匹配 > 域名精确匹配 > 标题正则匹配。
     避免"动态规划"→hot_trend、"toolbar"→dev_tool 等误分类。
     """
+    # 0. URL 路径级匹配（最高优先）
+    for pattern, category in _PATH_CATEGORY_RULES:
+        if pattern.search(url):
+            return category
+
     # 1. 域名精确匹配
     domain = _extract_domain(url)
     if domain in _SOURCE_CATEGORY_MAP:

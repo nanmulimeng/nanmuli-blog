@@ -47,17 +47,35 @@ def get_result_success(r) -> bool:
     return bool(getattr(r, "success", False))
 
 
-def dedup_results_into(results: list, seen_urls: set, target: list) -> int:
+def dedup_results_into(
+    results: list, seen_urls: set, target: list,
+    min_content_length: int = 0,
+) -> int:
     """将 results 中未重复的 URL 追加到 target，返回新增数量。
 
     统一的去重逻辑，供 task_executor / feedback / bubble_breaker 复用。
+
+    Args:
+        min_content_length: 内容最小长度阈值，低于此的结果不加入（0=不过滤）
     """
     added = 0
     for r in results:
         url = get_result_url(r)
         success = get_result_success(r)
-        if url and url not in seen_urls and success:
-            seen_urls.add(url)
-            target.append(r)
-            added += 1
+        if not url or not success:
+            continue
+        normalized = normalize_url(url)
+        if normalized in seen_urls:
+            continue
+        if min_content_length > 0:
+            content = ""
+            if isinstance(r, dict):
+                content = r.get("markdown", "") or ""
+            elif hasattr(r, "markdown"):
+                content = r.markdown or ""
+            if len(content) < min_content_length:
+                continue
+        seen_urls.add(normalized)
+        target.append(r)
+        added += 1
     return added
