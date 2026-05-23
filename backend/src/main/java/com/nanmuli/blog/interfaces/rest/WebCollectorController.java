@@ -26,6 +26,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -174,10 +175,10 @@ public class WebCollectorController {
 
     @Operation(summary = "创建订阅源")
     @PostMapping("/source")
-    public Result<Long> createSource(@Valid @RequestBody CreateSourceCommand command) {
+    public Result<String> createSource(@Valid @RequestBody CreateSourceCommand command) {
         Long userId = getCurrentUserId();
         Long id = sourceAppService.create(command, userId);
-        return Result.success(id);
+        return Result.success(String.valueOf(id));
     }
 
     @Operation(summary = "订阅源列表")
@@ -257,6 +258,11 @@ public class WebCollectorController {
     @GetMapping("/digest/{date}")
     public Result<Object> getDigestByDate(
             @PathVariable @Pattern(regexp = "^\\d{4}-\\d{2}-\\d{2}$", message = "日期格式不正确") String date) {
+        try {
+            LocalDate.parse(date);
+        } catch (java.time.DateTimeException e) {
+            throw new BusinessException(400, "无效日期: " + date);
+        }
         try {
             return Result.success(crawlerTaskClient.proxyGet("/api/v1/digests/" + date));
         } catch (Exception e) {

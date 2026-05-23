@@ -4,12 +4,14 @@ import { getSourceList, createSource, updateSource, deleteSource, toggleSource }
 import type { Source, CreateSourceCommand } from '@/types/collector'
 import { SourceTypeMap, ContentCategoryMap, AiTemplateMap } from '@/types/collector'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import type { FormInstance, FormRules } from 'element-plus'
 import { Plus, Delete, Edit } from '@element-plus/icons-vue'
 
 const loading = ref(false)
 const sources = ref<Source[]>([])
 const showDialog = ref(false)
-const editingId = ref<number | null>(null)
+const editingId = ref<string | null>(null)
+const formRef = ref<FormInstance>()
 
 const form = ref<CreateSourceCommand & { isActive?: boolean }>({
   name: '',
@@ -24,6 +26,15 @@ const form = ref<CreateSourceCommand & { isActive?: boolean }>({
   scheduleCron: '',
   freshnessHours: 24,
 })
+
+const formRules = computed<FormRules>(() => ({
+  name: [{ required: true, message: '请输入名称', trigger: 'blur' }],
+  value: [{ required: true, message: () => valueLabel.value + '不能为空', trigger: 'blur' }],
+}))
+
+const valueLabel = computed(() =>
+  form.value.type === 'keyword' ? '关键词' : form.value.type === 'url' ? 'URL' : 'RSS 地址',
+)
 
 const categoryOptions = Object.entries(ContentCategoryMap).map(([key, val]) => ({
   value: key,
@@ -58,6 +69,7 @@ function openCreate(): void {
     freshnessHours: 24,
   }
   showDialog.value = true
+  formRef.value?.clearValidate()
 }
 
 function openEdit(row: Source): void {
@@ -74,13 +86,12 @@ function openEdit(row: Source): void {
     isActive: row.isActive,
   }
   showDialog.value = true
+  formRef.value?.clearValidate()
 }
 
 async function handleSubmit(): Promise<void> {
-  if (!form.value.name || !form.value.value) {
-    ElMessage.warning('名称和值不能为空')
-    return
-  }
+  const valid = await formRef.value?.validate().catch(() => false)
+  if (!valid) return
   try {
     if (editingId.value) {
       await updateSource(editingId.value, form.value)
@@ -204,8 +215,8 @@ onMounted(fetchData)
       width="560px"
       destroy-on-close
     >
-      <el-form label-width="100px" label-position="top">
-        <el-form-item label="名称" required>
+      <el-form ref="formRef" :model="form" :rules="formRules" label-width="100px" label-position="top">
+        <el-form-item label="名称" prop="name">
           <el-input v-model="form.name" placeholder="如：GitHub Trending" maxlength="200" />
         </el-form-item>
 
@@ -222,7 +233,7 @@ onMounted(fetchData)
           </el-form-item>
         </div>
 
-        <el-form-item :label="form.type === 'keyword' ? '关键词' : form.type === 'url' ? 'URL' : 'RSS 地址'" required>
+        <el-form-item :label="valueLabel" prop="value">
           <el-input v-model="form.value" :placeholder="form.type === 'keyword' ? '如：GitHub trending' : 'https://...'" maxlength="2048" />
         </el-form-item>
 

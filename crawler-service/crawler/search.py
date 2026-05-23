@@ -740,61 +740,66 @@ async def crawl_by_keyword(
     tried_engines = []
     results = []
 
-    try:
-        async with asyncio.timeout(deadline):
-            for idx, current_engine in enumerate(engines_to_try):
-                try:
-                    logger.info("[Search] Trying engine '%s' for keyword: '%s'", current_engine, keyword)
-                    search_urls = await _get_search_results(keyword=keyword, engine=current_engine, max_results=max_results, time_range=time_range)
-                    tried_engines.append(current_engine)
+    async def _search_and_crawl():
+        nonlocal results
+        for idx, current_engine in enumerate(engines_to_try):
+            try:
+                logger.info("[Search] Trying engine '%s' for keyword: '%s'", current_engine, keyword)
+                search_urls = await _get_search_results(keyword=keyword, engine=current_engine, max_results=max_results, time_range=time_range)
+                tried_engines.append(current_engine)
 
-                    if search_urls:
-                        new_urls = [url for url in search_urls if url not in url_set]
-                        for url in new_urls:
-                            url_set.add(url)
-                            url_source_map[url] = current_engine
-                        all_search_urls.extend(new_urls)
-                        logger.info(
-                            "[Search] Engine '%s' returned %s URLs (%s new, total unique=%s)",
-                            current_engine,
-                            len(search_urls),
-                            len(new_urls),
-                            len(all_search_urls),
-                        )
-                        if len(all_search_urls) >= max_results:
-                            break
-                    else:
-                        logger.warning("[Search] Engine '%s' returned 0 results for '%s'", current_engine, keyword)
-                except Exception as exc:
-                    logger.warning("[Search] Engine '%s' failed for '%s': %s", current_engine, keyword, exc)
-                    tried_engines.append(current_engine)
-
-                if idx < len(engines_to_try) - 1:
-                    await asyncio.sleep(random.uniform(settings.search_engine_switch_delay_min, settings.search_engine_switch_delay_max))
-
-            if not all_search_urls:
-                logger.error("[Search] All engines failed for keyword: '%s'. Tried: %s", keyword, tried_engines)
-                return [
-                    CrawlResult(
-                        success=False,
-                        url="",
-                        error_message=f"No search results found for keyword: '{keyword}' (tried engines: {', '.join(tried_engines)})",
+                if search_urls:
+                    new_urls = [url for url in search_urls if url not in url_set]
+                    for url in new_urls:
+                        url_set.add(url)
+                        url_source_map[url] = current_engine
+                    all_search_urls.extend(new_urls)
+                    logger.info(
+                        "[Search] Engine '%s' returned %s URLs (%s new, total unique=%s)",
+                        current_engine,
+                        len(search_urls),
+                        len(new_urls),
+                        len(all_search_urls),
                     )
-                ]
+                    if len(all_search_urls) >= max_results:
+                        break
+                else:
+                    logger.warning("[Search] Engine '%s' returned 0 results for '%s'", current_engine, keyword)
+            except Exception as exc:
+                logger.warning("[Search] Engine '%s' failed for '%s': %s", current_engine, keyword, exc)
+                tried_engines.append(current_engine)
 
-            all_search_urls = all_search_urls[:max_results]
-            logger.info("[Search] Total %s unique URLs from %s engine(s) for '%s'", len(all_search_urls), len(tried_engines), keyword)
+            if idx < len(engines_to_try) - 1:
+                await asyncio.sleep(random.uniform(settings.search_engine_switch_delay_min, settings.search_engine_switch_delay_max))
 
-            params = RunParams(config)
-            browser_config = await get_browser_config(text_mode=params.text_mode, light_mode=params.light_mode, proxy=settings.proxy_url)
-            results = await _crawl_urls_with_shared_browser(
-                urls=all_search_urls,
-                keyword=keyword,
-                url_source_map=url_source_map,
-                config=config,
-                browser_config=browser_config,
-                external_crawler=crawler,
-            )
+        if not all_search_urls:
+            logger.error("[Search] All engines failed for keyword: '%s'. Tried: %s", keyword, tried_engines)
+            return [
+                CrawlResult(
+                    success=False,
+                    url="",
+                    error_message=f"No search results found for keyword: '{keyword}' (tried engines: {', '.join(tried_engines)})",
+                )
+            ]
+
+        all_search_urls_clipped = all_search_urls[:max_results]
+        all_search_urls.clear()
+        all_search_urls.extend(all_search_urls_clipped)
+        logger.info("[Search] Total %s unique URLs from %s engine(s) for '%s'", len(all_search_urls), len(tried_engines), keyword)
+
+        params = RunParams(config)
+        browser_config = await get_browser_config(text_mode=params.text_mode, light_mode=params.light_mode, proxy=settings.proxy_url)
+        results = await _crawl_urls_with_shared_browser(
+            urls=all_search_urls,
+            keyword=keyword,
+            url_source_map=url_source_map,
+            config=config,
+            browser_config=browser_config,
+            external_crawler=crawler,
+        )
+
+    try:
+        await asyncio.wait_for(_search_and_crawl(), timeout=deadline)
     except asyncio.TimeoutError:
         elapsed = int((time.time() - start_time))
         logger.warning(

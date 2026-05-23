@@ -679,7 +679,14 @@ class ContentOrganizer:
         message = choices[0].get("message", {})
         content = _extract_message_content(message.get("content"))
         if not content:
-            raise RuntimeError("Empty content in AI response")
+            # DeepSeek reasoning 模型可能将推理放在 reasoning_content 中，
+            # 导致 content 为空。尝试用 reasoning_content 作为 fallback。
+            reasoning = message.get("reasoning_content")
+            if reasoning and isinstance(reasoning, str) and reasoning.strip():
+                content = reasoning.strip()
+                logger.debug("[_call_ai] Used reasoning_content fallback (%d chars)", len(content))
+            else:
+                raise RuntimeError("Empty content in AI response")
 
         finish_reason = choices[0].get("finish_reason", "unknown")
         total_tokens = data.get("usage", {}).get("total_tokens", 0)

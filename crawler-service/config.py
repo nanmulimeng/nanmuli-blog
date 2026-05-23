@@ -150,9 +150,9 @@ class Settings(BaseSettings):
     optimization_breadth_weight_primary: float = 0.4    # source_diversity 维度
     optimization_breadth_weight_secondary: float = 0.35 # perspective 维度
     optimization_breadth_weight_tertiary: float = 0.25  # language 维度
-    # 子循环独立达标线（低于全局 0.7，因为子循环只控制 3 维）
-    optimization_depth_target_score: float = 0.6
-    optimization_breadth_target_score: float = 0.6
+    # 子循环独立达标线（启发式回退评分保守，目标稍高以触发多轮优化）
+    optimization_depth_target_score: float = 0.7
+    optimization_breadth_target_score: float = 0.7
 
     # 信息茧房突破配置
     bubble_breaker_enabled: bool = False

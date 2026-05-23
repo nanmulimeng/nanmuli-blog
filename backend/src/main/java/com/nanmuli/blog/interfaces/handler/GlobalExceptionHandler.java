@@ -17,6 +17,8 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.dao.DataIntegrityViolationException;
 import jakarta.validation.ConstraintViolationException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
+import org.springframework.web.bind.UnsatisfiedServletRequestParameterException;
 
 import java.util.UUID;
 
@@ -109,11 +111,22 @@ public class GlobalExceptionHandler {
                 message = "分类标识已存在";
             } else if (e.getMessage().contains("article_slug_key")) {
                 message = "文章别名已存在";
+            } else if (e.getMessage().contains("uk_source_name_active")) {
+                message = "订阅源名称已存在";
             } else if (e.getMessage().contains("_unique")) {
                 message = "数据已存在，请勿重复提交";
             }
         }
         return Result.error(422, message);
+    }
+
+    /**
+     * 处理路径不存在/资源未找到（含路径遍历尝试）
+     */
+    @ExceptionHandler({NoResourceFoundException.class, UnsatisfiedServletRequestParameterException.class})
+    public Result<Void> handleNotFoundException(Exception e, HttpServletRequest request) {
+        log.warn("资源未找到: uri={}, error={}", request.getRequestURI(), e.getMessage());
+        return Result.error(404, "请求的资源不存在");
     }
 
     @ExceptionHandler(Exception.class)

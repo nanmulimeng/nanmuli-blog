@@ -45,10 +45,10 @@ public class InternalCallbackController {
         String expectedKey = configService.get("crawler.callback.api-key", "");
         if (expectedKey.isBlank()) {
             if (!apiKeyBlankWarned) {
-                log.warn("[Auth] crawler.callback.api-key is blank — callback endpoints are unauthenticated");
+                log.error("[Auth] crawler.callback.api-key is blank — ALL internal endpoints are BLOCKED. Set a valid API key to enable.");
                 apiKeyBlankWarned = true;
             }
-            return false;
+            return true;
         }
         apiKeyBlankWarned = false;
         return !expectedKey.equals(callbackKey);

@@ -210,7 +210,7 @@ export const AiTemplateMap: Record<string, string> = {
 // ============== Source ==============
 
 export interface Source {
-  id: number
+  id: string
   name: string
   type: string
   value: string

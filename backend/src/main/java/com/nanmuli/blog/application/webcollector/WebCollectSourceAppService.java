@@ -97,10 +97,21 @@ public class WebCollectSourceAppService {
 
     @Transactional
     public void toggleActive(Long id, Long userId) {
-        WebCollectSource source = getSourceOrThrow(id, userId);
-        source.setIsActive(!source.isActive());
-        sourceRepository.save(source);
-        log.info("[Source] Toggled: id={}, isActive={}", id, source.isActive());
+        int maxRetries = 3;
+        for (int attempt = 0; attempt < maxRetries; attempt++) {
+            try {
+                WebCollectSource source = getSourceOrThrow(id, userId);
+                source.setIsActive(!source.isActive());
+                sourceRepository.save(source);
+                log.info("[Source] Toggled: id={}, isActive={}", id, source.isActive());
+                return;
+            } catch (org.springframework.dao.OptimisticLockingFailureException e) {
+                log.warn("[Source] Toggle optimistic lock conflict for id={}, attempt {}/{}", id, attempt + 1, maxRetries);
+                if (attempt == maxRetries - 1) {
+                    throw new BusinessException("操作冲突，请重试");
+                }
+            }
+        }
     }
 
     /**
@@ -169,6 +180,7 @@ public class WebCollectSourceAppService {
     private SourceDTO toDTO(WebCollectSource source) {
         SourceDTO dto = new SourceDTO();
         BeanUtils.copyProperties(source, dto);
+        dto.setId(source.getId());
         return dto;
     }
 }

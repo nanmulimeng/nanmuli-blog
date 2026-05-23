@@ -100,7 +100,7 @@ EVALUATOR_SYSTEM_PROMPT = """你是一位技术信息覆盖度分析专家。
 JSON_BLOCK_RE = re.compile(r"```(?:json)?\s*\n?([\s\S]*?)```")
 
 # 评估输出是简单 JSON，无需大量 token
-_EVALUATOR_MAX_TOKENS = 600
+_EVALUATOR_MAX_TOKENS = 1500
 
 
 # ============== 评估器 ==============
@@ -185,6 +185,10 @@ class CoverageEvaluator:
         domains = []
         titles = []
         total_content_len = 0
+        years_found = set()
+
+        _YEAR_RE = re.compile(r'(?:20)(\d{2})')
+        current_year = time.localtime().tm_year
 
         for r in results:
             rdict = r.to_dict() if hasattr(r, "to_dict") else (r if isinstance(r, dict) else {})
@@ -206,6 +210,13 @@ class CoverageEvaluator:
             except Exception:
                 pass
 
+            # 从 URL 和内容前 2000 字提取年份
+            for text in (url, markdown[:2000]):
+                for m in _YEAR_RE.finditer(text):
+                    y = int(m.group(0))
+                    if 2010 <= y <= current_year + 1:
+                        years_found.add(y)
+
             entries.append({
                 "url": url,
                 "title": title,
@@ -225,6 +236,7 @@ class CoverageEvaluator:
             "titles": titles,
             "total": len(entries),
             "total_content_length": total_content_len,
+            "years": sorted(years_found),
         }
 
     # ============== 纯计算维度 ==============
@@ -324,32 +336,37 @@ class CoverageEvaluator:
     # ============== 启发式回退 ==============
 
     def _heuristic_evaluate(self, meta: dict, ctx: dict) -> dict:
-        """AI 不可用时的启发式评估"""
+        """AI 不可用时的启发式评估（保守评分，为优化循环留空间）"""
         total = meta["total"]
         domains = set(meta["domains"])
         entries = meta["entries"]
 
-        # 角度覆盖：基于不同域名数（越多越可能覆盖多角度）
-        angle = min(1.0, len(domains) / 5) if total >= 3 else min(1.0, total / 3)
+        # 角度覆盖：域名数暗示来源多样性，但上限封 0.6（不如 AI 精确）
+        angle = min(0.6, len(domains) / 8) + min(0.2, (total - 1) / 10) if total >= 3 else min(0.3, total / 5)
 
-        # 深度覆盖：基于内容长度分布
+        # 深度覆盖：内容长度分布，但上限封 0.65
         if entries:
             lengths = [e["content_length"] for e in entries]
             avg_len = sum(lengths) / len(lengths)
             has_short = any(l < 500 for l in lengths)
             has_long = any(l > 3000 for l in lengths)
-            depth = 0.3 + (0.3 if has_short else 0) + (0.4 if has_long else 0) + min(0.15, avg_len / 10000)
+            depth = 0.1 + (0.15 if has_short else 0) + (0.25 if has_long else 0) + min(0.15, avg_len / 10000)
         else:
             depth = 0.1
 
-        # 时效性覆盖：结果数量 × 域名多样性修正（AI 不可用时的代理指标）
-        domain_count = len(domains)
-        domain_factor = min(1.0, domain_count / 4) if domain_count >= 2 else 0.3
-        count_factor = min(1.0, total / 6) if total >= 2 else 0.2
-        temporal = round(count_factor * 0.6 + domain_factor * 0.4, 3)
+        # 时效性覆盖：基于提取到的年份跨度（主信号）+ 结果数量微调
+        years = meta.get("years", [])
+        if len(years) >= 2:
+            span = max(years) - min(years)
+            temporal = min(0.5, span / 4)  # 跨 4 年 → 0.5
+        elif len(years) == 1:
+            temporal = 0.15  # 仅单一年份
+        else:
+            temporal = 0.1   # 无年份信号
+        temporal += min(0.1, total / 20)  # 结果数量微量修正
 
-        # 观点均衡：域名多样性 50% + 标题对立词检测 50%
-        domain_component = min(1.0, len(domains) / 3) if len(domains) >= 2 else 0.2
+        # 观点均衡：域名多样性 30% + 标题对立词检测 70%
+        domain_component = min(1.0, len(domains) / 5) if len(domains) >= 2 else 0.15
         positive_words = {"推荐", "最佳", "优秀", "优点", "亮点", "best", "great", "awesome", "recommended"}
         negative_words = {"缺点", "问题", "踩坑", "避坑", "风险", "限制", "downside", "issue", "problem", "limitation"}
         title_words = set()
@@ -358,12 +375,12 @@ class CoverageEvaluator:
         has_pos = bool(title_words & positive_words)
         has_neg = bool(title_words & negative_words)
         if has_pos and has_neg:
-            keyword_component = 0.8
+            keyword_component = 0.7
         elif has_pos or has_neg:
-            keyword_component = 0.4
+            keyword_component = 0.35
         else:
-            keyword_component = 0.2
-        perspective = round(domain_component * 0.5 + keyword_component * 0.5, 3)
+            keyword_component = 0.1
+        perspective = round(domain_component * 0.3 + keyword_component * 0.7, 3)
 
         weaknesses = []
         suggestions = []
@@ -373,12 +390,15 @@ class CoverageEvaluator:
         if len(domains) < 3 and total >= 3:
             weaknesses.append("来源域名过于集中")
             suggestions.append("切换搜索引擎引入不同来源")
+        if temporal < 0.3:
+            weaknesses.append("时效性覆盖不足")
+            suggestions.append("扩展时间范围或搜索不同年份的内容")
 
         return {
-            "angle": round(min(1.0, angle), 3),
-            "depth": round(min(1.0, depth), 3),
-            "temporal": round(min(1.0, temporal), 3),
-            "perspective": round(min(1.0, perspective), 3),
+            "angle": round(min(0.8, angle), 3),
+            "depth": round(min(0.65, depth), 3),
+            "temporal": round(min(0.6, temporal), 3),
+            "perspective": round(min(0.6, perspective), 3),
             "weaknesses": weaknesses,
             "suggestions": suggestions,
         }

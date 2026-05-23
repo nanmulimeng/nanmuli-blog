@@ -1,11 +1,14 @@
 package com.nanmuli.blog.application.webcollector.dto;
 
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 import lombok.Data;
 
 import java.time.LocalDateTime;
 
 @Data
 public class SourceDTO {
+    @JsonSerialize(using = ToStringSerializer.class)
     private Long id;
     private String name;
     private String type;
