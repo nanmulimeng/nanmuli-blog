@@ -210,9 +210,9 @@ class KnowledgeBase:
             cursor = await db.execute(
                 """SELECT weaknesses, suggestions, created_at
                    FROM optimization_record
-                   WHERE strategy_type LIKE 'digest%'
-                     AND weaknesses IS NOT NULL
-                     AND weaknesses != ''
+                   WHERE strategy_type = 'digest_final_eval'
+                     AND suggestions IS NOT NULL
+                     AND suggestions != '[]'
                    ORDER BY created_at DESC
                    LIMIT 1""",
             )
@@ -294,6 +294,43 @@ class KnowledgeBase:
                         pass
             results.append(d)
         return results
+
+    # ============== 跨运行疲劳感知 ==============
+
+    async def get_recent_dimension_fatigue(self, limit: int = 3) -> dict[str, list[float]]:
+        """查询最近 N 次日报评估中各维度的改善情况，用于跨运行疲劳预填充。
+
+        返回持续下降/不变的维度及其分数列表（最近在前）。
+        """
+        async with get_db() as db:
+            cursor = await db.execute(
+                """SELECT source_diversity, depth_coverage, angle_coverage,
+                          temporal_coverage, perspective_balance, language_coverage,
+                          created_at
+                   FROM optimization_record
+                   WHERE strategy_type = 'digest_final_eval'
+                   ORDER BY created_at DESC
+                   LIMIT ?""",
+                (limit,),
+            )
+            rows = await cursor.fetchall()
+        if not rows:
+            return {}
+
+        dims = ["source_diversity", "depth", "angle", "temporal", "perspective", "language"]
+        dim_cols = [
+            "source_diversity", "depth_coverage", "angle_coverage",
+            "temporal_coverage", "perspective_balance", "language_coverage",
+        ]
+        result: dict[str, list[float]] = {}
+        for dim, col in zip(dims, dim_cols):
+            scores = [r[col] for r in rows if r[col] is not None]
+            if len(scores) >= 2:
+                # 最早（列表末尾）到最近（列表开头）持续下降或不变
+                declining = all(scores[i] <= scores[-1] for i in range(len(scores) - 1))
+                if declining:
+                    result[dim] = scores
+        return result
 
     # ============== 数据维护 ==============
 

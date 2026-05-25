@@ -452,7 +452,11 @@ class DigestOrchestrator:
         keyword = " ".join(
             kw for s in plan.sections for kw in s.keywords[:2]
         ) if plan.sections else "技术日报"
-        evaluation = await evaluator.evaluate(keyword, all_results)
+        eval_ctx = {
+            "engine": plan.config_snapshot.get("engine", "unknown"),
+            "time_range": "week",
+        }
+        evaluation = await evaluator.evaluate(keyword, all_results, eval_ctx)
 
         # 2. 计算各板块得分
         section_scores = []

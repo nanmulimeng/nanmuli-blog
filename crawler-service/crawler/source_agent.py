@@ -128,7 +128,31 @@ class SourceAgent:
                     "Hint: last weakness was language coverage — cross-language may activate in optimization"
                 )
 
-        # 5. max_items 上限保护
+        # 5. 基于持续弱维度（质量趋势）调整策略
+        persistent_weak = (kb_hint or {}).get("persistent_weak_dims", [])
+        if persistent_weak:
+            if "source_diversity" in persistent_weak:
+                kb_engine = (kb_hint or {}).get("recommended_engine", "")
+                if kb_engine and kb_engine != plan.recommended_engine:
+                    plan.recommended_engine = kb_engine
+                    plan.analysis_log.append(
+                        f"Persistent weak source_diversity, overriding engine to {kb_engine}"
+                    )
+            if "depth" in persistent_weak or "angle" in persistent_weak:
+                plan.adjusted_max_items = min(int(plan.adjusted_max_items * 1.3), _MAX_ITEMS_CAP)
+                plan.analysis_log.append(
+                    f"Boosted max_items for persistent depth/angle weakness → {plan.adjusted_max_items}"
+                )
+            if "temporal" in persistent_weak:
+                time_upgrade = {"day": "week", "week": "month", "month": "year", "year": "all"}
+                upgraded = time_upgrade.get(section.time_range)
+                if upgraded:
+                    plan.analysis_log.append(
+                        f"Persistent weak temporal, widening time_range {section.time_range} → {upgraded}"
+                    )
+                    section.time_range = upgraded
+
+        # 6. max_items 上限保护
         plan.adjusted_max_items = min(plan.adjusted_max_items, _MAX_ITEMS_CAP)
 
         # 汇总日志

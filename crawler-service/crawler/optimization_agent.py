@@ -93,7 +93,7 @@ class OptimizationAgent:
         # 2. 初始化组件
         from ai import content_organizer as organizer
         from optimization.evaluator import CoverageEvaluator
-        from optimization.strategy import BreadthStrategyGen, DepthStrategyGen
+        from optimization.strategy import BreadthStrategyGen, DepthStrategyGen, SearchStrategy
         from optimization.knowledge_base import KnowledgeBase
         from optimization.utils import save_optimization_round
 
@@ -159,6 +159,19 @@ class OptimizationAgent:
         strategy_history: list = []
         self._fatigue.reset()
 
+        # 跨运行疲劳预填充：从 KB 读取最近运行的趋势
+        try:
+            cross_run_fatigue = await kb.get_recent_dimension_fatigue(limit=3)
+            for dim, scores in cross_run_fatigue.items():
+                for _ in range(self._fatigue._window):
+                    self._fatigue.record(dim, False)
+                logger.info(
+                    "[OptAgent] Cross-run fatigue pre-filled for '%s': %s",
+                    dim, [f"{s:.2f}" for s in scores],
+                )
+        except Exception as e:
+            logger.debug("[OptAgent] Cross-run fatigue check failed: %s", e)
+
         for round_num in range(1, _MAX_OPT_ROUNDS + 1):
             if time.monotonic() >= deadline:
                 logger.info("[OptAgent] Budget exhausted at round %d", round_num)
@@ -190,21 +203,28 @@ class OptimizationAgent:
             rounds_done = round_num
             delta = (global_eval.overall_score - prev_score) if global_eval else 0
 
-            # 能力 5A: 板块级 KB 保存（用板块关键词而非全局关键词）
+            # 能力 5: 全局优化轮次 KB 保存（关键词与评分语义一致）
             if global_eval:
-                for ws in weak_sections:
-                    sec_kw = ws.section.keywords[0] if ws.section.keywords else ws.section.name
-                    sec_engine = ws.section.engine or ctx.get("engine", "sogou")
-                    section_strategy = self._make_section_strategy(sec_kw, sec_engine, ctx)
-                    opt_round = _OptRound(
-                        round_num=round_num,
-                        evaluation=global_eval,
-                        strategy=section_strategy,
-                        urls_before=urls_before,
-                        urls_after=len(all_results),
-                        score_delta=delta,
-                    )
-                    await save_optimization_round(task_id, opt_round)
+                global_strategy = SearchStrategy(
+                    keyword=eval_keyword,
+                    engine=ctx.get("engine", "sogou"),
+                    time_range=ctx.get("time_range", "week"),
+                    strategy_type="digest_section_opt",
+                    reason=f"Round {round_num}: optimized {len(weak_sections)} sections — "
+                           + ", ".join(
+                               f"{ws.section.name}({','.join(ws.weakest_dimensions[:2])})"
+                               for ws in weak_sections
+                           ),
+                )
+                opt_round = _OptRound(
+                    round_num=round_num,
+                    evaluation=global_eval,
+                    strategy=global_strategy,
+                    urls_before=urls_before,
+                    urls_after=len(all_results),
+                    score_delta=delta,
+                )
+                await save_optimization_round(task_id, opt_round)
 
             logger.info(
                 "[OptAgent] Round %d: score=%.2f→%.2f (delta=%.3f), +%d URLs, %d sections improved",
@@ -577,18 +597,6 @@ class OptimizationAgent:
             if getattr(doc, "section_name", "") == section_name:
                 return doc
         return None
-
-    @staticmethod
-    def _make_section_strategy(keyword: str, engine: str, ctx: dict):
-        """创建板块级 SearchStrategy（用于 KB 板块级学习）"""
-        from optimization.strategy import SearchStrategy
-        return SearchStrategy(
-            keyword=keyword,
-            engine=engine,
-            time_range=ctx.get("time_range", "week"),
-            strategy_type="digest_section_opt",
-            reason="Per-section optimization round",
-        )
 
     @staticmethod
     def _planned_to_raw_dict(section: PlannedSection) -> dict:
