@@ -179,16 +179,39 @@ onMounted(fetchData)
         </template>
       </el-table-column>
 
-      <el-table-column label="运行次数" width="90" align="center">
+      <el-table-column label="运行统计" width="130">
         <template #default="{ row }">
-          <span class="text-sm">{{ row.runCount || 0 }}</span>
+          <div v-if="row.runCount" class="text-xs leading-relaxed">
+            <div class="text-content-secondary">
+              {{ row.runCount }} 次
+              <template v-if="row.successCount != null || row.failCount != null">
+                (<span class="text-success/70">{{ row.successCount || 0 }}成功</span>
+                / <span class="text-error/70">{{ row.failCount || 0 }}失败</span>)
+              </template>
+            </div>
+            <div v-if="row.avgQualityScore != null" class="text-content-tertiary">
+              质量: {{ row.avgQualityScore.toFixed(1) }}
+            </div>
+            <div v-if="row.lastError" class="truncate text-error/60" :title="row.lastError">
+              {{ row.lastError }}
+            </div>
+          </div>
+          <span v-else class="text-content-tertiary">-</span>
         </template>
       </el-table-column>
 
       <el-table-column label="上次运行" width="110">
         <template #default="{ row }">
-          <div v-if="row.lastRunAt" class="text-xs text-content-secondary">
-            {{ row.lastRunAt.slice(0, 10) }}
+          <div v-if="row.lastRunAt" class="text-xs">
+            <div class="text-content-secondary">{{ row.lastRunAt.slice(0, 10) }}</div>
+            <el-tag
+              v-if="row.lastRunStatus"
+              :type="row.lastRunStatus === 'success' ? 'success' : 'danger'"
+              size="small"
+              class="mt-0.5"
+            >
+              {{ row.lastRunStatus === 'success' ? '成功' : '失败' }}
+            </el-tag>
           </div>
           <div v-else class="text-content-tertiary">-</div>
         </template>

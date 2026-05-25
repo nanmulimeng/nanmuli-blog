@@ -6,6 +6,7 @@ import com.nanmuli.blog.application.proxy.dto.NodeDelayDTO;
 import com.nanmuli.blog.application.proxy.dto.ProxyGroupDTO;
 import com.nanmuli.blog.application.proxy.dto.ProxyNodeDTO;
 import com.nanmuli.blog.application.proxy.dto.ProxyStatusDTO;
+import com.nanmuli.blog.infrastructure.config.ConfigService;
 import com.nanmuli.blog.infrastructure.proxy.MihomoProxyClient;
 import com.nanmuli.blog.infrastructure.proxy.MihomoUnreachableException;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +23,7 @@ import java.util.*;
 public class ProxyAppService {
 
     private final ConfigAppService configAppService;
+    private final ConfigService configService;
     private final MihomoProxyClient mihomoProxyClient;
 
     // ==================== 代理状态 ====================
@@ -148,6 +150,7 @@ public class ProxyAppService {
     public void updateSubscription(String url) {
         String targetUrl = url != null ? url : "";
         configAppService.update("crawler.proxy.subscription_url", targetUrl);
+        configService.reload();
 
         if (!targetUrl.isBlank()) {
             try {

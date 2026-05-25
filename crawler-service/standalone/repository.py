@@ -183,6 +183,27 @@ async def update_task_progress(task_id: int, completed_pages: int):
         await db.commit()
 
 
+async def update_task_metadata(task_id: int, metadata: dict):
+    """合并更新 task 的 ai_search_metadata JSON 字段"""
+    import json as _json
+    async with get_db() as db:
+        row = await db.execute_fetchall(
+            "SELECT ai_search_metadata FROM crawl_task WHERE id = ?", (task_id,)
+        )
+        existing = {}
+        if row and row[0][0]:
+            try:
+                existing = _json.loads(row[0][0])
+            except Exception:
+                pass
+        existing.update(metadata)
+        await db.execute(
+            "UPDATE crawl_task SET ai_search_metadata = ?, updated_at = datetime('now') WHERE id = ?",
+            (_json.dumps(existing, ensure_ascii=False), task_id),
+        )
+        await db.commit()
+
+
 async def complete_crawl(task_id: int, total_pages: int, completed_pages: int,
                          crawl_duration: int, total_word_count: int):
     """爬取完成，更新统计（不改变状态，后续进入 AI 整理）"""

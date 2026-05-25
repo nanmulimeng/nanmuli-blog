@@ -1732,5 +1732,59 @@ class TestCrawlByKeywordDeadline(unittest.IsolatedAsyncioTestCase):
                 self.assertTrue(results[0].success)
 
 
+# ============== skip_dedup 参数 ==============
+
+class TestSkipDedup(unittest.IsolatedAsyncioTestCase):
+    """skip_dedup=True 跳过内部去重（Agent 层已做去重）"""
+
+    async def test_skip_dedup_true_bypasses_dedup(self):
+        """skip_dedup=True 时 dedup_results 不被调用"""
+        urls = ["https://example.com/1"]
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.url = "https://example.com/1"
+        mock_result.word_count = 200
+
+        with patch.object(search, "_get_search_results", AsyncMock(return_value=urls)), \
+             patch.object(search, "_crawl_urls_with_shared_browser", AsyncMock(return_value=[mock_result])), \
+             patch.object(search, "dedup_results") as mock_dedup:
+            await search.crawl_by_keyword(
+                keyword="test", engine="bing", max_results=5, skip_dedup=True
+            )
+        mock_dedup.assert_not_called()
+
+    async def test_skip_dedup_false_calls_dedup(self):
+        """skip_dedup=False（默认）时 dedup_results 被调用"""
+        urls = ["https://example.com/1"]
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.url = "https://example.com/1"
+        mock_result.word_count = 200
+
+        with patch.object(search, "_get_search_results", AsyncMock(return_value=urls)), \
+             patch.object(search, "_crawl_urls_with_shared_browser", AsyncMock(return_value=[mock_result])), \
+             patch.object(search, "dedup_results", side_effect=lambda x: x) as mock_dedup:
+            await search.crawl_by_keyword(
+                keyword="test", engine="bing", max_results=5, skip_dedup=False
+            )
+        mock_dedup.assert_called_once()
+
+    async def test_skip_dedup_default_is_false(self):
+        """默认 skip_dedup=False，去重被调用"""
+        urls = ["https://example.com/1"]
+        mock_result = MagicMock()
+        mock_result.success = True
+        mock_result.url = "https://example.com/1"
+        mock_result.word_count = 200
+
+        with patch.object(search, "_get_search_results", AsyncMock(return_value=urls)), \
+             patch.object(search, "_crawl_urls_with_shared_browser", AsyncMock(return_value=[mock_result])), \
+             patch.object(search, "dedup_results", side_effect=lambda x: x) as mock_dedup:
+            await search.crawl_by_keyword(
+                keyword="test", engine="bing", max_results=5
+            )
+        mock_dedup.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()

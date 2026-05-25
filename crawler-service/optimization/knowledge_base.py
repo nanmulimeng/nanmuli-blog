@@ -203,6 +203,32 @@ class KnowledgeBase:
         from standalone import repository as repo
         return await repo.get_optimization_records(task_id)
 
+    # ============== 日报弱点反馈 ==============
+
+    async def get_last_digest_weaknesses(self) -> dict | None:
+        """读取最近一次日报优化轮次的弱点/建议（供下次规划参考）"""
+        async with get_db() as db:
+            cursor = await db.execute(
+                """SELECT weaknesses, suggestions, created_at
+                   FROM optimization_record
+                   WHERE strategy_type LIKE 'digest%'
+                     AND weaknesses IS NOT NULL
+                     AND weaknesses != ''
+                   ORDER BY created_at DESC
+                   LIMIT 1""",
+            )
+            row = await cursor.fetchone()
+        if not row:
+            return None
+        import json
+        weaknesses = row["weaknesses"]
+        suggestions = row["suggestions"]
+        return {
+            "weaknesses": json.loads(weaknesses) if isinstance(weaknesses, str) else (weaknesses or []),
+            "suggestions": json.loads(suggestions) if isinstance(suggestions, str) else (suggestions or []),
+            "created_at": row["created_at"],
+        }
+
     # ============== 数据维护 ==============
 
     async def cleanup_old_records(self, days: int = 90) -> int:

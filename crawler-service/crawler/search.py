@@ -717,6 +717,7 @@ async def crawl_by_keyword(
     time_range: str = "week",
     config: Optional[object] = None,
     crawler: Optional[AsyncWebCrawler] = None,
+    skip_dedup: bool = False,
 ) -> List[CrawlResult]:
     valid_time_ranges = {"day", "week", "month", "year", "all"}
     if time_range not in valid_time_ranges:
@@ -774,13 +775,14 @@ async def crawl_by_keyword(
 
         if not all_search_urls:
             logger.error("[Search] All engines failed for keyword: '%s'. Tried: %s", keyword, tried_engines)
-            return [
+            results = [
                 CrawlResult(
                     success=False,
                     url="",
                     error_message=f"No search results found for keyword: '{keyword}' (tried engines: {', '.join(tried_engines)})",
                 )
             ]
+            return
 
         all_search_urls_clipped = all_search_urls[:max_results]
         all_search_urls.clear()
@@ -821,14 +823,15 @@ async def crawl_by_keyword(
             ))
         return results
 
-    try:
-        deduped = dedup_results(results)
-        removed = len(results) - len(deduped)
-        if removed > 0:
-            logger.info("[Search] Dedup removed %s duplicate results", removed)
-        results = deduped
-    except Exception as exc:
-        logger.warning("[Search] Dedup failed: %s", exc)
+    if not skip_dedup:
+        try:
+            deduped = dedup_results(results)
+            removed = len(results) - len(deduped)
+            if removed > 0:
+                logger.info("[Search] Dedup removed %s duplicate results", removed)
+            results = deduped
+        except Exception as exc:
+            logger.warning("[Search] Dedup failed: %s", exc)
 
     total_time = int((time.time() - start_time) * 1000)
     success_count = sum(1 for result in results if result.success)

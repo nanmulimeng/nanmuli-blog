@@ -58,6 +58,7 @@ def build_digest_pages(pages: list[dict]) -> list[DigestPageContent]:
             category=infer_category(url, p.get("page_title", "")),
             source_name=source_name,
             source_level=SourceAuthority.score(url).get("level", "medium"),
+            page_id=p.get("id"),
         ))
     return result
 
@@ -93,8 +94,9 @@ def _extract_summary(markdown: str, max_chars: int = 200) -> str:
     return text[:max_chars].strip()
 
 
-def serialize_digest_sections(result) -> list[dict]:
-    """将 DigestContent.sections 序列化为 dict 列表"""
+def serialize_digest_sections(result, url_to_page_id: dict | None = None) -> list[dict]:
+    """将 DigestContent.sections 序列化为 dict 列表，回填 page_id"""
+    _url_map = url_to_page_id or {}
     return [
         {
             "category": sec.category,
@@ -106,6 +108,7 @@ def serialize_digest_sections(result) -> list[dict]:
                     "one_liner": item.one_liner,
                     "source_url": item.source_url,
                     "source_name": item.source_name,
+                    "page_id": _url_map.get(item.source_url),
                 }
                 for item in sec.items
             ],
@@ -224,7 +227,15 @@ async def organize_digest_and_save(
         digest_pages, date, input_urls=input_urls, recent_highlights=recent_highlights,
         max_tokens_override=max_tokens_override
     )
-    sections_data = serialize_digest_sections(result)
+
+    # highlight 重复检测：与最近几期对比，高相似度时从 sections 中选取替代
+    if recent_highlights and result.highlight:
+        if _is_highlight_duplicate(result.highlight, recent_highlights):
+            _replace_duplicate_highlight(result, recent_highlights)
+
+    # 构建 URL → page_id 映射，供序列化时回填
+    url_to_page_id = {p.url: p.page_id for p in digest_pages if p.url and p.page_id is not None}
+    sections_data = serialize_digest_sections(result, url_to_page_id=url_to_page_id)
 
     await repo.save_digest_results(
         task_id,
@@ -239,3 +250,30 @@ async def organize_digest_and_save(
         sections=sections_data,
     )
     return result
+
+
+def _is_highlight_duplicate(new_highlight: str, recent_highlights: list[str], threshold: float = 0.7) -> bool:
+    """检测 highlight 与最近几期是否高度重复（基于字符级 Jaccard 相似度）"""
+    if not new_highlight or not recent_highlights:
+        return False
+    new_set = set(new_highlight)
+    for old in recent_highlights:
+        if not old:
+            continue
+        old_set = set(old)
+        intersection = len(new_set & old_set)
+        union = len(new_set | old_set)
+        if union > 0 and intersection / union > threshold:
+            return True
+    return False
+
+
+def _replace_duplicate_highlight(result, recent_highlights: list[str]):
+    """从 sections items 中选取一个与 recent_highlights 不重复的 oneLiner 替换 highlight"""
+    candidates = []
+    for sec in result.sections:
+        for item in sec.items:
+            if item.one_liner and not _is_highlight_duplicate(item.one_liner, recent_highlights):
+                candidates.append(item.one_liner)
+    if candidates:
+        result.highlight = candidates[0]

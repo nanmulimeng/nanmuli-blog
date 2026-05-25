@@ -65,8 +65,8 @@ export function getDigestByTaskId(taskId: number): Promise<DigestDetail> {
 }
 
 // 手动触发日报生成
-export function triggerDigest(force = false): Promise<{ message: string }> {
-  return post<{ message: string }>('/admin/collector/digest/trigger', undefined, { params: { force } })
+export function triggerDigest(force = false): Promise<{ status: string; message: string; task_id?: number }> {
+  return post<{ status: string; message: string; task_id?: number }>('/admin/collector/digest/trigger', undefined, { params: { force } })
 }
 
 // 获取调度器状态

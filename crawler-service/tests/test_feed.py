@@ -2,6 +2,7 @@
 
 import datetime
 import json
+from datetime import timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -9,11 +10,23 @@ import pytest
 from crawler.feed import FeedEntry, parse_feed
 
 
+def _recent_rfc2822(hours_ago: int = 1) -> str:
+    """Generate an RFC 2822 date string for a recent time (always within freshness)."""
+    dt = datetime.datetime.now(timezone.utc) - timedelta(hours=hours_ago)
+    return dt.strftime("%a, %d %b %Y %H:%M:%S GMT")
+
+
+def _recent_iso8601(hours_ago: int = 1) -> str:
+    """Generate an ISO 8601 date string for a recent time."""
+    dt = datetime.datetime.now(timezone.utc) - timedelta(hours=hours_ago)
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def _make_rss_xml(entries: list[dict]) -> str:
     """Build a minimal RSS 2.0 XML string."""
     items = []
     for e in entries:
-        pub_date = e.get("published", "Fri, 16 May 2026 10:00:00 GMT")
+        pub_date = e.get("published", _recent_rfc2822())
         items.append(f"""<item>
   <title>{e.get("title", "Test")}</title>
   <link>{e.get("link", "https://example.com/article")}</link>
@@ -33,7 +46,7 @@ def _make_atom_xml(entries: list[dict]) -> str:
     """Build a minimal Atom XML string."""
     items = []
     for e in entries:
-        updated = e.get("updated", "2026-05-16T10:00:00Z")
+        updated = e.get("updated", _recent_iso8601())
         items.append(f"""<entry>
   <title>{e.get("title", "Test")}</title>
   <link href="{e.get("link", "https://example.com/article")}" />
@@ -61,9 +74,9 @@ class TestParseRss:
     async def test_parse_valid_rss(self, mock_httpx_get):
         xml = _make_rss_xml([
             {"title": "Article 1", "link": "https://example.com/1",
-             "published": "Fri, 16 May 2026 10:00:00 GMT"},
+             "published": _recent_rfc2822(hours_ago=1)},
             {"title": "Article 2", "link": "https://example.com/2",
-             "published": "Fri, 15 May 2026 10:00:00 GMT"},
+             "published": _recent_rfc2822(hours_ago=24)},
         ])
         mock_httpx_get.get.return_value.status_code = 200
         mock_httpx_get.get.return_value.text = xml
@@ -78,7 +91,7 @@ class TestParseRss:
     async def test_parse_valid_atom(self, mock_httpx_get):
         xml = _make_atom_xml([
             {"title": "Atom Post", "link": "https://example.com/atom1",
-             "updated": "2026-05-16T10:00:00Z"},
+             "updated": _recent_iso8601(hours_ago=1)},
         ])
         mock_httpx_get.get.return_value.status_code = 200
         mock_httpx_get.get.return_value.text = xml
@@ -92,7 +105,7 @@ class TestParseRss:
     async def test_freshness_filter(self, mock_httpx_get):
         xml = _make_rss_xml([
             {"title": "Recent", "link": "https://example.com/recent",
-             "published": "Fri, 16 May 2026 10:00:00 GMT"},
+             "published": _recent_rfc2822(hours_ago=1)},
             {"title": "Old", "link": "https://example.com/old",
              "published": "Mon, 01 Jan 2024 10:00:00 GMT"},
         ])
@@ -108,7 +121,7 @@ class TestParseRss:
     async def test_max_entries_cap(self, mock_httpx_get):
         entries = [
             {"title": f"Article {i}", "link": f"https://example.com/{i}",
-             "published": "Fri, 16 May 2026 10:00:00 GMT"}
+             "published": _recent_rfc2822(hours_ago=i)}
             for i in range(20)
         ]
         xml = _make_rss_xml(entries)
@@ -140,7 +153,7 @@ class TestParseRss:
     async def test_relative_url_resolution(self, mock_httpx_get):
         xml = _make_rss_xml([
             {"title": "Relative", "link": "/articles/123",
-             "published": "Fri, 16 May 2026 10:00:00 GMT"},
+             "published": _recent_rfc2822(hours_ago=1)},
         ])
         mock_httpx_get.get.return_value.status_code = 200
         mock_httpx_get.get.return_value.text = xml
@@ -203,11 +216,11 @@ class TestFeedParseExtreme:
     @pytest.mark.asyncio
     async def test_entries_without_dates_kept_as_recent(self, mock_httpx_get):
         """没有发布日期的条目保留为最近条目"""
-        xml = """<?xml version="1.0"?>
+        xml = f"""<?xml version="1.0"?>
         <rss version="2.0"><channel><title>Test</title>
         <item><title>No Date</title><link>https://example.com/1</link></item>
         <item><title>With Date</title><link>https://example.com/2</link>
-        <pubDate>Fri, 16 May 2026 10:00:00 GMT</pubDate></item>
+        <pubDate>{_recent_rfc2822(hours_ago=1)}</pubDate></item>
         </channel></rss>"""
         mock_httpx_get.get.return_value.status_code = 200
         mock_httpx_get.get.return_value.text = xml
@@ -223,12 +236,12 @@ class TestFeedParseExtreme:
         xml = """<?xml version="1.0"?>
         <rss version="2.0"><channel><title>Test</title>
         <item><title>FTP</title><link>ftp://files.example.com/pub/doc</link>
-        <pubDate>Fri, 16 May 2026 10:00:00 GMT</pubDate></item>
+        <pubDate>{}</pubDate></item>
         <item><title>JS</title><link>javascript:alert(1)</link>
-        <pubDate>Fri, 16 May 2026 10:00:00 GMT</pubDate></item>
+        <pubDate>{}</pubDate></item>
         <item><title>Mail</title><link>mailto:test@example.com</link>
-        <pubDate>Fri, 16 May 2026 10:00:00 GMT</pubDate></item>
-        </channel></rss>"""
+        <pubDate>{}</pubDate></item>
+        </channel></rss>""".format(*([_recent_rfc2822()] * 3))
         mock_httpx_get.get.return_value.status_code = 200
         mock_httpx_get.get.return_value.text = xml
         mock_httpx_get.get.return_value.raise_for_status = lambda: None
@@ -238,9 +251,9 @@ class TestFeedParseExtreme:
     @pytest.mark.asyncio
     async def test_empty_link_skipped(self, mock_httpx_get):
         """link 为空的条目被跳过"""
-        xml = """<?xml version="1.0"?>
+        xml = f"""<?xml version="1.0"?>
         <rss version="2.0"><channel><title>Test</title>
-        <item><title>No Link</title><pubDate>Fri, 16 May 2026 10:00:00 GMT</pubDate></item>
+        <item><title>No Link</title><pubDate>{_recent_rfc2822()}</pubDate></item>
         </channel></rss>"""
         mock_httpx_get.get.return_value.status_code = 200
         mock_httpx_get.get.return_value.text = xml
@@ -253,7 +266,7 @@ class TestFeedParseExtreme:
         """title 为空的条目仍被保留（有 URL 和日期即可）"""
         xml = _make_rss_xml([
             {"title": "", "link": "https://example.com/notitle",
-             "published": "Fri, 16 May 2026 10:00:00 GMT"},
+             "published": _recent_rfc2822(hours_ago=1)},
         ])
         mock_httpx_get.get.return_value.status_code = 200
         mock_httpx_get.get.return_value.text = xml
@@ -265,7 +278,6 @@ class TestFeedParseExtreme:
     @pytest.mark.asyncio
     async def test_future_dated_entries_included(self, mock_httpx_get):
         """未来日期的条目被包含（在 freshness 窗口内）"""
-        # 使用"现在 + 30 分钟"确保在 1 小时容差内
         future_time = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=30)
         published_str = future_time.strftime("%a, %d %b %Y %H:%M:%S GMT")
         xml = _make_rss_xml([
@@ -298,7 +310,7 @@ class TestFeedParseExtreme:
         """200 条 feed 被 max_entries=3 截断为 3 条"""
         entries = [
             {"title": f"Article {i}", "link": f"https://example.com/{i}",
-             "published": "Fri, 16 May 2026 10:00:00 GMT"}
+             "published": _recent_rfc2822(hours_ago=i)}
             for i in range(200)
         ]
         xml = _make_rss_xml(entries)
@@ -313,7 +325,7 @@ class TestFeedParseExtreme:
         """freshness_hours=0 只包含当前时刻的条目（通常 0 条）"""
         xml = _make_rss_xml([
             {"title": "Recent", "link": "https://example.com/recent",
-             "published": "Fri, 16 May 2026 10:00:00 GMT"},
+             "published": _recent_rfc2822(hours_ago=1)},
         ])
         mock_httpx_get.get.return_value.status_code = 200
         mock_httpx_get.get.return_value.text = xml
@@ -327,7 +339,7 @@ class TestFeedParseExtreme:
         """负数 freshness_hours 不崩溃"""
         xml = _make_rss_xml([
             {"title": "Test", "link": "https://example.com/1",
-             "published": "Fri, 16 May 2026 10:00:00 GMT"},
+             "published": _recent_rfc2822(hours_ago=1)},
         ])
         mock_httpx_get.get.return_value.status_code = 200
         mock_httpx_get.get.return_value.text = xml

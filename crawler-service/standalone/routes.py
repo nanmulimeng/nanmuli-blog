@@ -446,8 +446,10 @@ async def get_scheduler_status():
 async def trigger_digest(force: bool = Query(False)):
     """手动触发日报生成（force=true 可强制重新生成当天日报）"""
     from standalone.scheduler import generate_scheduled_digest
-    await generate_scheduled_digest(force=force)
-    return {"message": "日报生成已触发"}
+    result = await generate_scheduled_digest(force=force)
+    if result["status"] == "error":
+        raise HTTPException(500, result["message"])
+    return result
 
 
 @router.get("/digests/task/{task_id}")
@@ -489,6 +491,17 @@ async def _build_digest_detail(task_id: int) -> dict:
         ]
         clean_sections.append(clean_sec)
 
+    # 提取 orchestrator 规划日志（从 ai_search_metadata JSON 中）
+    orchestrator_plan = None
+    raw_meta = task.get("ai_search_metadata")
+    if raw_meta:
+        try:
+            import json as _json
+            meta = _json.loads(raw_meta) if isinstance(raw_meta, str) else raw_meta
+            orchestrator_plan = meta.get("orchestrator_plan")
+        except Exception:
+            pass
+
     return {
         "id": task["id"],
         "digest_date": task.get("digest_date"),
@@ -503,5 +516,6 @@ async def _build_digest_detail(task_id: int) -> dict:
         "ai_tokens_used": task.get("ai_tokens_used"),
         "error_message": task.get("error_message") or task.get("ai_error_message"),
         "sections": clean_sections,
+        "orchestrator_plan": orchestrator_plan,
         "created_at": task.get("created_at"),
     }

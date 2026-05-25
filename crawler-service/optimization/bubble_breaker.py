@@ -194,16 +194,17 @@ class BreadthExpander:
         budget_start = time.monotonic()
         effective_deadline = deadline or (budget_start + settings.optimization_total_budget_seconds)
 
-        # source_crawl_fn 默认实现：从 digest 模块爬取 URL/RSS 源
+        # source_crawl_fn 默认实现：从 source_crawler 模块爬取 URL/RSS 源
         if source_crawl_fn is None:
             async def _default_source_crawl(section, config, crawler, overrides=None):
-                from crawler.digest import _apply_overrides, _crawl_url_sources, _crawl_rss_sources
+                from crawler.digest import _apply_overrides
+                from crawler.source_crawler import crawl_url_sources, crawl_rss_sources
                 sec = _apply_overrides(section, overrides)
                 results = []
                 if sec.get("url_sources"):
-                    results.extend(await _crawl_url_sources(sec, config, crawler))
+                    results.extend(await crawl_url_sources(sec, config, crawler))
                 if sec.get("rss_sources"):
-                    results.extend(await _crawl_rss_sources(sec, config, crawler))
+                    results.extend(await crawl_rss_sources(sec, config, crawler))
                 return results
             source_crawl_fn = _default_source_crawl
 

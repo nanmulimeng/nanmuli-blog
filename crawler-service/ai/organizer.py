@@ -113,6 +113,31 @@ FEW_SHOT_EXAMPLE = """
 }"""
 
 
+SECTION_CLEANUP_SYSTEM_PROMPT = """你是网页内容清洗专家。对输入的多篇网页内容逐一清洗，移除残留噪音。
+
+## 移除目标
+- 相关推荐/猜你喜欢/热门文章等推荐区块
+- 评论区残留（用户名、回复内容、点赞数）
+- 社交分享残留、阅读数/点赞数统计行
+- 页脚导航、版权声明、ICP备案、APP下载横幅
+- 登录提示、VIP会员横幅
+
+## 规则
+1. 不改写、不扩写、不缩写原文——只删除噪音
+2. 不合并不同来源——每个来源独立清洗
+3. 代码块、配置示例、命令行原样保留
+4. 输出 JSON 数组，每个元素对应一个输入来源
+
+## 输出格式
+[
+  {
+    "url": "原文URL",
+    "title": "原文标题",
+    "cleanedContent": "清洗后的正文（Markdown格式）"
+  }
+]"""
+
+
 DIGEST_SYSTEM_PROMPT = """你是一位资深技术资讯编辑，负责生成每日技术日报。
 ## 任务
 根据提供的多个来源内容，生成一份结构清晰、信息密度高的中文技术日报。
@@ -279,6 +304,7 @@ class DigestPageContent:
     category: str = ""
     source_name: str = ""
     source_level: str = ""  # official / high / medium / spam
+    page_id: int | None = None
 
 
 @dataclass
@@ -327,10 +353,6 @@ class ContentOrganizer:
                     write=30.0,
                     pool=10.0,
                 ),
-                headers={
-                    "Authorization": f"Bearer {self._settings.ai_api_key}",
-                    "Content-Type": "application/json",
-                },
             )
         return self._client
 
@@ -484,6 +506,74 @@ class ContentOrganizer:
                      result.title, len(result.sections), result.duration_ms)
         return result
 
+    # --- Section cleanup ---
+
+    async def clean_section_content(
+        self, entries: list[dict], max_tokens_override: int | None = None
+    ) -> tuple[list[dict], int, int]:
+        """轻量 AI 清洗：移除残留噪音，不改变原文语义。
+
+        Args:
+            entries: [{"url": ..., "title": ..., "content": ...}]
+        Returns:
+            (cleaned_entries, total_tokens, duration_ms)
+        """
+        if not self._settings.is_configured:
+            raise RuntimeError("AI not configured")
+
+        start = time.monotonic()
+        user_prompt = self._build_cleanup_prompt(entries)
+        max_tokens = max_tokens_override or min(self._settings.ai_max_tokens, 4000)
+        response = await self._call_ai(
+            SECTION_CLEANUP_SYSTEM_PROMPT, user_prompt, max_tokens=max_tokens
+        )
+        cleaned = self._parse_cleanup_response(response["content"])
+        duration_ms = int((time.monotonic() - start) * 1000)
+        tokens = response.get("total_tokens", 0)
+        logger.info("[AiOrganizer] Section cleanup: %d/%d entries, duration=%dms, tokens=%d",
+                     len(cleaned), len(entries), duration_ms, tokens)
+        return cleaned, tokens, duration_ms
+
+    def _build_cleanup_prompt(self, entries: list[dict]) -> str:
+        budget = min(getattr(self._settings, "ai_multi_page_total_budget", 60000), 60000)
+        per_max = min(getattr(self._settings, "ai_multi_page_per_max_chars", 15000), 15000)
+
+        parts = [f"## 待清洗内容（共 {len(entries)} 个来源）\n\n"]
+        for i, entry in enumerate(entries):
+            if budget <= 0:
+                break
+            parts.append(f"### 来源 {i + 1}\n")
+            parts.append(f"URL: {entry['url']}\n")
+            parts.append(f"标题: {entry['title']}\n\n")
+            content = _truncate_at_paragraph_boundary(
+                entry["content"], min(per_max, budget)
+            )
+            parts.append(content)
+            parts.append("\n\n---\n\n")
+            budget -= len(content)
+
+        parts.append("请对以上每个来源逐一清洗，输出 JSON 数组。")
+        return "".join(parts)
+
+    @staticmethod
+    def _parse_cleanup_response(response: str) -> list[dict]:
+        try:
+            raw = json.loads(_extract_json(response))
+        except (json.JSONDecodeError, ValueError):
+            return []
+        if not isinstance(raw, list):
+            return []
+        results = []
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            results.append({
+                "url": _normalize(item.get("url", "")),
+                "title": _normalize(item.get("title", "")),
+                "cleaned_content": _normalize(item.get("cleanedContent", "")),
+            })
+        return results
+
     # ============== Prompt Builders ==============
 
     def _build_single_page_prompt(
@@ -567,23 +657,30 @@ class ContentOrganizer:
         _order_map = {cat: i for i, cat in enumerate(_DIGEST_CATEGORY_ORDER)}
         sorted_cats = sorted(by_category.keys(), key=lambda c: _order_map.get(c, 99))
 
-        # 分类优先级权重：仅影响排序顺序，不影响 token 分配
         # 来源可信度排序权重
         _source_level_order = {"official": 0, "high": 1, "medium": 2, "low": 3, "spam": 4}
 
-        # 均分策略：每个分类均分全文配额
+        # 加权分配策略：按内容条数加权，每板块至少 10% 预算兜底
         num_cats = len(sorted_cats)
+        total_items = sum(len(by_category[c]) for c in sorted_cats)
+        _MIN_BUDGET_RATIO = 0.10  # 每板块最少 10%
         per_cat_full_count = {cat: max(2, len(by_category[cat]) // 2) for cat in sorted_cats}
-        per_cat_budget = budget // max(num_cats, 1)
+        if total_items > 0 and num_cats > 0:
+            per_cat_budget = {}
+            for cat in sorted_cats:
+                weight = len(by_category[cat]) / total_items
+                per_cat_budget[cat] = max(int(budget * _MIN_BUDGET_RATIO), int(budget * weight))
+        else:
+            per_cat_budget = {cat: budget // max(num_cats, 1) for cat in sorted_cats}
         cat_budget_used = {cat: 0 for cat in sorted_cats}
 
         summary_only_count = 0
         budget_exhausted = False
         for cat in sorted_cats:
-            # 按来源可信度排序：official > high > medium > low
+            # 按来源可信度+内容长度排序：可信度高的和内容长的优先发完整版
             cat_pages = sorted(
                 by_category[cat],
-                key=lambda p: (_source_level_order.get(p.source_level, 2), p.title or ""),
+                key=lambda p: (_source_level_order.get(p.source_level, 2), -(len(p.markdown or ""))),
             )
             full_detail_count = per_cat_full_count[cat]
             cat_info = DIGEST_CATEGORY_MAP.get(cat, ("技术文章", "📖"))
@@ -606,9 +703,9 @@ class ContentOrganizer:
                 if page.summary:
                     parts.append(f"摘要: {page.summary}\n")
 
-                # 计算当前分类剩余预算：取总预算剩余和分类均分配额的较小值（防止超额）
+                # 计算当前分类剩余预算：取总预算剩余和分类配额的较小值（防止超额）
                 remaining_total = budget - sum(cat_budget_used.values())
-                cat_remaining = per_cat_budget - cat_budget_used[cat]
+                cat_remaining = per_cat_budget[cat] - cat_budget_used[cat]
                 available = min(remaining_total, cat_remaining)
                 page_budget = min(per_max, max(0, available))
                 if page_budget <= 0:
@@ -625,7 +722,7 @@ class ContentOrganizer:
                 cat_budget_used[cat] += consumed
                 # 全局预算检查
                 if budget_used_total >= budget:
-                    remaining_cats = [c for c in sorted_cats if cat_budget_used[c] < per_cat_budget * 0.5]
+                    remaining_cats = [c for c in sorted_cats if cat_budget_used[c] < per_cat_budget[c] * 0.5]
                     if not remaining_cats:
                         budget_exhausted = True
                         break
@@ -662,6 +759,10 @@ class ContentOrganizer:
         response = await client.post(
             f"{self._settings.ai_base_url.rstrip('/')}/chat/completions",
             json=request_body,
+            headers={
+                "Authorization": f"Bearer {self._settings.ai_api_key}",
+                "Content-Type": "application/json",
+            },
         )
 
         if response.status_code == 429:

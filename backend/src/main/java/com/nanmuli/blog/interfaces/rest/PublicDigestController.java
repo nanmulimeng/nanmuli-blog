@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.client.HttpClientErrorException;
 
 /**
  * 公开日报接口（无需登录）
@@ -33,6 +34,8 @@ public class PublicDigestController {
         if (page < 1) page = 1;
         try {
             return Result.success(crawlerTaskClient.proxyGet("/api/v1/digests?page=" + page + "&size=" + size));
+        } catch (HttpClientErrorException.NotFound e) {
+            throw new BusinessException(404, "日报不存在");
         } catch (Exception e) {
             log.warn("[DigestProxy] listDigests failed: {}", e.getMessage());
             throw new BusinessException(503, "服务暂时不可用");
@@ -44,6 +47,8 @@ public class PublicDigestController {
     public Result<Object> getLatestDigest() {
         try {
             return Result.success(crawlerTaskClient.proxyGet("/api/v1/digests/latest"));
+        } catch (HttpClientErrorException.NotFound e) {
+            throw new BusinessException(404, "暂无日报");
         } catch (Exception e) {
             log.warn("[DigestProxy] getLatestDigest failed: {}", e.getMessage());
             throw new BusinessException(503, "服务暂时不可用");
@@ -56,6 +61,8 @@ public class PublicDigestController {
             @PathVariable @Pattern(regexp = "^\\d{4}-\\d{2}-\\d{2}$", message = "日期格式不正确") String date) {
         try {
             return Result.success(crawlerTaskClient.proxyGet("/api/v1/digests/" + date));
+        } catch (HttpClientErrorException.NotFound e) {
+            throw new BusinessException(404, "该日期无日报");
         } catch (Exception e) {
             log.warn("[DigestProxy] getDigestByDate({}) failed: {}", date, e.getMessage());
             throw new BusinessException(503, "服务暂时不可用");

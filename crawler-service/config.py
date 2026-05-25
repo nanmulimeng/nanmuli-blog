@@ -177,6 +177,7 @@ class Settings(BaseSettings):
 
     # 日报质量过滤与优化专用配置
     digest_filter_min_content: int = 50          # 日报质量过滤最小内容长度（比通用宽松）
+    digest_eval_reject_threshold: int = 40       # 日报质量评分低于此值直接拒绝（不浪费 AI token）
     digest_optimization_enabled: bool = False     # 日报优化独立开关（需 optimization_enabled=True + 此项=True）
     digest_optimization_min_sections: int = 2     # 最少板块数才触发优化
     digest_optimization_min_results_per_section: int = 3  # 每板块最少结果数才触发优化

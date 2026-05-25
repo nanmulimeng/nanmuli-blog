@@ -251,8 +251,12 @@ class CoverageEvaluator:
         max_entropy = math.log2(total) if total > 1 else 1.0
         if max_entropy <= 0:
             return 0.0
-        # 样本量校正：unique_domains < 5 时按比例打折，避免少样本高分
-        sample_penalty = min(1.0, len(freq) / 5)
+        # 样本量校正：unique_domains < 3 时严格打折，< 5 时温和打折
+        unique_count = len(freq)
+        if unique_count < 3:
+            sample_penalty = unique_count / 6.0  # 1域→0.17, 2域→0.33
+        else:
+            sample_penalty = min(1.0, unique_count / 5)
         return min(1.0, (entropy / max_entropy) * sample_penalty)
 
     @staticmethod

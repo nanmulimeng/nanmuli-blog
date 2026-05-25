@@ -60,6 +60,7 @@ class TaskExecutor:
         self._running: Dict[int, asyncio.Task] = {}
         self._execution_ids: Dict[int, str] = {}  # task_id -> execution_id
         self._semaphore = asyncio.Semaphore(max_concurrent)
+        self._last_digest_orchestrator = None
 
     async def submit(self, task_id: int):
         if task_id in self._running:
@@ -164,8 +165,33 @@ class TaskExecutor:
                 results = await self._execute_keyword_crawl(task, config)
 
             elif task["task_type"] == "digest":
-                from crawler.digest import execute_digest_crawl
-                results = await execute_digest_crawl(task, config, self)
+                from crawler.digest_orchestrator import DigestOrchestrator
+                orchestrator = DigestOrchestrator()
+                results = await orchestrator.execute(task, config, self)
+                # 保存规划日志 + 板块清洗文档到 task metadata
+                plan = orchestrator.get_plan()
+                metadata_update = {}
+                if plan and plan.plan_log:
+                    metadata_update["orchestrator_plan"] = plan.plan_log
+                section_docs = orchestrator.get_section_documents()
+                if section_docs:
+                    metadata_update["section_documents"] = [
+                        {
+                            "section_name": doc.section_name,
+                            "source_count": doc.source_count,
+                            "cleaned_count": doc.cleaned_count,
+                            "total_word_count": doc.total_word_count,
+                            "cleanup_method": doc.cleanup_method,
+                            "cleanup_tokens_used": doc.cleanup_tokens_used,
+                            "cleanup_duration_ms": doc.cleanup_duration_ms,
+                            "merged_content": doc.merged_content[:50000],
+                        }
+                        for doc in section_docs
+                    ]
+                if metadata_update:
+                    await repo.update_task_metadata(task_id, metadata_update)
+                # 保留 orchestrator 引用，供后续 AI 阶段检查预生成日报
+                self._last_digest_orchestrator = orchestrator
 
             else:
                 await repo.fail_task(task_id, f"Unknown task type: {task['task_type']}")
@@ -173,18 +199,18 @@ class TaskExecutor:
                 return
 
             # 质量过滤（所有任务类型，日报使用宽松阈值）
-            # 日报任务已在 execute_digest_crawl() 内做过去重，跳过 SimHash 二次去重
+            # 日报任务已在 DigestOrchestrator 内做过板块间去重，这里做最终质量筛选
             is_digest = task["task_type"] == "digest"
             # 日报任务：预热来源可信度缓存，避免后续同步 HTTP 阻塞事件循环
             if is_digest:
                 try:
                     from crawler.quality import SourceAuthority
                     await SourceAuthority.preload_authority_cache()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning("[Digest] SourceAuthority preload failed (fallback to hardcoded): %s", e)
             from crawler.dedup import DedupEngine
             if is_digest:
-                dedup_engine = None
+                dedup_engine = DedupEngine(simhash_threshold=settings.content_dedup_simhash_threshold) if settings.content_dedup_enabled else None
             else:
                 sim_threshold = settings.content_dedup_deep_threshold if task["task_type"] == "deep" else settings.content_dedup_simhash_threshold
                 dedup_engine = DedupEngine(simhash_threshold=sim_threshold) if settings.content_dedup_enabled else None
@@ -219,7 +245,24 @@ class TaskExecutor:
             # ========== Phase 2: AI 整理 ==========
             if settings.ai_organization_enabled:
                 await repo.update_task_status(task_id, TaskStatus.PROCESSING)
-                ai_success = await self._organize_with_ai(task_id, task)
+
+                # 日报任务：优先使用 Orchestrator 预生成的日报
+                pre_generated = None
+                if task["task_type"] == "digest":
+                    orchestrator_ref = self._last_digest_orchestrator
+                    if orchestrator_ref:
+                        pre_generated = orchestrator_ref.get_digest_result()
+
+                if pre_generated and pre_generated.digest_content:
+                    ai_success = await self._save_pre_generated_digest(
+                        task_id, task, pre_generated,
+                    )
+                    if not ai_success:
+                        logger.warning("Task %d pre-generated digest save failed, falling back.", task_id)
+                        ai_success = await self._organize_with_ai(task_id, task)
+                else:
+                    ai_success = await self._organize_with_ai(task_id, task)
+
                 if not ai_success:
                     logger.warning("Task %d AI organization failed, task still marked complete with raw content.", task_id)
             else:
@@ -411,6 +454,56 @@ class TaskExecutor:
 
             return final_results
 
+    async def _save_pre_generated_digest(
+        self, task_id: int, task: dict, pre_generated,
+    ) -> bool:
+        """保存 Orchestrator 预生成的日报结果（回填 page_id）"""
+        from standalone.organizer_helper import (
+            serialize_digest_sections, _is_highlight_duplicate, _replace_duplicate_highlight,
+        )
+
+        try:
+            digest = pre_generated.digest_content
+            if not digest:
+                return False
+
+            date = task.get("digest_date") or task.get("keyword") or ""
+
+            # 从已保存的 DB 页面获取 URL → page_id 映射
+            pages = await repo.get_pages_by_task(task_id)
+            url_to_page_id = {}
+            for p in pages:
+                if p.get("crawl_status") == 2 and p.get("url"):
+                    url_to_page_id[p["url"]] = p["id"]
+
+            # Highlight 去重
+            recent_highlights = await repo.get_recent_highlights(count=3)
+            if recent_highlights and digest.highlight:
+                if _is_highlight_duplicate(digest.highlight, recent_highlights):
+                    _replace_duplicate_highlight(digest, recent_highlights)
+
+            # 序列化 sections 并回填 page_id
+            sections_data = serialize_digest_sections(digest, url_to_page_id=url_to_page_id)
+
+            await repo.save_digest_results(
+                task_id,
+                ai_title=digest.title,
+                ai_summary=digest.summary,
+                ai_tags=digest.tags,
+                ai_full_content=digest.full_content,
+                ai_duration=digest.duration_ms,
+                ai_tokens_used=digest.tokens_used,
+                digest_date=date,
+                highlight=digest.highlight,
+                sections=sections_data,
+            )
+            logger.info("Task %d pre-generated digest saved: title='%s'", task_id, digest.title)
+            return True
+
+        except Exception as e:
+            logger.error("Task %d pre-generated digest save failed: %s", task_id, e, exc_info=True)
+            return False
+
     async def _organize_with_ai(self, task_id: int, task: dict) -> bool:
         """AI 内容整理（含重试）"""
         from ai import content_organizer as organizer
@@ -532,7 +625,7 @@ class TaskExecutor:
         is_digest = (task_type == "digest")
         deep_min_score = settings.deep_eval_review_threshold
         # 日报独立质量阈值：比 deep 更严格，避免低质量内容浪费 AI token
-        digest_min_score = getattr(settings, 'digest_eval_reject_threshold', 35)
+        digest_min_score = settings.digest_eval_reject_threshold
 
         # 过滤统计
         stats = {"total": len(results), "too_short": 0, "non_article": 0,
@@ -541,6 +634,9 @@ class TaskExecutor:
         filtered = []
         for r in results:
             if not getattr(r, "success", False):
+                # 日报任务直接丢弃失败结果（不需要保留错误记录）
+                if is_digest:
+                    continue
                 filtered.append(r)
                 continue
 
@@ -598,7 +694,11 @@ class TaskExecutor:
             if is_digest:
                 # 日报：使用独立阈值，spam 直接拒绝
                 source_level = evaluation["source"]["level"]
+                content_score = evaluation["quality"]["total_score"]
                 if source_level == "spam":
+                    should_reject = True
+                elif content_score < 25 and source_level != "official":
+                    # 内容质量绝对值过低，不论来源可信度直接拒绝
                     should_reject = True
                 elif final_score < digest_min_score and source_level != "official":
                     should_reject = True
@@ -891,8 +991,25 @@ def infer_category(url: str, title: str) -> str:
     return "tech_article"
 
 
+# 板块配置内存缓存（TTL=5分钟，避免每次日报任务重复 HTTP 请求）
+_sections_cache: dict = {"data": None, "expires": 0.0}
+_SECTIONS_CACHE_TTL = 300
+
+
 async def get_digest_sections() -> list[dict]:
-    """获取日报板块配置（优先 Java 订阅源 API，回退到本地配置）"""
+    """获取日报板块配置（优先 Java 订阅源 API，回退到本地配置，带 TTL 缓存）"""
+    global _sections_cache
+    if _sections_cache["data"] is not None and time.time() < _sections_cache["expires"]:
+        return _sections_cache["data"]
+
+    result = await _fetch_digest_sections()
+    if result:
+        _sections_cache = {"data": result, "expires": time.time() + _SECTIONS_CACHE_TTL}
+    return result
+
+
+async def _fetch_digest_sections() -> list[dict]:
+    """实际获取日报板块配置（无缓存）"""
     # 1. 尝试从 Java 后端拉取活跃订阅源
     java_url = settings.java_api_url
     if java_url:
@@ -931,28 +1048,45 @@ def _sources_to_sections(sources: list[dict]) -> list[dict]:
     """
     # 1. 按 contentCategory 分组
     groups: dict[str, dict] = {}
-    freshness_hours_list: dict[str, list[int]] = {}
+    kw_freshness: dict[str, list[int]] = {}      # keyword 源的 freshness（独立计算 time_range）
+    all_freshness: dict[str, list[int]] = {}      # 所有源的 freshness
     max_pages_list: dict[str, list[int]] = {}
 
     for src in sources:
+        src_value = src.get("value")
+        if not src_value:
+            logger.debug("Skipping source %s: missing 'value' field", src.get("id", "?"))
+            continue
         cat = src.get("contentCategory") or "tech_article"
         group = groups.setdefault(cat, {"keywords": [], "url_sources": [], "rss_sources": []})
-        freshness_hours_list.setdefault(cat, [])
+        kw_freshness.setdefault(cat, [])
+        all_freshness.setdefault(cat, [])
         max_pages_list.setdefault(cat, [])
 
         src_type = src.get("type", "keyword")
+        sc = src.get("successCount", 0) or 0
+        fc = src.get("failCount", 0) or 0
+        total_runs = sc + fc
+        src_dead = total_runs >= 3 and (sc / total_runs if total_runs > 0 else 0) < 0.2
         effectiveness = {
-            "source_id": src.get("id"),
-            "success_count": src.get("successCount", 0) or 0,
-            "fail_count": src.get("failCount", 0) or 0,
+            "success_count": sc,
+            "fail_count": fc,
             "avg_quality_score": src.get("avgQualityScore", 0) or 0,
             "last_result_count": src.get("lastResultCount", 0) or 0,
+            "last_run_at": src.get("lastRunAt"),
+            "success_rate": round(sc / total_runs, 2) if total_runs > 0 else 0,
+            "dead": src_dead,
         }
         if src_type == "keyword":
-            group["keywords"].append(src["value"])
+            group["keywords"].append({
+                "value": src_value,
+                "source_id": src.get("id"),
+                "source_name": src.get("name", ""),
+                "effectiveness": effectiveness,
+            })
         elif src_type == "url":
             group["url_sources"].append({
-                "url": src["value"],
+                "url": src_value,
                 "crawl_mode": src.get("crawlMode", "single"),
                 "max_depth": src.get("maxDepth", 1),
                 "max_pages": src.get("maxPages", 10),
@@ -962,7 +1096,7 @@ def _sources_to_sections(sources: list[dict]) -> list[dict]:
             })
         elif src_type == "rss":
             group["rss_sources"].append({
-                "feed_url": src["value"],
+                "feed_url": src_value,
                 "freshness_hours": src.get("freshnessHours", 24),
                 "max_entries": src.get("maxPages", 10) or 10,
                 "source_id": src.get("id"),
@@ -972,7 +1106,9 @@ def _sources_to_sections(sources: list[dict]) -> list[dict]:
 
         fh = src.get("freshnessHours", 24)
         if fh:
-            freshness_hours_list[cat].append(fh)
+            all_freshness[cat].append(fh)
+            if src_type == "keyword":
+                kw_freshness[cat].append(fh)
         mp = src.get("maxPages", 10)
         if mp:
             max_pages_list[cat].append(mp)
@@ -988,7 +1124,7 @@ def _sources_to_sections(sources: list[dict]) -> list[dict]:
         has_rss = bool(group["rss_sources"])
 
         source_type = "keyword"
-        if has_url and has_kw or has_url and has_rss or has_kw and has_rss:
+        if (has_url and has_kw) or (has_url and has_rss) or (has_kw and has_rss):
             source_type = "mixed"
         elif has_url:
             source_type = "url"
@@ -998,20 +1134,39 @@ def _sources_to_sections(sources: list[dict]) -> list[dict]:
         section: dict = {
             "name": cat,
             "source_type": source_type,
-            "max_items": max(max_pages_list.get(cat, [5])) if max_pages_list.get(cat) else 5,
+            "max_items": min(max(max_pages_list.get(cat, [5])), 30) if max_pages_list.get(cat) else 5,
         }
 
         if has_kw:
-            section["keyword"] = " OR ".join(group["keywords"])
+            kw_parts = [k["value"] for k in group["keywords"]]
+            merged = " OR ".join(kw_parts)
+            # 搜索引擎查询长度限制：超过 500 字符截断到前 N 个关键词
+            if len(merged) > 500:
+                truncated = []
+                total_len = 0
+                for kw in kw_parts:
+                    if total_len + len(kw) + (4 if truncated else 0) > 480:
+                        break
+                    truncated.append(kw)
+                    total_len += len(kw) + 4
+                merged = " OR ".join(truncated)
+                logger.info("Keyword merge truncated for section '%s': %d -> %d chars", cat, len(" OR ".join(kw_parts)), len(merged))
+            section["keyword"] = merged
 
-        if freshness_hours_list.get(cat):
-            min_fh = min(freshness_hours_list[cat])
+        # keyword 板块的 time_range 从 keyword 源独立计算（不受 RSS/URL freshness 影响）
+        if has_kw and kw_freshness.get(cat):
+            min_kw_fh = min(kw_freshness[cat])
+            section["time_range"] = _freshness_to_time_range(min_kw_fh)
+        elif all_freshness.get(cat):
+            min_fh = min(all_freshness[cat])
             section["time_range"] = _freshness_to_time_range(min_fh)
 
         if has_url:
             section["url_sources"] = group["url_sources"]
         if has_rss:
             section["rss_sources"] = group["rss_sources"]
+        if has_kw:
+            section["keyword_details"] = group["keywords"]
 
         section["effectiveness"] = _compute_section_effectiveness(group)
         sections.append(section)
@@ -1019,10 +1174,15 @@ def _sources_to_sections(sources: list[dict]) -> list[dict]:
 
 
 def _compute_section_effectiveness(group: dict) -> dict:
-    """从板块内各信息源聚合效能数据。"""
-    all_sources = group.get("url_sources", []) + group.get("rss_sources", [])
+    """从板块内各信息源聚合效能数据（含 keyword/url/rss）。"""
+    kw_sources = group.get("keywords", [])
+    all_sources = (
+        [{"effectiveness": k.get("effectiveness", {})} for k in kw_sources if isinstance(k, dict)]
+        + group.get("url_sources", [])
+        + group.get("rss_sources", [])
+    )
     if not all_sources:
-        return {"avg_quality": 0, "success_rate": 0, "total_runs": 0, "dead": True}
+        return {"avg_quality": 0, "success_rate": 0, "total_runs": 0, "dead": False}
 
     qualities = []
     successes = 0

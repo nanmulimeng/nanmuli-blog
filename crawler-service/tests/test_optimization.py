@@ -17,8 +17,8 @@ class TestShannonEntropy:
 
     def test_two_equal_domains(self):
         result = CoverageEvaluator._calc_shannon_entropy(["a.com", "b.com"])
-        # 2 unique domains < 5 threshold → sample_penalty = 0.4
-        assert result == 0.4
+        # 2 unique domains < 3 threshold → sample_penalty = 2/6 ≈ 0.333
+        assert abs(result - 1/3) < 0.01
 
     def test_all_same_domain(self):
         result = CoverageEvaluator._calc_shannon_entropy(["a.com"] * 10)

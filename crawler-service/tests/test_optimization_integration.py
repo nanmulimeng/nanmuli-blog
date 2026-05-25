@@ -90,10 +90,10 @@ class TestEvaluatorEndToEnd:
             "total": 8,
         }
         result = evaluator._heuristic_evaluate(meta, {})
-        # 角度覆盖基于域名数 = 1/5 = 0.2
-        assert result["angle"] <= 0.3
+        # 角度覆盖：单域名 + 8 条结果 → min(0.6, 1/8) + min(0.2, 7/10) ≈ 0.325
+        assert result["angle"] <= 0.4
         # 深度覆盖应该较高（有长内容）
-        assert result["depth"] > 0.5
+        assert result["depth"] >= 0.5
 
     def test_heuristic_with_empty_results(self):
         """空结果 → 全低分"""

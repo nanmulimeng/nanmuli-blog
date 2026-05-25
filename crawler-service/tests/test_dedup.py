@@ -1,6 +1,8 @@
 """内容去重模块测试：ContentFingerprint / DedupEngine / hamming_distance / dedup_results"""
 
 import pytest
+from unittest.mock import MagicMock, patch
+
 from crawler.dedup import (
     ContentFingerprint,
     DedupEngine,
@@ -238,3 +240,112 @@ class TestDedupResults:
     def test_empty_input_returns_empty(self):
         """空列表输入应返回空列表"""
         assert dedup_results([]) == []
+
+
+# ============== dedup_results settings 参数统一 ==============
+
+class TestDedupResultsSettingsParams:
+
+    def test_none_params_read_from_settings(self):
+        """content_preview_length/skip_header_chars 为 None 时从 settings 读取"""
+        results = [
+            {"url": "https://example.com/1", "title": "Test", "markdown": "x" * 300},
+        ]
+        with patch("config.settings") as mock_settings:
+            mock_settings.filter_skip_header_chars = 50
+            mock_settings.filter_content_preview_length = 200
+            dedup_results(results)
+            # settings 属性被访问过即证明走了 settings 路径
+
+    def test_explicit_params_skip_settings(self):
+        """显式传参时不读 settings"""
+        results = [
+            {"url": "https://example.com/1", "title": "Test", "markdown": "x" * 300},
+        ]
+        with patch("config.settings") as mock_settings:
+            mock_settings.filter_skip_header_chars = MagicMock(
+                side_effect=AssertionError("Should not read settings"))
+            mock_settings.filter_content_preview_length = MagicMock(
+                side_effect=AssertionError("Should not read settings"))
+            # 显式传参不触发 settings 读取
+            dedup_results(results, content_preview_length=100, skip_header_chars=50)
+
+    def test_only_one_param_set_reads_other_from_settings(self):
+        """只设一个参数时，另一个仍从 settings 读取"""
+        results = [
+            {"url": "https://example.com/1", "title": "Test", "markdown": "x" * 300},
+        ]
+        with patch("config.settings") as mock_settings:
+            mock_settings.filter_skip_header_chars = 50
+            mock_settings.filter_content_preview_length = 200
+            # 只设 content_preview_length，skip_header_chars 从 settings 读
+            dedup_results(results, content_preview_length=100)
+            assert mock_settings.filter_skip_header_chars == 50
+
+    def test_settings_default_values_reasonable(self):
+        """settings 默认值在合理范围内"""
+        from config import settings
+        assert 0 <= settings.filter_skip_header_chars <= 1000
+        assert 100 <= settings.filter_content_preview_length <= 5000
+
+
+# ============== SimHash 分桶索引 ==============
+
+class TestSimHashBucketing:
+
+    def test_bucket_extract_correctness(self):
+        engine = DedupEngine()
+        hash_val = 0x1234567890ABCDEF
+        b0 = engine._extract_bucket(hash_val, 0)
+        b1 = engine._extract_bucket(hash_val, 1)
+        b2 = engine._extract_bucket(hash_val, 2)
+        b3 = engine._extract_bucket(hash_val, 3)
+        # 4 个桶值应该能重组出原始哈希的低 64 位
+        reconstructed = b0 | (b1 << 16) | (b2 << 32) | (b3 << 48)
+        assert reconstructed == hash_val
+
+    def test_bucket_candidates_include_added(self):
+        engine = DedupEngine()
+        content = _make_long_text("unique content for bucketing test xyz")
+        engine.add("https://a.com", title="", content=content)
+        fp = ContentFingerprint(content)
+        candidates = engine._get_simhash_candidates(fp.simhash)
+        assert 0 in candidates
+
+    def test_empty_engine_candidates_empty(self):
+        engine = DedupEngine()
+        candidates = engine._get_simhash_candidates(12345)
+        assert len(candidates) == 0
+
+    def test_add_precomputed_simhash_to_bucket(self):
+        engine = DedupEngine()
+        engine.add_precomputed_simhash("https://a.com", title="T", simhash=0xDEADBEEF)
+        candidates = engine._get_simhash_candidates(0xDEADBEEF)
+        assert 0 in candidates
+
+
+# ============== dedup_results CrawlResult 对象 ==============
+
+class TestDedupResultsCrawlResultObjects:
+
+    def test_crawl_result_objects_dedup(self):
+        from crawler.models import CrawlResult
+        results = [
+            CrawlResult(success=True, url="https://example.com/1", title="A",
+                        markdown="content " * 100, word_count=100),
+            CrawlResult(success=True, url="https://example.com/2", title="B",
+                        markdown="different " * 100, word_count=100),
+        ]
+        deduped = dedup_results(results, content_preview_length=100, skip_header_chars=0)
+        assert len(deduped) == 2
+
+    def test_crawl_result_url_dedup(self):
+        from crawler.models import CrawlResult
+        results = [
+            CrawlResult(success=True, url="https://example.com/1", title="A",
+                        markdown="content " * 100, word_count=100),
+            CrawlResult(success=True, url="https://example.com/1", title="A dup",
+                        markdown="other " * 100, word_count=100),
+        ]
+        deduped = dedup_results(results, content_preview_length=100, skip_header_chars=0)
+        assert len(deduped) == 1

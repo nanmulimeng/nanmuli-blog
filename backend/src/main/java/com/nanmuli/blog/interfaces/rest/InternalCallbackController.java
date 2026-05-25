@@ -40,10 +40,20 @@ public class InternalCallbackController {
 
     private volatile boolean apiKeyBlankWarned = false;
 
-    /** 认证失败时返回 true，成功时返回 false */
-    private boolean authRequired(String callbackKey) {
+    /**
+     * 认证失败时返回 true，成功时返回 false。
+     * allowBootstrap=true 时，若 key 为空则放行（用于 /config 引导端点）。
+     */
+    private boolean authRequired(String callbackKey, boolean allowBootstrap) {
         String expectedKey = configService.get("crawler.callback.api-key", "");
         if (expectedKey.isBlank()) {
+            if (allowBootstrap) {
+                if (!apiKeyBlankWarned) {
+                    log.warn("[Auth] crawler.callback.api-key is blank — allowing unauthenticated access for bootstrap endpoint");
+                    apiKeyBlankWarned = true;
+                }
+                return false;
+            }
             if (!apiKeyBlankWarned) {
                 log.error("[Auth] crawler.callback.api-key is blank — ALL internal endpoints are BLOCKED. Set a valid API key to enable.");
                 apiKeyBlankWarned = true;
@@ -59,8 +69,8 @@ public class InternalCallbackController {
             @RequestHeader(value = "X-Callback-Key", required = false) String callbackKey,
             @RequestBody Map<String, Object> payload) {
 
-        if (authRequired(callbackKey)) {
-            log.warn("[Callback] Unauthorized: requestKey={}", callbackKey);
+        if (authRequired(callbackKey, false)) {
+            log.warn("[Callback] Unauthorized: requestKey={}***", maskKey(callbackKey));
             return Result.error(403, "Invalid callback key");
         }
 
@@ -82,8 +92,8 @@ public class InternalCallbackController {
     @GetMapping("/sources")
     public Result<List<SourceDTO>> listActiveSources(
             @RequestHeader(value = "X-Callback-Key", required = false) String callbackKey) {
-        if (authRequired(callbackKey)) {
-            log.warn("[Sources] Unauthorized: requestKey={}", callbackKey);
+        if (authRequired(callbackKey, false)) {
+            log.warn("[Sources] Unauthorized: requestKey={}***", maskKey(callbackKey));
             return Result.error(403, "Invalid callback key");
         }
         return Result.success(sourceAppService.listActive());
@@ -95,8 +105,8 @@ public class InternalCallbackController {
     @GetMapping("/config")
     public Result<Map<String, String>> getCrawlerConfig(
             @RequestHeader(value = "X-Callback-Key", required = false) String callbackKey) {
-        if (authRequired(callbackKey)) {
-            log.warn("[Config] Unauthorized: requestKey={}", callbackKey);
+        if (authRequired(callbackKey, true)) {
+            log.warn("[Config] Unauthorized: requestKey={}***", maskKey(callbackKey));
             return Result.error(403, "Invalid callback key");
         }
 
@@ -123,8 +133,8 @@ public class InternalCallbackController {
             @PathVariable Long sourceId,
             @RequestBody Map<String, Object> payload) {
 
-        if (authRequired(callbackKey)) {
-            log.warn("[SourceStatus] Unauthorized: requestKey={}", callbackKey);
+        if (authRequired(callbackKey, false)) {
+            log.warn("[SourceStatus] Unauthorized: requestKey={}***", maskKey(callbackKey));
             return Result.error(403, "Invalid callback key");
         }
 
@@ -149,7 +159,7 @@ public class InternalCallbackController {
             @RequestHeader(value = "X-Callback-Key", required = false) String callbackKey,
             @RequestParam(defaultValue = "3") int days) {
 
-        if (authRequired(callbackKey)) {
+        if (authRequired(callbackKey, false)) {
             return Result.error(403, "Invalid callback key");
         }
 
@@ -166,18 +176,18 @@ public class InternalCallbackController {
             @RequestHeader(value = "X-Callback-Key", required = false) String callbackKey,
             @RequestBody List<Map<String, Object>> payload) {
 
-        if (authRequired(callbackKey)) {
+        if (authRequired(callbackKey, false)) {
             return Result.error(403, "Invalid callback key");
         }
 
         List<DigestFingerprint> fingerprints = payload.stream().map(m -> {
             DigestFingerprint fp = new DigestFingerprint();
             fp.setTaskId(m.get("taskId") instanceof Number n ? n.longValue() : null);
-            fp.setUrlHash((String) m.getOrDefault("urlHash", ""));
-            fp.setUrl((String) m.getOrDefault("url", ""));
-            fp.setTitle((String) m.getOrDefault("title", ""));
+            fp.setUrlHash(String.valueOf(m.getOrDefault("urlHash", "")));
+            fp.setUrl(String.valueOf(m.getOrDefault("url", "")));
+            fp.setTitle(String.valueOf(m.getOrDefault("title", "")));
             fp.setSimhash(m.get("simhash") instanceof Number n ? n.longValue() : null);
-            String dateStr = (String) m.getOrDefault("digestDate", "");
+            String dateStr = String.valueOf(m.getOrDefault("digestDate", ""));
             if (!dateStr.isBlank()) {
                 fp.setDigestDate(LocalDate.parse(dateStr));
             }
@@ -197,7 +207,7 @@ public class InternalCallbackController {
             @RequestHeader(value = "X-Callback-Key", required = false) String callbackKey,
             @RequestParam String domain) {
 
-        if (authRequired(callbackKey)) {
+        if (authRequired(callbackKey, false)) {
             return Result.error(403, "Invalid callback key");
         }
 
@@ -221,7 +231,7 @@ public class InternalCallbackController {
     public Result<List<SourceAuthority>> getAllSourceAuthorities(
             @RequestHeader(value = "X-Callback-Key", required = false) String callbackKey) {
 
-        if (authRequired(callbackKey)) {
+        if (authRequired(callbackKey, false)) {
             return Result.error(403, "Invalid callback key");
         }
 
@@ -230,5 +240,10 @@ public class InternalCallbackController {
         wrapper.eq(SourceAuthority::getIsActive, true)
                .eq(SourceAuthority::getIsDeleted, false);
         return Result.success(sourceAuthorityMapper.selectList(wrapper));
+    }
+
+    private String maskKey(String key) {
+        if (key == null || key.length() <= 4) return "***";
+        return key.substring(0, 4) + "***";
     }
 }

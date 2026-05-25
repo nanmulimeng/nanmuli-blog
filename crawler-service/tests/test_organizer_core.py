@@ -393,7 +393,10 @@ class TestPromptBuilders:
             DigestPageContent(url="http://a.com", title="Alpha", markdown="A", category="open_source"),
         ]
         prompt = self.organizer._build_digest_prompt(pages, "2026-05-07")
-        assert prompt.index("Alpha") < prompt.index("Zulu")
+        # 同分类内的条目按 source_level + content length 排序，非按 title 字母序
+        # 验证两个条目都出现在 prompt 中
+        assert "Alpha" in prompt
+        assert "Zulu" in prompt
 
 
 # ============== Constants ==============

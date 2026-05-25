@@ -145,9 +145,11 @@ class DedupEngine:
         self._url_seen.add(self._normalize_url(url))
         if title:
             self._title_seen.append(title.lower().strip())
-        if simhash and simhash != 0:
+        if simhash:
             fp = ContentFingerprint.__new__(ContentFingerprint)
-            fp.simhash = simhash
+            fp._simhash = simhash
+            fp.text = ""
+            fp._hash = None
             self._add_fingerprint(fp)
 
     def is_duplicate(self, url: str, title: str = "", content: str = "") -> dict:
@@ -299,8 +301,8 @@ class DedupEngine:
 # 便捷函数：对搜索结果列表进行去重
 def dedup_results(
     results: list,
-    content_preview_length: int = 800,
-    skip_header_chars: int = 200,
+    content_preview_length: int | None = None,
+    skip_header_chars: int | None = None,
     history_engine: Optional[DedupEngine] = None
 ) -> list:
     """
@@ -308,13 +310,21 @@ def dedup_results(
 
     Args:
         results: CrawlResult字典列表或对象列表
-        content_preview_length: 用于相似度计算的内容预览长度
-        skip_header_chars: 跳过正文头部导航区的字符数
+        content_preview_length: 用于相似度计算的内容预览长度（默认从 settings 读取）
+        skip_header_chars: 跳过正文头部导航区的字符数（默认从 settings 读取）
         history_engine: 历史去重引擎（传入则可与历史记录去重，适合日报跨板块/跨日去重）
 
     Returns:
         去重后的结果列表
     """
+    # 统一从 settings 读取默认值，确保所有调用点的指纹窗口一致
+    if skip_header_chars is None:
+        from config import settings
+        skip_header_chars = settings.filter_skip_header_chars
+    if content_preview_length is None:
+        from config import settings
+        content_preview_length = settings.filter_content_preview_length
+
     # 本地去重引擎（用于跟踪本次结果，避免污染传入的 history_engine）
     local_engine = DedupEngine()
     unique_results = []

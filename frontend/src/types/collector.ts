@@ -108,6 +108,7 @@ export interface DigestDetail {
   ai_tokens_used: number | null
   error_message: string | null
   sections: DigestSection[]
+  orchestrator_plan: string[] | null
   created_at: string
 }
 
@@ -226,6 +227,11 @@ export interface Source {
   lastRunAt: string | null
   lastRunStatus: string | null
   runCount: number | null
+  successCount: number | null
+  failCount: number | null
+  avgQualityScore: number | null
+  lastResultCount: number | null
+  lastError: string | null
   createdAt: string
   updatedAt: string
 }

@@ -173,12 +173,12 @@ class TestSourceEdgeCases:
         # unknown type 不会添加到任何分组 → 空组 → 空 sections
         assert sections == []
 
-    def test_missing_value_field_raises(self):
-        """缺少 value 字段时 keyword 类型应抛 KeyError"""
+    def test_missing_value_field_skipped(self):
+        """缺少 value 字段时 keyword 源被跳过（不崩溃）"""
         sources = [{"type": "keyword", "contentCategory": "tech_article"}]
-        # keyword 分支访问 src["value"]，缺失应 KeyError
-        with pytest.raises(KeyError):
-            _sources_to_sections(sources)
+        sections = _sources_to_sections(sources)
+        # value 缺失 → 该源被跳过 → 无 keyword 分组 → 空 sections
+        assert sections == []
 
     def test_empty_content_category_defaults(self):
         """contentCategory 为空字符串时默认为 tech_article"""
@@ -222,16 +222,16 @@ class TestSourceEdgeCases:
         assert sections[0]["url_sources"][0]["max_pages"] == 999999
 
     def test_many_sources_same_category(self):
-        """50 个同分类源合并为 1 个 section"""
+        """20 个同分类源合并为 1 个 section（max_items 上限 30）"""
         sources = [
             {"type": "keyword", "value": f"keyword_{i}", "contentCategory": "hot_trend"}
-            for i in range(50)
+            for i in range(20)
         ]
         sections = _sources_to_sections(sources)
         assert len(sections) == 1
         assert " OR " in sections[0]["keyword"]
-        # 50 个关键词用 OR 连接
-        assert sections[0]["keyword"].count(" OR ") == 49
+        # 20 个关键词用 OR 连接
+        assert sections[0]["keyword"].count(" OR ") == 19
 
     def test_mixed_types_preserve_all(self):
         """同一分类的 keyword + url + rss 混合源全部保留"""

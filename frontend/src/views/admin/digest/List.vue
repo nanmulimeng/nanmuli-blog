@@ -47,6 +47,7 @@ async function handleTrigger(): Promise<void> {
     const today = new Date().toISOString().slice(0, 10)
     const todayDigest = digests.value.find(d => d.digest_date?.startsWith(today) && d.status === 3)
 
+    let res: { status: string; message: string }
     if (todayDigest) {
       await ElMessageBox.confirm(
         '今日已有日报，确定要强制重新生成吗？',
@@ -54,17 +55,22 @@ async function handleTrigger(): Promise<void> {
         { type: 'warning', confirmButtonText: '强制重新生成', cancelButtonText: '取消' }
       )
       triggerLoading.value = true
-      await triggerDigest(true)
+      res = await triggerDigest(true)
     } else {
       await ElMessageBox.confirm('确定要手动触发生成今日技术日报吗？', '提示', { type: 'info' })
       triggerLoading.value = true
-      await triggerDigest()
+      res = await triggerDigest()
     }
 
-    ElMessage.success('日报生成已触发，请稍后刷新查看')
-    setTimeout(() => fetchData(), DELAY.DIGEST_REFRESH)
+    if (res.status === 'created') {
+      ElMessage.success(res.message || '日报生成已触发')
+      setTimeout(() => { fetchData(); startPolling() }, DELAY.DIGEST_REFRESH)
+    } else {
+      ElMessage.warning(res.message || '日报生成已跳过')
+    }
   } catch (error: unknown) {
     if (error === 'cancel' || (error instanceof Error && error.message === 'cancel')) return
+    ElMessage.error(error instanceof Error ? error.message : '日报生成失败，请检查爬虫服务状态')
   } finally {
     triggerLoading.value = false
   }

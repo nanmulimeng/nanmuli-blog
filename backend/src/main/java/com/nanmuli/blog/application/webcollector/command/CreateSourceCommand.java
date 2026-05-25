@@ -20,12 +20,18 @@ public class CreateSourceCommand {
     @Size(max = 2048, message = "值长度不能超过2048字符")
     private String value;
 
+    @Pattern(regexp = "^(hot_trend|open_source|tech_article|dev_tool|creative|paper)?$", message = "内容分类无效")
     private String contentCategory;
+
+    @Pattern(regexp = "^(single|deep)?$", message = "爬取模式必须为 single/deep")
     private String crawlMode;
     private Integer maxDepth;
     private Integer maxPages;
     private String cssSelector;
+
+    @Pattern(regexp = "^(tech_summary|tutorial|comparison|knowledge_report|daily_digest)?$", message = "AI模板无效")
     private String aiTemplate;
+
     private String scheduleCron;
     private Integer freshnessHours;
 }

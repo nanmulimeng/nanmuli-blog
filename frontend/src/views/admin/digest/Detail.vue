@@ -125,6 +125,17 @@ watch(() => route.params, () => {
         <div class="mt-1 text-sm text-content-primary">{{ digest.highlight }}</div>
       </div>
 
+      <!-- Orchestrator Plan Log -->
+      <el-collapse v-if="digest.orchestrator_plan?.length" class="mb-6">
+        <el-collapse-item title="总管 Agent 规划日志" name="plan">
+          <div class="space-y-1 text-xs font-mono text-content-secondary">
+            <div v-for="(log, idx) in digest.orchestrator_plan" :key="idx" class="py-0.5">
+              {{ log }}
+            </div>
+          </div>
+        </el-collapse-item>
+      </el-collapse>
+
       <!-- AI Summary -->
       <div v-if="digest.ai_summary" class="mb-6 rounded-2xl p-6 glass-card">
         <div class="mb-2 text-xs text-content-tertiary">AI 摘要</div>

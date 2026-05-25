@@ -59,28 +59,31 @@ def parse_cron(expr: str) -> dict:
 
 # ============== 日报调度 ==============
 
-async def generate_scheduled_digest(force: bool = False):
+async def generate_scheduled_digest(force: bool = False) -> dict:
     """定时日报生成入口
 
     Args:
         force: 为 True 时跳过防重复检查，允许重新生成当天日报
+
+    Returns:
+        dict with keys: status ("created"|"skipped"|"error"), message, task_id?
     """
     if _digest_lock.locked():
         logger.info("Digest generation already in progress, skipping")
-        return
+        return {"status": "skipped", "reason": "in_progress", "message": "日报正在生成中，请稍后再试"}
 
     async with _digest_lock:
         today = datetime.date.today().isoformat()
         logger.info("Scheduled digest generation triggered for %s (force=%s)", today, force)
 
         try:
-            # 原子防重复检查：一条 SQL 检查活跃 + 已完成任务
             if not force:
                 existing = await repo.get_digest_existing_non_failed(today)
                 if existing:
                     logger.info("Digest for %s already exists (task_id=%d, status=%d), skipping.",
                                 today, existing["id"], existing["status"])
-                    return
+                    return {"status": "skipped", "reason": "already_exists",
+                            "message": f"今日日报已存在（task_id={existing['id']}）"}
 
             task_id = await repo.create_task(
                 task_type="digest",
@@ -90,9 +93,11 @@ async def generate_scheduled_digest(force: bool = False):
             )
             await executor.submit(task_id)
             logger.info("Scheduled digest task created: task_id=%d, date=%s", task_id, today)
+            return {"status": "created", "task_id": task_id, "message": "日报生成已触发"}
 
         except Exception as e:
             logger.error("Scheduled digest generation failed: %s", e, exc_info=True)
+            return {"status": "error", "message": f"日报生成失败: {e}"}
 
 
 # ============== 信息源调度 ==============
