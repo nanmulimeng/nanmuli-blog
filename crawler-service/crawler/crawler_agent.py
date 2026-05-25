@@ -94,9 +94,12 @@ class CrawlerAgent:
 
         # keyword 搜索：逐个活跃关键词独立搜索
         if plan.active_keywords:
-            per_kw_max = max(3, plan.adjusted_max_items * settings.digest_section_result_multiplier
-                             // max(len(plan.active_keywords), 1))
-            for kw in plan.active_keywords:
+            total_budget = plan.adjusted_max_items * settings.digest_section_result_multiplier
+            kw_count = len(plan.active_keywords)
+            base_per_kw = max(3, total_budget // kw_count)
+            remainder = total_budget - base_per_kw * kw_count
+            for i, kw in enumerate(plan.active_keywords):
+                per_kw_max = base_per_kw + (1 if i < remainder else 0)
                 try:
                     kw_results = await crawl_by_keyword(
                         keyword=kw,
@@ -281,5 +284,5 @@ class CrawlerAgent:
     @staticmethod
     def _copy_config(config):
         """深拷贝配置"""
-        from crawler.digest import _copy_config
-        return _copy_config(config)
+        from crawler.digest import copy_config
+        return copy_config(config)

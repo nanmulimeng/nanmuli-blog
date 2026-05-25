@@ -128,8 +128,8 @@ class CoverageEvaluator:
         meta = self._extract_result_meta(results)
 
         # 纯计算维度
-        source_diversity = self._calc_shannon_entropy(meta["domains"])
-        language_coverage = self._calc_language_mix(meta["titles"])
+        source_diversity = self.calc_shannon_entropy(meta["domains"])
+        language_coverage = self.calc_language_mix(meta["titles"])
 
         # AI 评估维度
         ai_eval = {"angle": 0.5, "depth": 0.5, "temporal": 0.5, "perspective": 0.5,
@@ -242,7 +242,7 @@ class CoverageEvaluator:
     # ============== 纯计算维度 ==============
 
     @staticmethod
-    def _calc_shannon_entropy(domains: list[str]) -> float:
+    def calc_shannon_entropy(domains: list[str]) -> float:
         if not domains:
             return 0.0
         freq = Counter(domains)
@@ -260,7 +260,7 @@ class CoverageEvaluator:
         return min(1.0, (entropy / max_entropy) * sample_penalty)
 
     @staticmethod
-    def _calc_language_mix(titles: list[str]) -> float:
+    def calc_language_mix(titles: list[str]) -> float:
         if not titles:
             return 0.0
         has_chinese = 0
@@ -287,7 +287,7 @@ class CoverageEvaluator:
     # ============== AI 评估 ==============
 
     async def _ai_evaluate(self, keyword: str, meta: dict, ctx: dict) -> tuple[dict, int]:
-        from ai.organizer import _extract_json
+        from ai.utils import extract_json as _extract_json
 
         user_prompt = self._build_eval_prompt(keyword, meta, ctx)
         try:

@@ -19,6 +19,7 @@ from urllib.parse import urlparse
 from config import settings
 from crawler.digest_orchestrator import DigestCrawlPlan, PlannedSection
 from crawler.section_document import SectionDocument, SourceEntry
+from optimization.fatigue import FatigueTracker
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +68,7 @@ class OptimizationAgent:
 
     def __init__(self, config_snapshot: dict):
         self._snap = config_snapshot
-        self._dimension_attempts: dict[str, list[bool]] = {}
+        self._fatigue = FatigueTracker()
 
     async def execute(
         self,
@@ -156,7 +157,7 @@ class OptimizationAgent:
         rounds_done = 0
         sections_improved = 0
         strategy_history: list = []
-        self._dimension_attempts = {}  # 重置疲劳追踪
+        self._fatigue.reset()
 
         for round_num in range(1, _MAX_OPT_ROUNDS + 1):
             if time.monotonic() >= deadline:
@@ -176,7 +177,7 @@ class OptimizationAgent:
                 )
                 # 能力 4: 记录维度改善结果
                 for dim in ws.weakest_dimensions:
-                    self._record_dimension_result(dim, added > 0)
+                    self._fatigue.record(dim, added > 0)
                 if added > 0:
                     round_improved += 1
 
@@ -213,8 +214,8 @@ class OptimizationAgent:
             )
             sections_improved += round_improved
 
-            # 收敛检测
-            if delta < 0.01 and round_num >= 1:
+            # 收敛检测（至少 2 轮后才判断收敛）
+            if delta < 0.01 and round_num >= 2:
                 logger.info("[OptAgent] Converged at round %d (delta=%.3f)", round_num, delta)
                 break
 
@@ -402,7 +403,7 @@ class OptimizationAgent:
 
         # 过滤已耗尽的维度（能力 4）
         active_dims = [d for d in weak_section.weakest_dimensions
-                       if not self._is_dimension_exhausted(d)]
+                       if not self._fatigue.is_exhausted(d)]
         if not active_dims:
             logger.debug("[OptAgent] All dimensions exhausted for '%s'", section.name)
             return 0
@@ -464,10 +465,10 @@ class OptimizationAgent:
         try:
             # 能力 2: source_expand — 利用板块已配置的 URL/RSS 源
             if strategy.strategy_type == "source_expand" and strategy.source_expand_section:
-                from crawler.digest import _apply_overrides
+                from crawler.digest import apply_overrides
                 from crawler.source_crawler import crawl_url_sources, crawl_rss_sources
 
-                sec = _apply_overrides(strategy.source_expand_section, strategy.source_expand_overrides)
+                sec = apply_overrides(strategy.source_expand_section, strategy.source_expand_overrides)
                 if sec.get("url_sources"):
                     new_results.extend(await crawl_url_sources(sec, ctx["config"], ctx["crawler"]))
                 if sec.get("rss_sources"):
@@ -553,36 +554,9 @@ class OptimizationAgent:
     def _merge_optimized_results(
         self, results: list, all_results: list, seen_urls: set, content_dedup,
     ) -> int:
-        """合并重爬结果到全局列表（复用 Orchestrator 的去重逻辑）"""
-        from crawler.utils import normalize_url
-        from config import settings as _settings
-
-        added = 0
-        for r in results:
-            url = self._get_url(r)
-            success = getattr(r, "success", None) or (r.get("success", True) if isinstance(r, dict) else True)
-            if not url or not success:
-                continue
-            content = self._get_content(r)
-            if len(content) < 100:
-                continue
-            norm_url = normalize_url(url)
-            if norm_url in seen_urls:
-                continue
-
-            title = self._get_title(r)
-            skip = _settings.filter_skip_header_chars
-            plen = _settings.filter_content_preview_length
-            preview = content[skip:skip + plen] if len(content) > skip else content[:plen]
-            dup = content_dedup.is_duplicate(url, title, preview)
-            if dup["is_duplicate"]:
-                continue
-
-            seen_urls.add(norm_url)
-            all_results.append(r)
-            content_dedup.add(url, title, preview)
-            added += 1
-        return added
+        """合并重爬结果到全局列表（委托公共函数）"""
+        from crawler.dedup import merge_results_into
+        return merge_results_into(results, seen_urls, all_results, content_dedup)
 
     # ============== 辅助方法 ==============
 
@@ -631,17 +605,7 @@ class OptimizationAgent:
             sec["rss_sources"] = section.rss_sources
         return sec
 
-    # ============== 能力 4: 策略疲劳追踪 ==============
-
-    def _record_dimension_result(self, dimension: str, improved: bool):
-        attempts = self._dimension_attempts.setdefault(dimension, [])
-        attempts.append(improved)
-
-    def _is_dimension_exhausted(self, dimension: str) -> bool:
-        attempts = self._dimension_attempts.get(dimension, [])
-        if len(attempts) < 2:
-            return False
-        return not any(attempts[-2:])
+    # ============== 辅助方法 ==============
 
     @staticmethod
     def _raw_sections(crawl_plan: DigestCrawlPlan) -> list[dict]:

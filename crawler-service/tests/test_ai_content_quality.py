@@ -14,8 +14,9 @@ if ROOT not in sys.path:
 from ai.organizer import (
     ContentOrganizer, OrganizedContent, DigestContent,
     PageContent, DigestPageContent,
-    InvalidOutputError, _extract_json,
+    InvalidOutputError,
 )
+from ai.utils import extract_json as _extract_json
 from ai.config import AiSettings
 from crawler.utils import detect_cjk
 

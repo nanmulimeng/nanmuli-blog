@@ -33,7 +33,7 @@ async def build_digest_history_engine():
                     headers=headers,
                 )
                 if resp.status_code == 200:
-                    data = resp.json().get("data", [])
+                    data = resp.json().get("data") or []
                     for fp in data:
                         url = fp.get("url", "")
                         title = fp.get("title", "")
@@ -139,7 +139,7 @@ def _extract_digest_keyword(sections: list[dict] | None) -> str:
     return "technology"
 
 
-def _copy_config(config):
+def copy_config(config):
     """复制配置对象"""
     from api.crawl import CrawlConfig
     if hasattr(config, 'model_dump'):
@@ -150,7 +150,7 @@ def _copy_config(config):
     return CrawlConfig()
 
 
-def _apply_overrides(section: dict, overrides: dict | None) -> dict:
+def apply_overrides(section: dict, overrides: dict | None) -> dict:
     """根据自适应参数覆盖修改 section 副本。"""
     if not overrides:
         return section

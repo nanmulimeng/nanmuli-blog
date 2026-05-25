@@ -164,6 +164,16 @@ class DigestOrchestrator:
             except Exception as e:
                 logger.warning("[Orchestrator] Fingerprint save failed (non-critical): %s", e)
 
+        # Phase 4: 日报后评估 → 写入 KB（闭环）
+        if self._digest_result and self._digest_result.success:
+            try:
+                await self._evaluate_digest_quality(
+                    self._digest_result, self._crawl_plan, task,
+                    all_results,
+                )
+            except Exception as e:
+                logger.warning("[Orchestrator] Phase 4 digest evaluation failed (non-critical): %s", e)
+
         return all_results
 
     # ============== Phase 0: 事前规划 ==============
@@ -208,6 +218,26 @@ class DigestOrchestrator:
                 plan.plan_log.append(f"Last eval weaknesses: {last_weaknesses.get('weaknesses', [])[:3]}")
         except Exception as e:
             logger.debug("[Orchestrator] Last weaknesses read failed: %s", e)
+
+        # 能力 7: 读取日报质量趋势 → 影响板块优先级和参数
+        try:
+            from optimization.knowledge_base import KnowledgeBase as _KB2
+            trend = await _KB2().get_digest_quality_trend(limit=5)
+            if trend:
+                avg_score = sum(t.get("overall_score", 0) for t in trend) / len(trend)
+                plan.plan_log.append(f"Quality trend: avg={avg_score:.2f} over {len(trend)} runs")
+                # 将弱维度传递给板块优先级计算
+                if avg_score < 0.5:
+                    weak_dims = []
+                    for dim in ("source_diversity", "depth", "angle", "temporal", "perspective", "language"):
+                        dim_avg = sum(t.get(f"{dim}_coverage", 0) for t in trend) / len(trend)
+                        if dim_avg < 0.5:
+                            weak_dims.append(dim)
+                    if weak_dims:
+                        kb_hint["persistent_weak_dims"] = weak_dims
+                        plan.plan_log.append(f"Persistent weak dimensions: {weak_dims}")
+        except Exception as e:
+            logger.debug("[Orchestrator] Quality trend read failed: %s", e)
 
         recommended_engine = kb_hint.get("recommended_engine") or settings.digest_search_engine
 
@@ -368,49 +398,23 @@ class DigestOrchestrator:
             )
 
     def _merge_results(self, results, seen_urls, all_results, content_dedup) -> int:
-        """合并板块结果到全局列表（URL + SimHash 去重）"""
-        from crawler.utils import normalize_url
-        added = 0
-        for r in results:
-            url = r.url if hasattr(r, 'url') else (r.get('url', '') if isinstance(r, dict) else '')
-            success = r.success if hasattr(r, 'success') else (r.get('success', True) if isinstance(r, dict) else True)
-            if not url or not success:
-                continue
-            content = r.markdown if hasattr(r, 'markdown') else (r.get('markdown', '') if isinstance(r, dict) else '')
-            if len(content) < 100:
-                continue
-            norm_url = normalize_url(url)
-            if norm_url in seen_urls:
-                continue
-            title = r.title if hasattr(r, 'title') else (r.get('title', '') if isinstance(r, dict) else '')
-            skip = settings.filter_skip_header_chars
-            plen = settings.filter_content_preview_length
-            preview = content[skip:skip + plen] if len(content) > skip else content[:plen]
-            dup = content_dedup.is_duplicate(url, title, preview)
-            if dup["is_duplicate"]:
-                continue
-            seen_urls.add(norm_url)
-            all_results.append(r)
-            content_dedup.add(url, title, preview)
-            # 将去重指纹附加到 metadata，供 save_digest_fingerprints 复用
-            if len(preview) >= 100:
-                from crawler.dedup import ContentFingerprint
-                metadata = getattr(r, 'metadata', None) or {}
-                if hasattr(r, 'metadata'):
-                    metadata["_simhash"] = ContentFingerprint(preview).simhash
-                    r.metadata = metadata
-            added += 1
-        return added
+        """合并板块结果到全局列表（委托公共函数）"""
+        from crawler.dedup import merge_results_into
+        return merge_results_into(results, seen_urls, all_results, content_dedup)
 
     # ============== 辅助方法 ==============
 
     def _should_run_optimization(self, snap: dict, all_results: list) -> bool:
-        """检查是否满足优化触发条件"""
-        return (snap.get("optimization_enabled")
+        """检查是否满足优化触发条件（按板块统计达标数，非全局总数）"""
+        if not (snap.get("optimization_enabled")
                 and snap.get("optimization_mode") in ("digest", "both")
-                and snap.get("digest_optimization_enabled")
-                and len(all_results) >= snap.get("digest_optimization_min_sections", 2)
-                * snap.get("digest_optimization_min_results_per_section", 3))
+                and snap.get("digest_optimization_enabled")):
+            return False
+        min_sections = snap.get("digest_optimization_min_sections", 2)
+        min_per_sec = snap.get("digest_optimization_min_results_per_section", 3)
+        qualified = sum(1 for s in self._crawl_plan.sections
+                        if s.result_count >= min_per_sec) if self._crawl_plan else 0
+        return qualified >= min_sections
 
     def _snapshot_config(self) -> dict:
         """快照配置值，防止运行中配置变更"""
@@ -424,6 +428,7 @@ class DigestOrchestrator:
             "digest_optimization_enabled": settings.digest_optimization_enabled,
             "digest_optimization_min_sections": settings.digest_optimization_min_sections,
             "digest_optimization_min_results_per_section": settings.digest_optimization_min_results_per_section,
+            "digest_optimization_target_score": settings.digest_optimization_target_score,
         }
 
     def get_plan(self) -> DigestCrawlPlan | None:
@@ -437,6 +442,63 @@ class DigestOrchestrator:
     def get_digest_result(self):
         """获取预生成的日报结果（如果可用）"""
         return self._digest_result
+
+    async def _evaluate_digest_quality(self, digest_result, plan, task, all_results):
+        """Phase 4: 日报后评估 — 对最终日报质量评分并写入 KB，形成闭环"""
+        from optimization.evaluator import CoverageEvaluator, _get_weights
+
+        # 1. 用所有爬取结果做6维评估（复用评估器）
+        evaluator = CoverageEvaluator()
+        keyword = " ".join(
+            kw for s in plan.sections for kw in s.keywords[:2]
+        ) if plan.sections else "技术日报"
+        evaluation = await evaluator.evaluate(keyword, all_results)
+
+        # 2. 计算各板块得分
+        section_scores = []
+        for sec in plan.sections:
+            section_scores.append({
+                "name": sec.name,
+                "result_count": sec.result_count,
+                "status": sec.status,
+            })
+
+        # 3. 生成改进建议（基于弱维度）
+        suggestions = []
+        dims = {
+            "angle": evaluation.angle_coverage,
+            "source_diversity": evaluation.source_diversity,
+            "depth": evaluation.depth_coverage,
+            "temporal": evaluation.temporal_coverage,
+            "perspective": evaluation.perspective_balance,
+            "language": evaluation.language_coverage,
+        }
+        for dim, score in sorted(dims.items(), key=lambda x: x[1]):
+            if score < 0.5:
+                suggestions.append(f"{dim}={score:.2f} 偏低，建议下次优先优化此维度")
+        if not suggestions:
+            suggestions.append("整体覆盖度良好，保持当前策略")
+
+        # 4. 写入 KB
+        digest_date = task.get("digest_date", "")
+        task_id = task.get("id", 0)
+        try:
+            from optimization.knowledge_base import KnowledgeBase
+            kb = KnowledgeBase()
+            await kb.save_digest_evaluation(
+                task_id=task_id,
+                digest_date=digest_date,
+                overall_score=evaluation.overall_score,
+                dimension_scores=dims,
+                section_scores=section_scores,
+                suggestions=suggestions,
+            )
+            logger.info(
+                "[Orchestrator] Phase 4: digest quality=%.2f, saved to KB (date=%s)",
+                evaluation.overall_score, digest_date,
+            )
+        except Exception as e:
+            logger.warning("[Orchestrator] Phase 4 KB write failed: %s", e)
 
     def _quick_coverage_check(self, results: list, section_name: str, plan_log: list):
         """板块完成后的快速覆盖率评估（纯计算维度，无 AI 调用）"""
@@ -458,8 +520,8 @@ class DigestOrchestrator:
             if title:
                 titles.append(title)
 
-        diversity = CoverageEvaluator._calc_shannon_entropy(domains)
-        language = CoverageEvaluator._calc_language_mix(titles)
+        diversity = CoverageEvaluator.calc_shannon_entropy(domains)
+        language = CoverageEvaluator.calc_language_mix(titles)
 
         if diversity < 0.3:
             msg = f"[Coverage] After '{section_name}': source_diversity={diversity:.2f} (low)"

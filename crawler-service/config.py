@@ -1,5 +1,6 @@
 """统一配置管理（Pydantic Settings）"""
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -32,8 +33,8 @@ class Settings(BaseSettings):
     callback_timeout: float = 5.0              # Java 后端回调超时（秒）
     sources_api_timeout: float = 5.0           # Java 订阅源 API 超时（秒）
 
-    # 模式切换
-    standalone: bool = False
+    # 模式切换（已移除，统一为全功能模式）
+    # standalone: bool = False  # REMOVED: Phase 3 统一架构
 
     # 独立模式专用
     api_keys: str = ""
@@ -184,6 +185,34 @@ class Settings(BaseSettings):
     digest_optimization_target_score: float = 0.65  # 日报优化目标分（比通用 0.7 稍低）
 
     model_config = {"env_file": ".env", "extra": "ignore"}
+
+    @model_validator(mode="after")
+    def _validate_weight_sums(self):
+        depth_sum = (
+            self.optimization_depth_weight_primary
+            + self.optimization_depth_weight_secondary
+            + self.optimization_depth_weight_tertiary
+        )
+        assert abs(depth_sum - 1.0) < 0.02, (
+            f"optimization_depth_weight_* must sum to 1.0, got {depth_sum:.2f}"
+        )
+        breadth_sum = (
+            self.optimization_breadth_weight_primary
+            + self.optimization_breadth_weight_secondary
+            + self.optimization_breadth_weight_tertiary
+        )
+        assert abs(breadth_sum - 1.0) < 0.02, (
+            f"optimization_breadth_weight_* must sum to 1.0, got {breadth_sum:.2f}"
+        )
+        eval_sum = (
+            self.eval_weight_angle + self.eval_weight_source + self.eval_weight_depth
+            + self.eval_weight_temporal + self.eval_weight_perspective
+            + self.eval_weight_language
+        )
+        assert abs(eval_sum - 1.0) < 0.02, (
+            f"eval_weight_* must sum to 1.0, got {eval_sum:.2f}"
+        )
+        return self
 
 
 settings = Settings()

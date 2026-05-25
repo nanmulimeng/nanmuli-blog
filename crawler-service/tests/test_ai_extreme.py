@@ -20,9 +20,10 @@ from ai.organizer import (
     PageContent, DigestPageContent, DigestSection, DigestItem,
     TruncatedError, UnrecoverableError, RateLimitError,
     InvalidOutputError, OrganizerError,
-    _extract_json, _truncate_at_paragraph_boundary,
+    _truncate_at_paragraph_boundary,
     SYSTEM_PROMPT, DIGEST_SYSTEM_PROMPT, TEMPLATE_PROMPTS,
 )
+from ai.utils import extract_json as _extract_json
 from ai.config import AiSettings
 
 
@@ -852,7 +853,7 @@ class TestSourceUrlValidation:
 
     def _validate(self, content):
         """直接调用 _validate_digest"""
-        return org._validate_digest(content) if False else content
+        return content
 
     @pytest.mark.asyncio
     async def test_xss_url_filtered(self, org):

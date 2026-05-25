@@ -60,7 +60,7 @@ class TestEvaluatorEndToEnd:
     def test_shannon_entropy_realistic_scenario(self):
         """模拟 10 个结果来自 2 个域名的场景（含样本量校正）"""
         domains = ["github.com"] * 7 + ["stackoverflow.com"] * 3
-        entropy = CoverageEvaluator._calc_shannon_entropy(domains)
+        entropy = CoverageEvaluator.calc_shannon_entropy(domains)
         # 10 个结果, 2 unique domains < 5 threshold → sample_penalty = 0.4
         # 原始归一化 ≈ 0.265, 修正后 ≈ 0.106
         assert 0.05 < entropy < 0.15
@@ -73,7 +73,7 @@ class TestEvaluatorEndToEnd:
             "Kubernetes Production Patterns",
             "微服务架构设计原理",
         ]
-        score = CoverageEvaluator._calc_language_mix(titles)
+        score = CoverageEvaluator.calc_language_mix(titles)
         assert score > 0.8  # 强中英混合
 
     def test_heuristic_with_single_domain(self):
@@ -359,8 +359,8 @@ class TestWeightedScore:
         heuristic = evaluator._heuristic_evaluate(meta, {})
 
         # 手动计算
-        source_diversity = CoverageEvaluator._calc_shannon_entropy(meta["domains"])
-        language = CoverageEvaluator._calc_language_mix(meta["titles"])
+        source_diversity = CoverageEvaluator.calc_shannon_entropy(meta["domains"])
+        language = CoverageEvaluator.calc_language_mix(meta["titles"])
 
         weights = _get_weights()
         expected = (

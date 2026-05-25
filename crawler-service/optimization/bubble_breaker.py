@@ -125,7 +125,7 @@ class BubbleBreaker:
                 titles.append(rdict.get("title", "") or "")
         if not titles:
             return False
-        language_mix = CoverageEvaluator._calc_language_mix(titles)
+        language_mix = CoverageEvaluator.calc_language_mix(titles)
         return language_mix < 0.5
 
 
@@ -197,9 +197,9 @@ class BreadthExpander:
         # source_crawl_fn 默认实现：从 source_crawler 模块爬取 URL/RSS 源
         if source_crawl_fn is None:
             async def _default_source_crawl(section, config, crawler, overrides=None):
-                from crawler.digest import _apply_overrides
+                from crawler.digest import apply_overrides
                 from crawler.source_crawler import crawl_url_sources, crawl_rss_sources
-                sec = _apply_overrides(section, overrides)
+                sec = apply_overrides(section, overrides)
                 results = []
                 if sec.get("url_sources"):
                     results.extend(await crawl_url_sources(sec, config, crawler))

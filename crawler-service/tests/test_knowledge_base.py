@@ -75,11 +75,14 @@ class TestGetStrategyHint:
         assert hint["recommended_engine"] == "baidu"
 
     @pytest.mark.asyncio
-    async def test_no_positive_delta_returns_none(self, mem_db):
+    async def test_negative_delta_returns_hint_with_low_scores(self, mem_db):
+        """负向结果也应返回 hint（低分策略应被降权）"""
         await _insert(mem_db, search_keyword="test", score_delta=-0.05)
         with patch("optimization.knowledge_base.get_db", _mock_get_db(mem_db)):
             hint = await KnowledgeBase().get_strategy_hint("test", "bing", "week")
-        assert hint is None
+        assert hint is not None
+        assert hint["recommended_engine"] == "bing"
+        assert hint["engine_scores"]["bing"] == -0.05
 
     @pytest.mark.asyncio
     async def test_related_keywords(self, mem_db):
@@ -170,11 +173,13 @@ class TestGetSimilarKeywordStrategies:
         assert "Spring" in data[0]["search_keyword"]
 
     @pytest.mark.asyncio
-    async def test_only_positive_delta(self, mem_db):
+    async def test_includes_negative_delta(self, mem_db):
+        """负向结果也应被返回，供调用方降权判断"""
         await _insert(mem_db, search_keyword="Python 教程", score_delta=-0.05)
         with patch("optimization.knowledge_base.get_db", _mock_get_db(mem_db)):
             data = await KnowledgeBase().get_similar_keyword_strategies("Python")
-        assert data == []
+        assert len(data) == 1
+        assert data[0]["score_delta"] == -0.05
 
 
 # ============== get_stats ==============

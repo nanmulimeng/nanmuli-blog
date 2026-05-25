@@ -1,4 +1,9 @@
-"""异步任务执行器（爬取 + AI 整理）"""
+"""异步任务执行器（爬取 + AI 整理）
+
+职责：任务路由 + 通用流程（状态管理/回调/质量过滤）
+关键词任务 → KeywordTaskHandler
+日报后处理 → DigestPostProcessor
+"""
 
 import asyncio
 import json
@@ -10,7 +15,6 @@ import uuid
 from typing import Dict
 
 from config import settings
-from ai.config import ai_settings
 from standalone.models import TaskStatus
 from standalone import repository as repo
 from standalone.db import task_scoped_db
@@ -60,7 +64,6 @@ class TaskExecutor:
         self._running: Dict[int, asyncio.Task] = {}
         self._execution_ids: Dict[int, str] = {}  # task_id -> execution_id
         self._semaphore = asyncio.Semaphore(max_concurrent)
-        self._last_digest_orchestrator = None
 
     async def submit(self, task_id: int):
         if task_id in self._running:
@@ -137,6 +140,9 @@ class TaskExecutor:
 
             params = RunParams(config)
 
+            # 日报 orchestrator 引用（同一 _execute 内跨阶段传递）
+            _digest_orchestrator = None
+
             # ========== Phase 1: 爬取 ==========
             if task["task_type"] == "single":
                 browser_config = await get_browser_config(
@@ -162,18 +168,19 @@ class TaskExecutor:
                     )
 
             elif task["task_type"] == "keyword":
-                results = await self._execute_keyword_crawl(task, config)
+                from standalone.keyword_handler import KeywordTaskHandler
+                results = await KeywordTaskHandler().execute(task, config)
 
             elif task["task_type"] == "digest":
                 from crawler.digest_orchestrator import DigestOrchestrator
-                orchestrator = DigestOrchestrator()
-                results = await orchestrator.execute(task, config, self)
+                _digest_orchestrator = DigestOrchestrator()
+                results = await _digest_orchestrator.execute(task, config, self)
                 # 保存规划日志 + 板块清洗文档到 task metadata
-                plan = orchestrator.get_plan()
+                plan = _digest_orchestrator.get_plan()
                 metadata_update = {}
                 if plan and plan.plan_log:
                     metadata_update["orchestrator_plan"] = plan.plan_log
-                section_docs = orchestrator.get_section_documents()
+                section_docs = _digest_orchestrator.get_section_documents()
                 if section_docs:
                     metadata_update["section_documents"] = [
                         {
@@ -190,8 +197,6 @@ class TaskExecutor:
                     ]
                 if metadata_update:
                     await repo.update_task_metadata(task_id, metadata_update)
-                # 保留 orchestrator 引用，供后续 AI 阶段检查预生成日报
-                self._last_digest_orchestrator = orchestrator
 
             else:
                 await repo.fail_task(task_id, f"Unknown task type: {task['task_type']}")
@@ -246,22 +251,23 @@ class TaskExecutor:
             if settings.ai_organization_enabled:
                 await repo.update_task_status(task_id, TaskStatus.PROCESSING)
 
+                from standalone.digest_post_processor import DigestPostProcessor
+                processor = DigestPostProcessor()
+
                 # 日报任务：优先使用 Orchestrator 预生成的日报
                 pre_generated = None
-                if task["task_type"] == "digest":
-                    orchestrator_ref = self._last_digest_orchestrator
-                    if orchestrator_ref:
-                        pre_generated = orchestrator_ref.get_digest_result()
+                if task["task_type"] == "digest" and _digest_orchestrator:
+                    pre_generated = _digest_orchestrator.get_digest_result()
 
                 if pre_generated and pre_generated.digest_content:
-                    ai_success = await self._save_pre_generated_digest(
+                    ai_success = await processor.save_pre_generated(
                         task_id, task, pre_generated,
                     )
                     if not ai_success:
                         logger.warning("Task %d pre-generated digest save failed, falling back.", task_id)
-                        ai_success = await self._organize_with_ai(task_id, task)
+                        ai_success = await processor.organize_with_ai(task_id, task)
                 else:
-                    ai_success = await self._organize_with_ai(task_id, task)
+                    ai_success = await processor.organize_with_ai(task_id, task)
 
                 if not ai_success:
                     logger.warning("Task %d AI organization failed, task still marked complete with raw content.", task_id)
@@ -284,322 +290,6 @@ class TaskExecutor:
                 notify_task_completion(task_id)
             except Exception:
                 pass
-
-    async def _execute_keyword_crawl(self, task: dict, config) -> list:
-        """关键词搜索爬取（含 AI 关键词优化/扩展）"""
-        from ai import content_organizer as organizer
-        from crawler.search import crawl_by_keyword
-
-        keyword = task["keyword"]
-        engine = task.get("search_engine", "sogou")
-        max_pages = task.get("max_pages", 10)
-        time_range = task.get("time_range", "week")
-
-        keywords = [keyword]
-        optimized_keyword = None
-
-        # AI 关键词优化
-        if organizer.is_available:
-            try:
-                optimized = await organizer.optimize_keyword(keyword)
-                if optimized and optimized != keyword:
-                    optimized_keyword = optimized
-                    keywords = [optimized]
-                    logger.info("Keyword optimized: '%s' -> '%s'", keyword, optimized)
-            except Exception as e:
-                logger.warning("Keyword optimization failed: %s", e)
-
-            # AI 关键词扩展
-            try:
-                expanded = await organizer.expand_keywords(keywords[0])
-                for kw in expanded:
-                    if kw.lower() not in {k.lower() for k in keywords}:
-                        keywords.append(kw)
-                        if len(keywords) >= settings.keyword_max_variants:
-                            break
-                logger.info("Keywords expanded to %d variants: %s", len(keywords), keywords)
-            except Exception as e:
-                logger.warning("Keyword expansion failed: %s", e)
-
-        # 保存 AI 搜索元数据
-        await repo.save_ai_search_metadata(task["id"], {
-            "originalKeyword": keyword,
-            "optimizedKeyword": optimized_keyword,
-            "searchVariants": keywords,
-        })
-
-        # 对每个关键词搜索，合并去重
-        seen_urls = set()
-        all_results = []
-        consecutive_no_new = 0
-
-        for kw in keywords:
-            before = len(all_results)
-            try:
-                results = await crawl_by_keyword(
-                    keyword=kw, engine=engine,
-                    max_results=max(8, max_pages),
-                    time_range=time_range, config=config
-                )
-                from crawler.utils import dedup_results_into
-                dedup_results_into(results, seen_urls, all_results)
-
-                new = len(all_results) - before
-                logger.info("Keyword '%s' added %d new URLs (total=%d/%d)",
-                            kw, new, len(all_results), max_pages)
-
-                if len(keywords) > 1 and new == 0:
-                    consecutive_no_new += 1
-                    if consecutive_no_new >= settings.keyword_max_consecutive_empty:
-                        break
-                else:
-                    consecutive_no_new = 0
-
-                if len(all_results) >= max_pages:
-                    break
-
-                if len(keywords) > 1:
-                    await asyncio.sleep(settings.keyword_inter_search_delay)
-
-            except Exception as e:
-                logger.warning("Keyword search failed for '%s': %s", kw, e)
-
-        # === 自动优化循环 ===
-        if settings.optimization_enabled and settings.optimization_mode in ("keyword", "both"):
-            all_results = await self._run_optimization_loop(
-                task=task,
-                initial_results=all_results,
-                keyword=keywords[0],
-                engine=engine,
-                time_range=time_range,
-                config=config,
-            )
-
-        return all_results[:max_pages]
-
-    async def _run_optimization_loop(
-        self, task: dict, initial_results: list,
-        keyword: str, engine: str, time_range: str, config,
-    ) -> list:
-        """先广后深优化：广度扩展 → 深度优化"""
-        from ai import content_organizer as organizer
-        from optimization.evaluator import CoverageEvaluator
-        from optimization.strategy import DepthStrategyGen, BreadthStrategyGen
-        from optimization.feedback import FeedbackLoop
-        from optimization.bubble_breaker import BreadthExpander, BubbleBreaker
-        from optimization.knowledge_base import KnowledgeBase
-        from crawler.search import crawl_by_keyword
-        from crawler.config import get_browser_config
-        from crawl4ai import AsyncWebCrawler
-
-        evaluator = CoverageEvaluator(organizer if organizer.is_available else None)
-        depth_gen = DepthStrategyGen()
-        breadth_gen = BreadthStrategyGen()
-        kb = KnowledgeBase()
-        breaker = BubbleBreaker(organizer if organizer.is_available else None)
-
-        browser_config = await get_browser_config(
-            text_mode=True, light_mode=True, proxy=settings.proxy_url,
-        )
-        async with AsyncWebCrawler(config=browser_config) as shared_crawler:
-            ctx = {"engine": engine, "time_range": time_range, "config": config, "crawler": shared_crawler}
-            deadline = time.monotonic() + settings.optimization_total_budget_seconds
-
-            # Phase 1: 广度扩展（先广）
-            breadth_expander = BreadthExpander(
-                evaluator=evaluator,
-                strategy_gen=breadth_gen,
-                knowledge_base=kb,
-                bubble_breaker=breaker,
-            )
-            results, breadth_rounds = await breadth_expander.execute(
-                keyword=keyword,
-                initial_results=initial_results,
-                crawl_fn=crawl_by_keyword,
-                task_id=task["id"],
-                context=ctx,
-                deadline=deadline,
-            )
-            if breadth_rounds:
-                last = breadth_rounds[-1]
-                logger.info(
-                    "[Optimization] Breadth: %d rounds, breadth_score=%.2f, total URLs=%d",
-                    len(breadth_rounds), BreadthExpander._breadth_score(last.evaluation), last.urls_after,
-                )
-
-            # Phase 2: 深度优化（后深）
-            last_breadth_eval = breadth_rounds[-1].evaluation if breadth_rounds else None
-
-            depth_loop = FeedbackLoop(
-                evaluator=evaluator,
-                strategy_gen=depth_gen,
-                knowledge_base=kb,
-            )
-            final_results, depth_rounds = await depth_loop.execute(
-                keyword=keyword,
-                initial_results=results,
-                crawl_fn=crawl_by_keyword,
-                task_id=task["id"],
-                context=ctx,
-                initial_evaluation=last_breadth_eval,
-                deadline=deadline,
-            )
-
-            if depth_rounds:
-                last = depth_rounds[-1]
-                logger.info(
-                    "[Optimization] Depth: %d rounds, final score=%.2f, total URLs=%d",
-                    len(depth_rounds), last.evaluation.overall_score, last.urls_after,
-                )
-
-            return final_results
-
-    async def _save_pre_generated_digest(
-        self, task_id: int, task: dict, pre_generated,
-    ) -> bool:
-        """保存 Orchestrator 预生成的日报结果（回填 page_id）"""
-        from standalone.organizer_helper import (
-            serialize_digest_sections, _is_highlight_duplicate, _replace_duplicate_highlight,
-        )
-
-        try:
-            digest = pre_generated.digest_content
-            if not digest:
-                return False
-
-            date = task.get("digest_date") or task.get("keyword") or ""
-
-            # 从已保存的 DB 页面获取 URL → page_id 映射
-            pages = await repo.get_pages_by_task(task_id)
-            url_to_page_id = {}
-            for p in pages:
-                if p.get("crawl_status") == 2 and p.get("url"):
-                    url_to_page_id[p["url"]] = p["id"]
-
-            # Highlight 去重
-            recent_highlights = await repo.get_recent_highlights(count=3)
-            if recent_highlights and digest.highlight:
-                if _is_highlight_duplicate(digest.highlight, recent_highlights):
-                    _replace_duplicate_highlight(digest, recent_highlights)
-
-            # 序列化 sections 并回填 page_id
-            sections_data = serialize_digest_sections(digest, url_to_page_id=url_to_page_id)
-
-            await repo.save_digest_results(
-                task_id,
-                ai_title=digest.title,
-                ai_summary=digest.summary,
-                ai_tags=digest.tags,
-                ai_full_content=digest.full_content,
-                ai_duration=digest.duration_ms,
-                ai_tokens_used=digest.tokens_used,
-                digest_date=date,
-                highlight=digest.highlight,
-                sections=sections_data,
-            )
-            logger.info("Task %d pre-generated digest saved: title='%s'", task_id, digest.title)
-            return True
-
-        except Exception as e:
-            logger.error("Task %d pre-generated digest save failed: %s", task_id, e, exc_info=True)
-            return False
-
-    async def _organize_with_ai(self, task_id: int, task: dict) -> bool:
-        """AI 内容整理（含重试）"""
-        from ai import content_organizer as organizer
-        from ai.organizer import (
-            OrganizerError, RateLimitError, TruncatedError, UnrecoverableError, InvalidOutputError,
-        )
-        from standalone.organizer_helper import organize_content_and_save, organize_digest_and_save
-
-        if not organizer.is_available:
-            logger.info("AI not configured, skipping organization for task %d", task_id)
-            await repo.save_ai_error(task_id, "AI 未配置")
-            return False
-
-        task_type = task["task_type"]
-        max_retries = ai_settings.ai_max_retries
-
-        pages = await repo.get_pages_by_task(task_id)
-        if not pages or not any(p.get("crawl_status") == 2 and p.get("raw_markdown") for p in pages):
-            await repo.save_ai_error(task_id, "没有成功的页面可供 AI 整理")
-            return False
-
-        for attempt in range(max_retries + 1):
-            try:
-                if task_type == "digest":
-                    result = await organize_digest_and_save(task_id, task, pages, organizer)
-                else:
-                    result = await organize_content_and_save(task_id, task, pages, organizer)
-
-                logger.info("Task %d AI organized: title='%s', duration=%dms, tokens=%d",
-                            task_id, result.title, result.duration_ms, result.tokens_used)
-                return True
-
-            except TruncatedError as e:
-                # 截断不等于失败——增大 max_tokens 重试一次（直接传参，不修改全局状态）
-                logger.warning("Task %d AI truncated, retrying with larger max_tokens: %s",
-                               task_id, e)
-                try:
-                    original_max = ai_settings.ai_digest_max_tokens
-                    retry_max_tokens = int(original_max * 1.5)
-                    if task_type == "digest":
-                        result = await organize_digest_and_save(
-                            task_id, task, pages, organizer,
-                            max_tokens_override=retry_max_tokens,
-                        )
-                    else:
-                        result = await organize_content_and_save(
-                            task_id, task, pages, organizer,
-                            max_tokens_override=retry_max_tokens,
-                        )
-                    logger.info("Task %d AI re-organized after truncation recovery: title='%s'",
-                                task_id, result.title)
-                    return True
-                except Exception as retry_err:
-                    msg = f"AI 输出被截断且重试失败，原始爬取结果已保留：{retry_err}"
-                    logger.warning("Task %d AI truncation retry also failed: %s", task_id, retry_err)
-                    await repo.save_ai_error(task_id, msg)
-                    return False
-
-            except UnrecoverableError as e:
-                msg = f"AI API 请求被拒绝：{e}"
-                logger.warning("Task %d AI unrecoverable: %s, skipping retry", task_id, e)
-                await repo.save_ai_error(task_id, msg)
-                return False
-
-            except InvalidOutputError as e:
-                msg = f"AI 输出格式校验失败：{e}"
-                logger.warning("Task %d AI invalid output: %s, skipping retry", task_id, e)
-                await repo.save_ai_error(task_id, msg)
-                return False
-
-            except RateLimitError as e:
-                backoff = settings.ai_rate_limit_backoff_ms / 1000.0 * (attempt + 1)
-                logger.warning("Task %d AI rate limited, retry in %.1fs (attempt %d/%d)",
-                               task_id, backoff, attempt + 1, max_retries + 1)
-                if attempt < max_retries:
-                    await asyncio.sleep(backoff)
-                    continue
-                await repo.save_ai_error(task_id, "AI API 频率限制，已重试仍失败，请稍后再试")
-
-            except OrganizerError as e:
-                backoff = 2 ** attempt
-                logger.warning("Task %d AI error, retry in %ds (attempt %d/%d): %s",
-                               task_id, backoff, attempt + 1, max_retries + 1, e)
-                if attempt < max_retries:
-                    await asyncio.sleep(backoff)
-                    continue
-                await repo.save_ai_error(task_id, f"AI 整理失败 (已重试 {max_retries} 次)：{e}")
-
-            except Exception as e:
-                logger.error("Task %d AI unexpected error: %s", task_id, e, exc_info=True)
-                if attempt < max_retries:
-                    await asyncio.sleep(2 ** attempt)
-                    continue
-                await repo.save_ai_error(task_id, f"AI 整理异常：{e}")
-
-        return False
 
     def is_running(self, task_id: int) -> bool:
         return task_id in self._running

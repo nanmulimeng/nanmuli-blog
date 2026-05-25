@@ -519,3 +519,55 @@ async def _build_digest_detail(task_id: int) -> dict:
         "orchestrator_plan": orchestrator_plan,
         "created_at": task.get("created_at"),
     }
+
+
+# ============== 就绪检查 ==============
+
+@router.get("/ready")
+async def readiness_check():
+    """就绪检查：DB 连接 + 调度器状态 + 配置完整性"""
+    checks = {}
+
+    # DB 连接
+    try:
+        from standalone.db import get_db
+        async with get_db() as db:
+            await db.execute("SELECT 1")
+        checks["database"] = "ok"
+    except Exception as e:
+        checks["database"] = f"error: {e}"
+
+    # 调度器
+    try:
+        from standalone.scheduler import get_scheduler_status
+        status = get_scheduler_status()
+        checks["scheduler"] = "ok" if status.get("running") else "stopped"
+    except Exception:
+        checks["scheduler"] = "not_available"
+
+    # AI 配置
+    try:
+        from ai.config import ai_settings
+        checks["ai"] = "configured" if ai_settings.ai_api_key else "not_configured"
+    except Exception:
+        checks["ai"] = "not_available"
+
+    all_ok = all(v in ("ok", "configured") for v in checks.values())
+    return {
+        "ready": all_ok,
+        "checks": checks,
+    }
+
+
+# ============== 日报质量趋势 ==============
+
+@router.get("/optimization/digest-trend")
+async def get_digest_quality_trend(limit: int = Query(default=10, ge=1, le=50)):
+    """最近 N 次日报的质量评估趋势"""
+    try:
+        from optimization.knowledge_base import KnowledgeBase
+        kb = KnowledgeBase()
+        trend = await kb.get_digest_quality_trend(limit=limit)
+        return {"trend": trend, "count": len(trend)}
+    except Exception as e:
+        raise HTTPException(500, f"Failed to get digest quality trend: {e}")

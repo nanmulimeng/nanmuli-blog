@@ -193,8 +193,12 @@ def _apply_all_settings(config: dict[str, str]) -> None:
 # ============================================================
 
 async def fetch_from_backend() -> dict[str, str]:
-    """从 Java 后端拉取 crawler 配置"""
+    """从 Java 后端拉取 crawler 配置（java_api_url 为空则跳过）"""
     global _config_cache
+
+    if not settings.java_api_url:
+        logger.debug("Java backend URL not configured, skipping config fetch")
+        return {}
 
     url = f"{_java_api_url()}/api/internal/collector/config"
     api_key = settings.callback_api_key

@@ -47,8 +47,7 @@ class KnowledgeBase:
                 f"""SELECT search_engine, strategy_type, score_delta,
                           search_keyword, time_range
                    FROM optimization_record
-                   WHERE score_delta > 0
-                     AND round_num > 1
+                   WHERE round_num > 1
                      AND ({conditions} OR time_range = ?)
                    ORDER BY score_delta DESC
                    LIMIT 50""",
@@ -69,7 +68,7 @@ class KnowledgeBase:
             delta = r["score_delta"]
             engine_deltas.setdefault(e, []).append(delta)
             type_deltas.setdefault(st, []).append(delta)
-            if r["search_keyword"] != keyword:
+            if r["search_keyword"] != keyword and delta > 0:
                 related_keywords.add(r["search_keyword"])
 
         def _best(scores: dict[str, list[float]]) -> str | None:
@@ -166,7 +165,7 @@ class KnowledgeBase:
                 f"""SELECT search_keyword, search_engine, time_range,
                            strategy_type, overall_score, score_delta, created_at
                     FROM optimization_record
-                    WHERE score_delta > 0 AND round_num > 1 AND ({conditions})
+                    WHERE round_num > 1 AND ({conditions})
                     ORDER BY score_delta DESC
                     LIMIT ?""",
                 params,
@@ -228,6 +227,73 @@ class KnowledgeBase:
             "suggestions": json.loads(suggestions) if isinstance(suggestions, str) else (suggestions or []),
             "created_at": row["created_at"],
         }
+
+    # ============== 日报后评估（Phase 4 闭环） ==============
+
+    async def save_digest_evaluation(self, task_id: int, digest_date: str,
+                                     overall_score: float,
+                                     dimension_scores: dict,
+                                     section_scores: list[dict] | None = None,
+                                     suggestions: list[str] | None = None) -> None:
+        """保存日报最终质量评估记录，供下次 _build_plan() 消费"""
+        import json as _json
+        async with get_db() as db:
+            await db.execute(
+                """INSERT INTO optimization_record
+                   (task_id, round_num,
+                    angle_coverage, source_diversity, depth_coverage,
+                    temporal_coverage, perspective_balance, language_coverage,
+                    overall_score,
+                    search_keyword, search_engine, time_range,
+                    strategy_type, strategy_detail,
+                    weaknesses, suggestions,
+                    urls_before, urls_after, score_delta)
+                   VALUES (?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0.0)""",
+                (task_id,
+                 dimension_scores.get("angle", 0),
+                 dimension_scores.get("source_diversity", 0),
+                 dimension_scores.get("depth", 0),
+                 dimension_scores.get("temporal", 0),
+                 dimension_scores.get("perspective", 0),
+                 dimension_scores.get("language", 0),
+                 overall_score,
+                 digest_date, "digest", "",
+                 "digest_final_eval",
+                 _json.dumps(section_scores or [], ensure_ascii=False),
+                 _json.dumps([], ensure_ascii=False),
+                 _json.dumps(suggestions or [], ensure_ascii=False)),
+            )
+            await db.commit()
+
+    async def get_digest_quality_trend(self, limit: int = 10) -> list[dict]:
+        """查询最近 N 次日报的最终质量评估趋势"""
+        async with get_db() as db:
+            cursor = await db.execute(
+                """SELECT search_keyword AS digest_date,
+                          overall_score,
+                          angle_coverage, source_diversity, depth_coverage,
+                          temporal_coverage, perspective_balance, language_coverage,
+                          strategy_detail, suggestions, created_at
+                   FROM optimization_record
+                   WHERE strategy_type = 'digest_final_eval'
+                   ORDER BY created_at DESC
+                   LIMIT ?""",
+                (limit,),
+            )
+            rows = await cursor.fetchall()
+        import json as _json
+        results = []
+        for r in rows:
+            d = dict(r)
+            for field in ("strategy_detail", "suggestions"):
+                raw = d.get(field)
+                if raw and isinstance(raw, str):
+                    try:
+                        d[field] = _json.loads(raw)
+                    except _json.JSONDecodeError:
+                        pass
+            results.append(d)
+        return results
 
     # ============== 数据维护 ==============
 

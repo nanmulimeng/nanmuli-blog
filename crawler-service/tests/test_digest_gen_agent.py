@@ -239,16 +239,16 @@ class TestOrchestratorDigestGen:
         assert orch.get_digest_result().success is True
 
 
-# ============== TaskExecutor _save_pre_generated_digest 测试 ==============
+# ============== DigestPostProcessor save_pre_generated 测试 ==============
 
 class TestSavePreGeneratedDigest:
-    def _make_executor(self):
-        from standalone.task_executor import TaskExecutor
-        return TaskExecutor(max_concurrent=1)
+    def _make_processor(self):
+        from standalone.digest_post_processor import DigestPostProcessor
+        return DigestPostProcessor()
 
     @pytest.mark.asyncio
     async def test_save_success(self):
-        executor = self._make_executor()
+        processor = self._make_processor()
 
         mock_digest = MagicMock()
         mock_digest.title = "技术日报 | 2026-05-24"
@@ -264,14 +264,14 @@ class TestSavePreGeneratedDigest:
             success=True, digest_content=mock_digest,
         )
 
-        with patch("standalone.task_executor.repo") as mock_repo, \
+        with patch("standalone.digest_post_processor.repo") as mock_repo, \
              patch("standalone.organizer_helper.serialize_digest_sections", return_value=[]), \
              patch("standalone.organizer_helper._is_highlight_duplicate", return_value=False):
             mock_repo.get_pages_by_task = AsyncMock(return_value=[])
             mock_repo.get_recent_highlights = AsyncMock(return_value=[])
             mock_repo.save_digest_results = AsyncMock()
 
-            result = await executor._save_pre_generated_digest(
+            result = await processor.save_pre_generated(
                 task_id=1,
                 task={"digest_date": "2026-05-24"},
                 pre_generated=pre_gen,
@@ -282,21 +282,21 @@ class TestSavePreGeneratedDigest:
 
     @pytest.mark.asyncio
     async def test_save_failure_returns_false(self):
-        executor = self._make_executor()
+        processor = self._make_processor()
 
         mock_digest = MagicMock()
         mock_digest.highlight = "hl"
         mock_digest.sections = []
         pre_gen = DigestGenAgentResult(success=True, digest_content=mock_digest)
 
-        with patch("standalone.task_executor.repo") as mock_repo, \
+        with patch("standalone.digest_post_processor.repo") as mock_repo, \
              patch("standalone.organizer_helper.serialize_digest_sections", return_value=[]), \
              patch("standalone.organizer_helper._is_highlight_duplicate", return_value=False):
             mock_repo.get_pages_by_task = AsyncMock(return_value=[])
             mock_repo.get_recent_highlights = AsyncMock(return_value=[])
             mock_repo.save_digest_results = AsyncMock(side_effect=Exception("DB error"))
 
-            result = await executor._save_pre_generated_digest(
+            result = await processor.save_pre_generated(
                 task_id=1,
                 task={"digest_date": "2026-05-24"},
                 pre_generated=pre_gen,

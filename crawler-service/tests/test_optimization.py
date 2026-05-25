@@ -13,41 +13,41 @@ from optimization.knowledge_base import KnowledgeBase
 
 class TestShannonEntropy:
     def test_single_domain(self):
-        assert CoverageEvaluator._calc_shannon_entropy(["a.com"]) == 0.0
+        assert CoverageEvaluator.calc_shannon_entropy(["a.com"]) == 0.0
 
     def test_two_equal_domains(self):
-        result = CoverageEvaluator._calc_shannon_entropy(["a.com", "b.com"])
+        result = CoverageEvaluator.calc_shannon_entropy(["a.com", "b.com"])
         # 2 unique domains < 3 threshold → sample_penalty = 2/6 ≈ 0.333
         assert abs(result - 1/3) < 0.01
 
     def test_all_same_domain(self):
-        result = CoverageEvaluator._calc_shannon_entropy(["a.com"] * 10)
+        result = CoverageEvaluator.calc_shannon_entropy(["a.com"] * 10)
         assert result == 0.0
 
     def test_empty_list(self):
-        assert CoverageEvaluator._calc_shannon_entropy([]) == 0.0
+        assert CoverageEvaluator.calc_shannon_entropy([]) == 0.0
 
     def test_diverse_domains(self):
         domains = ["a.com", "b.com", "c.com", "d.com", "e.com"]
-        result = CoverageEvaluator._calc_shannon_entropy(domains)
+        result = CoverageEvaluator.calc_shannon_entropy(domains)
         assert result == 1.0
 
 
 class TestLanguageMix:
     def test_chinese_only(self):
-        result = CoverageEvaluator._calc_language_mix(["Spring Boot 入门教程", "React 实战"])
+        result = CoverageEvaluator.calc_language_mix(["Spring Boot 入门教程", "React 实战"])
         assert 0.0 < result <= 1.0
 
     def test_english_only(self):
-        result = CoverageEvaluator._calc_language_mix(["Spring Boot tutorial", "React best practices"])
+        result = CoverageEvaluator.calc_language_mix(["Spring Boot tutorial", "React best practices"])
         assert 0.0 < result <= 1.0
 
     def test_mixed(self):
-        result = CoverageEvaluator._calc_language_mix(["Spring Boot 入门", "React best practices"])
+        result = CoverageEvaluator.calc_language_mix(["Spring Boot 入门", "React best practices"])
         assert result > 0.5
 
     def test_empty(self):
-        assert CoverageEvaluator._calc_language_mix([]) == 0.0
+        assert CoverageEvaluator.calc_language_mix([]) == 0.0
 
 
 class TestEvaluatorHeuristic:
@@ -323,7 +323,7 @@ class TestStrategyGenerator:
 
     def test_apply_overrides_freshness(self):
         """_apply_overrides 正确扩展 freshness_hours"""
-        from crawler.digest import _apply_overrides
+        from crawler.digest import apply_overrides as _apply_overrides
         section = {
             "name": "test", "max_items": 5,
             "rss_sources": [{"feed_url": "https://x.com/feed", "freshness_hours": 24}],
@@ -336,7 +336,7 @@ class TestStrategyGenerator:
 
     def test_apply_overrides_skip_ids(self):
         """_apply_overrides 过滤死源"""
-        from crawler.digest import _apply_overrides
+        from crawler.digest import apply_overrides as _apply_overrides
         section = {
             "name": "test", "max_items": 5,
             "url_sources": [
@@ -353,7 +353,7 @@ class TestStrategyGenerator:
 
     def test_apply_overrides_none(self):
         """overrides=None 返回原 section"""
-        from crawler.digest import _apply_overrides
+        from crawler.digest import apply_overrides as _apply_overrides
         section = {"name": "test", "max_items": 5}
         result = _apply_overrides(section, None)
         assert result == section
@@ -676,3 +676,208 @@ class TestBreadthExpander:
         # crawl_fn 应收到翻译后的关键词
         call_args = crawl_fn.call_args
         assert call_args.kwargs.get("keyword") == "test keyword" or call_args[1].get("keyword") == "test keyword"
+
+
+# ============== KnowledgeBase Digest Eval Tests ==============
+
+# Minimal DDL for in-memory test DB — only tables needed by the FK chain
+_MEMORY_DDL = """
+CREATE TABLE IF NOT EXISTS crawl_task (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_type       TEXT NOT NULL DEFAULT 'single',
+    source_url      TEXT,
+    keyword         TEXT,
+    search_engine   TEXT DEFAULT 'bing',
+    max_depth       INTEGER DEFAULT 1,
+    max_pages       INTEGER DEFAULT 10,
+    status          INTEGER NOT NULL DEFAULT 0,
+    time_range      TEXT DEFAULT 'week',
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS optimization_record (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id         INTEGER NOT NULL REFERENCES crawl_task(id) ON DELETE CASCADE,
+    round_num       INTEGER NOT NULL,
+    angle_coverage  REAL,
+    source_diversity REAL,
+    depth_coverage  REAL,
+    temporal_coverage REAL,
+    perspective_balance REAL,
+    language_coverage REAL,
+    overall_score   REAL,
+    search_keyword  TEXT,
+    search_engine   TEXT,
+    time_range      TEXT,
+    strategy_type   TEXT,
+    strategy_detail TEXT,
+    weaknesses      TEXT,
+    suggestions     TEXT,
+    urls_before     INTEGER,
+    urls_after      INTEGER,
+    score_delta     REAL,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+"""
+
+
+class TestKnowledgeBaseDigestEval:
+    """Tests for KnowledgeBase.save_digest_evaluation and get_digest_quality_trend."""
+
+    @pytest.fixture
+    def memory_db(self):
+        """Provide an in-memory SQLite connection with required tables."""
+        import aiosqlite
+
+        async def _make():
+            db = await aiosqlite.connect(":memory:")
+            db.row_factory = aiosqlite.Row
+            await db.execute("PRAGMA foreign_keys=ON")
+            await db.executescript(_MEMORY_DDL)
+            await db.commit()
+            return db
+
+        return _make
+
+    async def _insert_crawl_task(self, db) -> int:
+        """Insert a minimal crawl_task row and return its id."""
+        import aiosqlite
+        cursor = await db.execute(
+            "INSERT INTO crawl_task (task_type, status) VALUES ('digest', 3)"
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+    @pytest.mark.asyncio
+    async def test_save_digest_evaluation_writes_record(self, memory_db):
+        from optimization.knowledge_base import KnowledgeBase
+        from unittest.mock import patch, AsyncMock
+        from contextlib import asynccontextmanager
+        import json
+
+        db = await memory_db()
+        task_id = await self._insert_crawl_task(db)
+
+        @asynccontextmanager
+        async def _fake_get_db():
+            yield db
+
+        with patch("optimization.knowledge_base.get_db", _fake_get_db):
+            kb = KnowledgeBase()
+            await kb.save_digest_evaluation(
+                task_id=task_id,
+                digest_date="2026-05-25",
+                overall_score=0.78,
+                dimension_scores={
+                    "angle": 0.8,
+                    "source_diversity": 0.7,
+                    "depth": 0.9,
+                    "temporal": 0.6,
+                    "perspective": 0.75,
+                    "language": 0.85,
+                },
+                section_scores=[{"section": "tech", "score": 0.9}],
+                suggestions=["增加深度分析", "补充对比视角"],
+            )
+
+        # Verify the record was written correctly
+        cursor = await db.execute(
+            "SELECT * FROM optimization_record WHERE task_id = ?", (task_id,)
+        )
+        rows = await cursor.fetchall()
+        assert len(rows) == 1
+
+        row = dict(rows[0])
+        assert row["round_num"] == 0
+        assert row["overall_score"] == 0.78
+        assert row["angle_coverage"] == 0.8
+        assert row["source_diversity"] == 0.7
+        assert row["depth_coverage"] == 0.9
+        assert row["temporal_coverage"] == 0.6
+        assert row["perspective_balance"] == 0.75
+        assert row["language_coverage"] == 0.85
+        assert row["search_keyword"] == "2026-05-25"
+        assert row["search_engine"] == "digest"
+        assert row["strategy_type"] == "digest_final_eval"
+        assert row["urls_before"] == 0
+        assert row["urls_after"] == 0
+        assert row["score_delta"] == 0.0
+
+        # JSON fields
+        assert json.loads(row["strategy_detail"]) == [{"section": "tech", "score": 0.9}]
+        assert json.loads(row["suggestions"]) == ["增加深度分析", "补充对比视角"]
+
+        await db.close()
+
+    @pytest.mark.asyncio
+    async def test_get_digest_quality_trend_returns_records(self, memory_db):
+        from optimization.knowledge_base import KnowledgeBase
+        from unittest.mock import patch
+        from contextlib import asynccontextmanager
+        import json
+
+        db = await memory_db()
+
+        # Insert two crawl tasks + two eval records
+        tid1 = await self._insert_crawl_task(db)
+        tid2 = await self._insert_crawl_task(db)
+
+        await db.execute(
+            """INSERT INTO optimization_record
+               (task_id, round_num, overall_score, search_keyword, search_engine,
+                strategy_type, strategy_detail, suggestions, created_at)
+               VALUES (?, 0, ?, ?, 'digest', 'digest_final_eval', ?, ?,
+                       datetime('now', '-1 day'))""",
+            (tid1, 0.65, "2026-05-24", json.dumps([]), json.dumps(["suggestion A"])),
+        )
+        await db.execute(
+            """INSERT INTO optimization_record
+               (task_id, round_num, overall_score, search_keyword, search_engine,
+                strategy_type, strategy_detail, suggestions, created_at)
+               VALUES (?, 0, ?, ?, 'digest', 'digest_final_eval', ?, ?,
+                       datetime('now'))""",
+            (tid2, 0.82, "2026-05-25", json.dumps([{"sec": "news", "s": 0.8}]), json.dumps([])),
+        )
+        await db.commit()
+
+        @asynccontextmanager
+        async def _fake_get_db():
+            yield db
+
+        with patch("optimization.knowledge_base.get_db", _fake_get_db):
+            kb = KnowledgeBase()
+            trend = await kb.get_digest_quality_trend(limit=10)
+
+        assert len(trend) == 2
+        # Most recent first
+        assert trend[0]["digest_date"] == "2026-05-25"
+        assert trend[0]["overall_score"] == 0.82
+        assert trend[1]["digest_date"] == "2026-05-24"
+        assert trend[1]["overall_score"] == 0.65
+
+        # JSON fields auto-parsed
+        assert trend[0]["strategy_detail"] == [{"sec": "news", "s": 0.8}]
+        assert trend[1]["suggestions"] == ["suggestion A"]
+
+        await db.close()
+
+    @pytest.mark.asyncio
+    async def test_get_digest_quality_trend_empty(self, memory_db):
+        from optimization.knowledge_base import KnowledgeBase
+        from unittest.mock import patch
+        from contextlib import asynccontextmanager
+
+        db = await memory_db()
+
+        @asynccontextmanager
+        async def _fake_get_db():
+            yield db
+
+        with patch("optimization.knowledge_base.get_db", _fake_get_db):
+            kb = KnowledgeBase()
+            trend = await kb.get_digest_quality_trend()
+
+        assert trend == []
+
+        await db.close()

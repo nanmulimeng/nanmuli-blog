@@ -70,9 +70,6 @@ class DepthStrategyGen:
             if weakest_score >= threshold:
                 continue
 
-            if self._is_dimension_exhausted(weakest, history):
-                continue
-
             strategy_map = {
                 "temporal": self._strategy_temporal,
                 "depth": self._strategy_depth,
@@ -94,15 +91,6 @@ class DepthStrategyGen:
                 return strategy
 
         return None
-
-    @staticmethod
-    def _is_dimension_exhausted(dimension: str, history: list) -> bool:
-        """某维度连续 2 轮被尝试且无效果，视为疲劳"""
-        if len(history) < 2:
-            return False
-        recent = history[-2:]
-        matching = sum(1 for h in recent if getattr(h, 'target_dimension', '') == dimension)
-        return matching >= 2
 
     # ============== 具体策略 ==============
 
@@ -247,9 +235,6 @@ class BreadthStrategyGen:
             if weakest_score >= threshold:
                 continue
 
-            if self._is_dimension_exhausted(weakest, history):
-                continue
-
             # source_diversity 偏弱且有可扩展信息源时，优先走 source_expand
             if sections and weakest == "source_diversity" and weakest_score < 0.6:
                 expand_section = self._pick_expand_section(sections, history)
@@ -278,15 +263,6 @@ class BreadthStrategyGen:
                 return strategy
 
         return None
-
-    @staticmethod
-    def _is_dimension_exhausted(dimension: str, history: list) -> bool:
-        """某维度连续 2 轮被尝试且无效果，视为疲劳"""
-        if len(history) < 2:
-            return False
-        recent = history[-2:]
-        matching = sum(1 for h in recent if getattr(h, 'target_dimension', '') == dimension)
-        return matching >= 2
 
     # ============== 知识库提示辅助 ==============
 

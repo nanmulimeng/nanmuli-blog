@@ -118,8 +118,7 @@ class TestMergeResults:
         seen = set()
         all_r = []
         dedup = _mock_dedup()
-        with patch("crawler.utils.normalize_url", side_effect=lambda u: u):
-            added = orch._merge_results([r1, r2], seen, all_r, dedup)
+        added = orch._merge_results([r1, r2], seen, all_r, dedup)
         assert added == 1
         assert len(all_r) == 1
 
@@ -134,8 +133,7 @@ class TestMergeResults:
         ]
         seen = set()
         all_r = []
-        with patch("crawler.utils.normalize_url", side_effect=lambda u: u):
-            added = orch._merge_results([r1, r2], seen, all_r, dedup)
+        added = orch._merge_results([r1, r2], seen, all_r, dedup)
         assert added == 1
 
     def test_short_content_skipped(self):
@@ -144,8 +142,7 @@ class TestMergeResults:
         seen = set()
         all_r = []
         dedup = _mock_dedup()
-        with patch("crawler.utils.normalize_url", side_effect=lambda u: u):
-            added = orch._merge_results([r], seen, all_r, dedup)
+        added = orch._merge_results([r], seen, all_r, dedup)
         assert added == 0
 
     def test_fingerprint_written_to_metadata(self):
@@ -155,8 +152,7 @@ class TestMergeResults:
         seen = set()
         all_r = []
         dedup = _mock_dedup()
-        with patch("crawler.utils.normalize_url", side_effect=lambda u: u), \
-             patch("crawler.dedup.ContentFingerprint") as MockFP:
+        with patch("crawler.dedup.ContentFingerprint") as MockFP:
             mock_fp = MagicMock()
             mock_fp.simhash = 12345
             MockFP.return_value = mock_fp
@@ -182,8 +178,14 @@ class TestSnapshotConfig:
 # ============== TestShouldRunOptimization ==============
 
 class TestShouldRunOptimization:
-    def test_enabled_with_enough_results(self):
+    def _setup_orch_with_sections(self, result_counts: list[int]):
+        """创建带板块 result_count 的 Orchestrator"""
         orch = DigestOrchestrator()
+        sections = [_make_section(name=f"s{i}", result_count=rc) for i, rc in enumerate(result_counts)]
+        orch._crawl_plan = _make_plan(sections=sections)
+        return orch
+
+    def test_enabled_with_enough_qualified_sections(self):
         snap = {
             "optimization_enabled": True,
             "optimization_mode": "digest",
@@ -191,10 +193,10 @@ class TestShouldRunOptimization:
             "digest_optimization_min_sections": 2,
             "digest_optimization_min_results_per_section": 3,
         }
-        assert orch._should_run_optimization(snap, list(range(6))) is True
+        orch = self._setup_orch_with_sections([5, 4, 2])
+        assert orch._should_run_optimization(snap, []) is True
 
     def test_disabled_optimization(self):
-        orch = DigestOrchestrator()
         snap = {
             "optimization_enabled": False,
             "optimization_mode": "digest",
@@ -202,10 +204,10 @@ class TestShouldRunOptimization:
             "digest_optimization_min_sections": 2,
             "digest_optimization_min_results_per_section": 3,
         }
-        assert orch._should_run_optimization(snap, list(range(10))) is False
+        orch = self._setup_orch_with_sections([5, 4])
+        assert orch._should_run_optimization(snap, []) is False
 
-    def test_insufficient_results(self):
-        orch = DigestOrchestrator()
+    def test_insufficient_qualified_sections(self):
         snap = {
             "optimization_enabled": True,
             "optimization_mode": "digest",
@@ -213,7 +215,8 @@ class TestShouldRunOptimization:
             "digest_optimization_min_sections": 2,
             "digest_optimization_min_results_per_section": 3,
         }
-        assert orch._should_run_optimization(snap, list(range(5))) is False
+        orch = self._setup_orch_with_sections([5, 2, 1])
+        assert orch._should_run_optimization(snap, []) is False
 
 
 # ============== TestQuickCoverageCheck ==============
@@ -342,3 +345,256 @@ class TestExecuteIntegration:
                 {"id": 1, "digest_date": "2026-05-24"}, MagicMock(), MagicMock(),
             )
         assert len(results) == 1
+
+    @pytest.mark.asyncio
+    async def test_optimization_and_digest_gen_pipeline(self):
+        """完整管线：Phase 0 → Phase 1（含优化）→ Phase 2 日报生成 → Phase 3 指纹"""
+        orch = DigestOrchestrator()
+        snap = {
+            "engine": "sogou", "max_parallel": 2, "global_timeout": 600,
+            "proxy_url": "",
+            "optimization_enabled": True, "optimization_mode": "digest",
+            "digest_optimization_enabled": True,
+            "digest_optimization_min_sections": 1,
+            "digest_optimization_min_results_per_section": 1,
+            "digest_optimization_target_score": 0.65,
+        }
+        section = _make_section(name="tech", result_count=5)
+        plan = _make_plan(sections=[section], config_snapshot=snap)
+        orch._crawl_plan = plan
+
+        from crawler.section_document import SectionDocument, SourceEntry
+        doc = SectionDocument(
+            section_name="tech", source_count=5,
+            entries=[SourceEntry(url=f"https://x.com/{i}", title=f"T{i}", cleaned_content="c" * 200)
+                     for i in range(5)],
+        )
+        results = [_make_result(url=f"https://x.com/{i}", title=f"T{i}") for i in range(5)]
+
+        mock_crawler = AsyncMock()
+        mock_crawler.__aenter__ = AsyncMock(return_value=mock_crawler)
+        mock_crawler.__aexit__ = AsyncMock(return_value=False)
+
+        from crawler.optimization_agent import OptimizationResult
+        opt_result = OptimizationResult(
+            all_results=results, section_documents=[doc],
+            seen_urls=set(), rounds_completed=1, sections_improved=1,
+            budget_used_seconds=5.0,
+        )
+
+        from crawler.digest_gen_agent import DigestGenAgentResult
+        mock_digest = MagicMock()
+        mock_digest.title = "技术日报"
+        mock_digest.sections = []
+        mock_digest.tokens_used = 500
+        mock_digest.duration_ms = 3000
+        digest_result = DigestGenAgentResult(
+            success=True, digest_content=mock_digest,
+            tokens_used=500, duration_ms=3000,
+        )
+
+        with patch.object(orch, "_build_plan", return_value=plan), \
+             patch("crawler.config.get_browser_config", return_value=MagicMock()), \
+             patch("crawler.config.RunParams", return_value=MagicMock(text_mode=True, light_mode=True)), \
+             patch("crawl4ai.AsyncWebCrawler", return_value=mock_crawler), \
+             patch("crawler.digest.build_digest_history_engine", return_value=MagicMock()), \
+             patch.object(orch, "_dispatch", return_value=(results, set())), \
+             patch.object(orch, "_should_run_optimization", return_value=True), \
+             patch("crawler.optimization_agent.OptimizationAgent") as MockOpt, \
+             patch("crawler.digest_gen_agent.DigestGenAgent") as MockDGA, \
+             patch("crawler.digest.save_digest_fingerprints", new_callable=AsyncMock):
+            MockOpt.return_value.execute = AsyncMock(return_value=opt_result)
+            MockDGA.return_value.execute = AsyncMock(return_value=digest_result)
+            orch._section_documents = [doc]
+            out_results = await orch.execute(
+                {"id": 1, "digest_date": "2026-05-24"}, MagicMock(), MagicMock(),
+            )
+
+        assert len(out_results) == 5
+        digest = orch.get_digest_result()
+        assert digest is not None
+        assert digest.success is True
+        assert digest.digest_content.title == "技术日报"
+
+    @pytest.mark.asyncio
+    async def test_digest_gen_failure_still_returns_crawl_results(self):
+        """DigestGenAgent 失败时仍返回爬取结果（非致命降级）"""
+        orch = DigestOrchestrator()
+        plan = _make_plan()
+        orch._crawl_plan = plan
+
+        from crawler.section_document import SectionDocument, SourceEntry
+        doc = SectionDocument(
+            section_name="tech", source_count=1,
+            entries=[SourceEntry(url="https://x.com/1", title="T1", cleaned_content="c" * 200)],
+        )
+        results = [_make_result(url="https://x.com/1")]
+
+        mock_crawler = AsyncMock()
+        mock_crawler.__aenter__ = AsyncMock(return_value=mock_crawler)
+        mock_crawler.__aexit__ = AsyncMock(return_value=False)
+
+        with patch.object(orch, "_build_plan", return_value=plan), \
+             patch("crawler.config.get_browser_config", return_value=MagicMock()), \
+             patch("crawler.config.RunParams", return_value=MagicMock(text_mode=True, light_mode=True)), \
+             patch("crawl4ai.AsyncWebCrawler", return_value=mock_crawler), \
+             patch("crawler.digest.build_digest_history_engine", return_value=MagicMock()), \
+             patch.object(orch, "_dispatch", return_value=(results, set())), \
+             patch("crawler.digest_gen_agent.DigestGenAgent") as MockDGA, \
+             patch("crawler.digest.save_digest_fingerprints", new_callable=AsyncMock):
+            from crawler.digest_gen_agent import DigestGenAgentResult
+            MockDGA.return_value.execute = AsyncMock(return_value=DigestGenAgentResult(
+                success=False, error="AI not configured",
+            ))
+            orch._section_documents = [doc]
+            out_results = await orch.execute(
+                {"id": 1, "digest_date": "2026-05-24"}, MagicMock(), MagicMock(),
+            )
+
+        assert len(out_results) == 1
+        assert orch.get_digest_result() is None
+
+
+# ============== TestPhase4Evaluation ==============
+
+class TestPhase4Evaluation:
+    """Phase 4 日报后评估：CoverageEvaluator 评分 → KB 写入，非致命"""
+
+    @pytest.mark.asyncio
+    async def test_evaluate_digest_quality_writes_to_kb(self):
+        """_evaluate_digest_quality() 正确调用 KnowledgeBase.save_digest_evaluation()"""
+        from optimization.evaluator import CoverageEvaluation
+
+        orch = DigestOrchestrator()
+        sections = [_make_section(name="tech", keywords=["AI", "LLM"])]
+        plan = _make_plan(sections=sections)
+        task = {"id": 42, "digest_date": "2026-05-25"}
+        all_results = [_make_result(url=f"https://x.com/{i}") for i in range(3)]
+
+        from crawler.digest_gen_agent import DigestGenAgentResult
+        digest_result = DigestGenAgentResult(
+            success=True,
+            digest_content=MagicMock(title="技术日报", sections=[]),
+            tokens_used=100,
+            duration_ms=500,
+        )
+
+        fake_eval = CoverageEvaluation(
+            angle_coverage=0.7,
+            source_diversity=0.6,
+            depth_coverage=0.5,
+            temporal_coverage=0.4,
+            perspective_balance=0.8,
+            language_coverage=0.3,
+            overall_score=0.55,
+            weaknesses=["temporal 偏低"],
+            suggestions=["扩展时间范围"],
+            tokens_used=200,
+            duration_ms=300,
+        )
+
+        with patch("optimization.evaluator.CoverageEvaluator") as MockEval, \
+             patch("optimization.knowledge_base.KnowledgeBase") as MockKB:
+            MockEval.return_value.evaluate = AsyncMock(return_value=fake_eval)
+            mock_kb = MockKB.return_value
+            mock_kb.save_digest_evaluation = AsyncMock()
+
+            await orch._evaluate_digest_quality(
+                digest_result, plan, task, all_results,
+            )
+
+            # 验证 CoverageEvaluator.evaluate 被调用
+            MockEval.return_value.evaluate.assert_awaited_once()
+            call_args = MockEval.return_value.evaluate.call_args
+            assert "AI LLM" in call_args[0][0]  # keyword = "AI LLM"
+            assert call_args[0][1] is all_results
+
+            # 验证 KB.save_digest_evaluation 参数
+            mock_kb.save_digest_evaluation.assert_awaited_once()
+            kb_kwargs = mock_kb.save_digest_evaluation.call_args[1]
+            assert kb_kwargs["task_id"] == 42
+            assert kb_kwargs["digest_date"] == "2026-05-25"
+            assert kb_kwargs["overall_score"] == 0.55
+            dims = kb_kwargs["dimension_scores"]
+            assert dims["angle"] == 0.7
+            assert dims["source_diversity"] == 0.6
+            assert dims["language"] == 0.3
+            assert isinstance(kb_kwargs["section_scores"], list)
+            assert kb_kwargs["section_scores"][0]["name"] == "tech"
+
+    @pytest.mark.asyncio
+    async def test_phase4_failure_non_critical(self):
+        """Phase 4 失败不中断主流程"""
+        orch = DigestOrchestrator()
+        plan = _make_plan()
+        orch._crawl_plan = plan
+
+        mock_crawler = AsyncMock()
+        mock_crawler.__aenter__ = AsyncMock(return_value=mock_crawler)
+        mock_crawler.__aexit__ = AsyncMock(return_value=False)
+
+        from crawler.section_document import SectionDocument, SourceEntry
+        doc = SectionDocument(
+            section_name="tech", source_count=1,
+            entries=[SourceEntry(url="https://x.com/1", title="T1", cleaned_content="c" * 200)],
+        )
+        results = [_make_result(url="https://x.com/1")]
+
+        from crawler.digest_gen_agent import DigestGenAgentResult
+        mock_digest = MagicMock()
+        mock_digest.title = "技术日报"
+        mock_digest.sections = []
+        digest_result = DigestGenAgentResult(
+            success=True, digest_content=mock_digest,
+            tokens_used=500, duration_ms=3000,
+        )
+
+        with patch.object(orch, "_build_plan", return_value=plan), \
+             patch("crawler.config.get_browser_config", return_value=MagicMock()), \
+             patch("crawler.config.RunParams", return_value=MagicMock(text_mode=True, light_mode=True)), \
+             patch("crawl4ai.AsyncWebCrawler", return_value=mock_crawler), \
+             patch("crawler.digest.build_digest_history_engine", return_value=MagicMock()), \
+             patch.object(orch, "_dispatch", return_value=(results, set())), \
+             patch("crawler.digest_gen_agent.DigestGenAgent") as MockDGA, \
+             patch("crawler.digest.save_digest_fingerprints", new_callable=AsyncMock), \
+             patch.object(orch, "_evaluate_digest_quality", new_callable=AsyncMock, side_effect=RuntimeError("KB down")):
+            MockDGA.return_value.execute = AsyncMock(return_value=digest_result)
+            orch._section_documents = [doc]
+            out_results = await orch.execute(
+                {"id": 1, "digest_date": "2026-05-24"}, MagicMock(), MagicMock(),
+            )
+
+        # execute() 正常返回爬取结果，Phase 4 异常被吞掉
+        assert len(out_results) == 1
+        assert orch.get_digest_result() is not None
+        assert orch.get_digest_result().success is True
+
+    @pytest.mark.asyncio
+    async def test_phase4_skipped_when_no_digest(self):
+        """无日报结果时 Phase 4 不执行"""
+        orch = DigestOrchestrator()
+        plan = _make_plan()
+        orch._crawl_plan = plan
+
+        mock_crawler = AsyncMock()
+        mock_crawler.__aenter__ = AsyncMock(return_value=mock_crawler)
+        mock_crawler.__aexit__ = AsyncMock(return_value=False)
+
+        results = [_make_result(url="https://x.com/1")]
+
+        with patch.object(orch, "_build_plan", return_value=plan), \
+             patch("crawler.config.get_browser_config", return_value=MagicMock()), \
+             patch("crawler.config.RunParams", return_value=MagicMock(text_mode=True, light_mode=True)), \
+             patch("crawl4ai.AsyncWebCrawler", return_value=mock_crawler), \
+             patch("crawler.digest.build_digest_history_engine", return_value=MagicMock()), \
+             patch.object(orch, "_dispatch", return_value=(results, set())), \
+             patch("crawler.digest.save_digest_fingerprints", new_callable=AsyncMock), \
+             patch.object(orch, "_evaluate_digest_quality", new_callable=AsyncMock) as mock_eval:
+            # 不设 section_documents → DigestGenAgent 不触发 → _digest_result 为 None
+            out_results = await orch.execute(
+                {"id": 1, "digest_date": "2026-05-24"}, MagicMock(), MagicMock(),
+            )
+
+        assert len(out_results) == 1
+        # _evaluate_digest_quality 不应被调用
+        mock_eval.assert_not_awaited()

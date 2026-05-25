@@ -353,3 +353,53 @@ def dedup_results(
             local_engine.add(url, title, content_preview)
 
     return unique_results
+
+
+def merge_results_into(
+    new_results: list,
+    seen_urls: set,
+    all_results: list,
+    content_dedup,
+    min_content_length: int = 100,
+) -> int:
+    """将新结果合并到全局列表（URL + SimHash 去重 + 指纹写入 metadata）
+
+    DigestOrchestrator._merge_results 和 OptimizationAgent._merge_optimized_results
+    的统一实现，消除重复的 3 层去重逻辑。
+
+    Returns:
+        新增结果数
+    """
+    from crawler.utils import normalize_url
+    from config import settings
+
+    skip = settings.filter_skip_header_chars
+    plen = settings.filter_content_preview_length
+    added = 0
+
+    for r in new_results:
+        url = r.url if hasattr(r, 'url') else (r.get('url', '') if isinstance(r, dict) else '')
+        success = r.success if hasattr(r, 'success') else (r.get('success', True) if isinstance(r, dict) else True)
+        if not url or not success:
+            continue
+        content = r.markdown if hasattr(r, 'markdown') else (r.get('markdown', '') if isinstance(r, dict) else '')
+        if len(content) < min_content_length:
+            continue
+        norm_url = normalize_url(url)
+        if norm_url in seen_urls:
+            continue
+        title = r.title if hasattr(r, 'title') else (r.get('title', '') if isinstance(r, dict) else '')
+        preview = content[skip:skip + plen] if len(content) > skip else content[:plen]
+        dup = content_dedup.is_duplicate(url, title, preview)
+        if dup["is_duplicate"]:
+            continue
+        seen_urls.add(norm_url)
+        all_results.append(r)
+        content_dedup.add(url, title, preview)
+        if len(preview) >= 100:
+            metadata = getattr(r, 'metadata', None) or {}
+            if hasattr(r, 'metadata'):
+                metadata["_simhash"] = ContentFingerprint(preview).simhash
+                r.metadata = metadata
+        added += 1
+    return added

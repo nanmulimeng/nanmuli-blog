@@ -2,16 +2,16 @@
 Web Collector - Python Crawler Service
 基于 Crawl4AI 的网页内容采集服务
 
-双模式部署:
-  - 纯 API 模式（默认）: 作为博客微服务，仅提供 /crawl/* 和 /health 端点
-  - 独立模式（STANDALONE=true）: 额外提供任务管理 /api/v1/* 端点
+全功能模式：爬取 API + 任务管理 + 调度器 + AI 整理 + 日报生成
+Java 后端可选集成（通过 java_api_url 配置）
 
 端点:
 - POST /crawl/single    - 单页爬取
 - POST /crawl/deep      - BFS 深度爬取
 - POST /crawl/search    - 关键词搜索爬取
 - GET  /health          - 健康检查
-- 独立模式额外端点见 standalone/routes.py
+- GET  /ready           - 就绪检查
+- 管理端点见 standalone/routes.py
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ if TYPE_CHECKING:
 
 from logging_config import setup_logging
 
-setup_logging(log_level=settings.log_level, standalone=settings.standalone)
+setup_logging(log_level=settings.log_level, standalone=True)
 logger = logging.getLogger(__name__)
 
 
@@ -59,29 +59,26 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to import Crawl4AI: {e}")
         raise
 
-    logger.info(f"Mode: {'standalone' if settings.standalone else 'api-only'}")
+    # 数据库初始化
+    from standalone.db import init_db
+    await init_db()
+    logger.info(f"SQLite database initialized: {settings.db_path}")
 
-    if settings.standalone:
-        from standalone.db import init_db
-        await init_db()
-        logger.info(f"SQLite database initialized: {settings.db_path}")
+    # 从 Java 后端拉取爬虫配置（可选，java_api_url 为空则跳过）
+    try:
+        from standalone import backend_config
+        await backend_config.fetch_from_backend()
+    except Exception as e:
+        logger.warning("Failed to fetch config from backend on startup: %s", e)
 
-        # 从 Java 后端拉取爬虫配置（AI key、日报开关等）
-        try:
-            from standalone import backend_config
-            await backend_config.fetch_from_backend()
-        except Exception as e:
-            logger.warning("Failed to fetch config from backend on startup: %s", e)
-
-        from standalone.scheduler import start_scheduler, stop_scheduler
-        start_scheduler()
+    # 调度器
+    from standalone.scheduler import start_scheduler, stop_scheduler
+    start_scheduler()
 
     yield
 
     # Shutdown: close shared resources
-    if settings.standalone:
-        from standalone.scheduler import stop_scheduler
-        stop_scheduler()
+    stop_scheduler()
 
     # 关闭 AI httpx 连接池
     try:
@@ -112,27 +109,26 @@ def create_app() -> "FastAPI":
 
     app = FastAPI(
         title="Web Collector Crawler Service",
-        description="基于 Crawl4AI 的网页内容采集服务（支持双模式部署）",
+        description="基于 Crawl4AI 的网页内容采集服务（全功能模式）",
         version="2.0.0",
         lifespan=lifespan,
     )
 
-    # 始终注册：RequestID + AccessLog + 爬取 API + 健康检查 + 错误处理
+    # RequestID + AccessLog + 爬取 API + 健康检查 + 错误处理
     register_middlewares(app)
     app.include_router(crawl_router)
     app.include_router(health_router)
     register_error_handlers(app)
 
-    # 独立模式：管理 API + 认证（覆盖 /api/v1/*, /crawl/*, /organize, /keyword）
-    if settings.standalone:
-        from standalone.auth import ApiKeyMiddleware
-        from standalone.routes import router as standalone_router
+    # 管理 API + 认证
+    from standalone.auth import ApiKeyMiddleware
+    from standalone.routes import router as standalone_router
 
-        if settings.auth_enabled and settings.api_keys:
-            app.add_middleware(ApiKeyMiddleware)
+    if settings.auth_enabled and settings.api_keys:
+        app.add_middleware(ApiKeyMiddleware)
 
-        app.include_router(standalone_router, prefix="/api/v1")
-        logger.info("Standalone mode enabled: /api/v1/* endpoints registered")
+    app.include_router(standalone_router, prefix="/api/v1")
+    logger.info("Full mode enabled: /api/v1/* endpoints registered")
 
     return app
 

@@ -2,12 +2,13 @@
 
 import pytest
 from ai.organizer import (
-    _extract_json, _truncate_at_paragraph_boundary, _normalize,
+    _truncate_at_paragraph_boundary, _normalize,
     _normalize_list, _normalize_category, _extract_message_content,
     ContentOrganizer, OrganizedContent, DigestContent,
     CATEGORY_ALIASES, ALLOWED_CATEGORIES, DIGEST_CATEGORY_MAP,
     InvalidOutputError,
 )
+from ai.utils import extract_json as _extract_json
 from ai.config import AiSettings
 
 

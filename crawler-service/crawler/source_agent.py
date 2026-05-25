@@ -145,5 +145,5 @@ class SourceAgent:
     @staticmethod
     def _copy_config(config):
         """深拷贝配置"""
-        from crawler.digest import _copy_config
-        return _copy_config(config)
+        from crawler.digest import copy_config
+        return copy_config(config)
