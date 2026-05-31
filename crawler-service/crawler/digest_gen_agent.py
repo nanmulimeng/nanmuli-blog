@@ -6,9 +6,16 @@
 """
 
 import logging
-from dataclasses import dataclass, field
+import re
+from dataclasses import dataclass
+from urllib.parse import urlsplit, urlunsplit
 
 logger = logging.getLogger(__name__)
+
+_SOURCE_LEVEL_ORDER = {"official": 0, "high": 1, "medium": 2, "low": 3, "spam": 4}
+_MIN_DIGEST_SECTIONS = 2
+_MIN_DIGEST_ITEMS = 5
+_MAX_DIGEST_ITEMS = 12
 
 
 @dataclass
@@ -56,7 +63,7 @@ class DigestGenAgent:
             if not digest_pages:
                 return DigestGenAgentResult(success=False, error="no valid pages")
 
-            input_urls = frozenset(p.url for p in digest_pages if p.url)
+            input_urls = frozenset(_collect_allowed_source_urls(digest_pages))
 
             # 获取最近 highlight（AI 多样性检测）
             recent_highlights = []
@@ -74,6 +81,7 @@ class DigestGenAgent:
                     input_urls=input_urls,
                     recent_highlights=recent_highlights,
                 )
+                content = _supplement_digest_coverage(content, digest_pages)
             finally:
                 await organizer.close()
 
@@ -109,12 +117,13 @@ class DigestGenAgent:
         return True
 
     def _build_digest_pages(self, section_documents: list) -> list:
-        from ai.organizer import DigestPageContent
+        from ai.organizer import DIGEST_CATEGORY_MAP, DigestPageContent
         from standalone.task_executor import extract_source_name, infer_category
         from standalone.organizer_helper import _extract_summary
         from crawler.quality import SourceAuthority
 
-        pages: list[DigestPageContent] = []
+        pages_by_url: dict[str, DigestPageContent] = {}
+        pages_without_url: list[DigestPageContent] = []
         for doc in section_documents:
             entries = getattr(doc, "entries", [])
             for entry in entries:
@@ -125,7 +134,8 @@ class DigestGenAgent:
                     continue
 
                 source_name = extract_source_name(url)
-                category = infer_category(url, title)
+                doc_category = getattr(doc, "section_name", "") or ""
+                category = doc_category if doc_category in DIGEST_CATEGORY_MAP else infer_category(url, title)
 
                 try:
                     authority = SourceAuthority.score(url)
@@ -135,7 +145,7 @@ class DigestGenAgent:
 
                 summary = _extract_summary(content)
 
-                pages.append(DigestPageContent(
+                page = DigestPageContent(
                     url=url,
                     title=title,
                     markdown=content,
@@ -144,6 +154,221 @@ class DigestGenAgent:
                     source_name=source_name,
                     source_level=source_level,
                     page_id=None,
-                ))
+                )
 
-        return pages
+                dedupe_key = _canonical_digest_url(url)
+                if not dedupe_key:
+                    pages_without_url.append(page)
+                    continue
+
+                existing = pages_by_url.get(dedupe_key)
+                if existing is None or _is_better_digest_page(page, existing):
+                    pages_by_url[dedupe_key] = page
+
+        pages = list(pages_by_url.values()) + pages_without_url
+        return sorted(
+            pages,
+            key=lambda p: (
+                _SOURCE_LEVEL_ORDER.get(p.source_level, _SOURCE_LEVEL_ORDER["medium"]),
+                -(len(p.markdown or "")),
+            ),
+        )
+
+
+def _canonical_digest_url(url: str) -> str:
+    if not url:
+        return ""
+    try:
+        parsed = urlsplit(url.strip())
+    except Exception:
+        return url.strip().rstrip("/")
+    if not parsed.scheme or not parsed.netloc:
+        return url.strip().rstrip("/")
+
+    path = parsed.path.rstrip("/") or "/"
+    return urlunsplit((
+        parsed.scheme.lower(),
+        parsed.netloc.lower(),
+        path,
+        parsed.query,
+        "",
+    ))
+
+
+def _collect_allowed_source_urls(pages: list) -> set[str]:
+    """Collect page URLs plus URLs explicitly present in cleaned content.
+
+    Search result pages and RSS pages often contain canonical article links in
+    their markdown. Allowing those links prevents the final sourceUrl guard from
+    dropping legitimate article URLs copied from the input text.
+    """
+    urls: set[str] = set()
+    for page in pages:
+        for raw in (getattr(page, "url", ""),):
+            cleaned = _clean_source_url(raw)
+            if cleaned:
+                urls.add(cleaned)
+        for field in ("markdown", "summary"):
+            text = getattr(page, field, "") or ""
+            for raw in re.findall(r"https?://[^\s)\]}>\"']+", text):
+                cleaned = _clean_source_url(raw)
+                if cleaned:
+                    urls.add(cleaned)
+    return urls
+
+
+def _clean_source_url(url: str) -> str:
+    if not url:
+        return ""
+    return url.strip().rstrip(".,;:!?，。；：！？")
+
+
+def _is_better_digest_page(candidate, current) -> bool:
+    candidate_rank = _SOURCE_LEVEL_ORDER.get(candidate.source_level, _SOURCE_LEVEL_ORDER["medium"])
+    current_rank = _SOURCE_LEVEL_ORDER.get(current.source_level, _SOURCE_LEVEL_ORDER["medium"])
+    if candidate_rank != current_rank:
+        return candidate_rank < current_rank
+    return len(candidate.markdown or "") > len(current.markdown or "")
+
+
+def _supplement_digest_coverage(content, pages: list):
+    """Add source-backed items when the model returns a valid but thin digest."""
+    if not pages or not isinstance(getattr(content, "sections", None), list):
+        return content
+
+    usable_pages = [
+        p for p in pages
+        if getattr(p, "url", "") and getattr(p, "title", "") and (
+            getattr(p, "summary", "") or getattr(p, "markdown", "")
+        )
+    ]
+    if not usable_pages:
+        return content
+
+    categories = []
+    for page in usable_pages:
+        cat = getattr(page, "category", "") or "tech_article"
+        if cat not in categories:
+            categories.append(cat)
+
+    current_items = [
+        item
+        for section in content.sections
+        for item in getattr(section, "items", [])
+    ]
+    current_urls = {
+        getattr(item, "source_url", "")
+        for item in current_items
+        if getattr(item, "source_url", "")
+    }
+    current_count = len(current_items)
+    target_sections = min(len(categories), _MIN_DIGEST_SECTIONS)
+    target_items = min(len(usable_pages), _MIN_DIGEST_ITEMS)
+
+    if len(content.sections) >= target_sections and current_count >= target_items:
+        return content
+
+    from ai.organizer import DIGEST_CATEGORY_MAP, DigestItem, DigestSection
+
+    section_by_category = {
+        getattr(section, "category", ""): section
+        for section in content.sections
+    }
+
+    added_items = []
+
+    def ensure_section(category: str):
+        section = section_by_category.get(category)
+        if section is not None:
+            return section
+        cat_info = DIGEST_CATEGORY_MAP.get(category, DIGEST_CATEGORY_MAP.get("tech_article", ("技术文章", "📖")))
+        section = DigestSection(category=category, category_name=cat_info[0], emoji=cat_info[1])
+        content.sections.append(section)
+        section_by_category[category] = section
+        return section
+
+    def add_page(page) -> bool:
+        nonlocal current_count
+        if current_count >= min(len(usable_pages), _MAX_DIGEST_ITEMS):
+            return False
+        url = getattr(page, "url", "")
+        if not url or url in current_urls:
+            return False
+        section = ensure_section(getattr(page, "category", "") or "tech_article")
+        item = DigestItem(
+            title=_fallback_title(page),
+            one_liner=_fallback_one_liner(page),
+            source_url=url,
+            source_name=_fallback_source_name(page),
+        )
+        section.items.append(item)
+        current_urls.add(url)
+        current_count += 1
+        added_items.append((section, item))
+        return True
+
+    for category in categories:
+        section = ensure_section(category)
+        if not getattr(section, "items", []):
+            for page in usable_pages:
+                if (getattr(page, "category", "") or "tech_article") == category and add_page(page):
+                    break
+
+    for page in usable_pages:
+        if current_count >= target_items:
+            break
+        add_page(page)
+
+    if added_items:
+        logger.info(
+            "[DigestGenAgent] Supplemented thin digest with %d source-backed items",
+            len(added_items),
+        )
+        _append_supplement_to_full_content(content, added_items)
+        if not getattr(content, "highlight", ""):
+            content.highlight = added_items[0][1].one_liner
+
+    content.sections = [section for section in content.sections if getattr(section, "items", [])]
+    return content
+
+
+def _fallback_title(page) -> str:
+    title = (getattr(page, "title", "") or "").strip()
+    return _truncate_text(title, 80) or "Untitled"
+
+
+def _fallback_one_liner(page) -> str:
+    text = (getattr(page, "summary", "") or getattr(page, "markdown", "") or "").strip()
+    text = re.sub(r"\s+", " ", text)
+    return _truncate_text(text, 180) or _fallback_title(page)
+
+
+def _fallback_source_name(page) -> str:
+    source_name = (getattr(page, "source_name", "") or "").strip()
+    if source_name:
+        return source_name
+    url = getattr(page, "url", "") or ""
+    try:
+        return urlsplit(url).netloc or url
+    except Exception:
+        return url
+
+
+def _truncate_text(text: str, max_len: int) -> str:
+    text = (text or "").strip()
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 1].rstrip() + "…"
+
+
+def _append_supplement_to_full_content(content, added_items: list[tuple]):
+    lines = ["", "## 补充覆盖"]
+    last_category = None
+    for section, item in added_items:
+        category_name = getattr(section, "category_name", "") or getattr(section, "category", "")
+        if category_name != last_category:
+            lines.append(f"### {category_name}")
+            last_category = category_name
+        lines.append(f"- [{item.title}]({item.source_url})：{item.one_liner}")
+    supplement = "\n".join(lines)
+    content.full_content = ((getattr(content, "full_content", "") or "").rstrip() + "\n" + supplement).strip()

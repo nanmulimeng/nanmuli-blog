@@ -1,4 +1,4 @@
--- 来源可信度表：将硬编码的域名评分数据库化，支持动态管理
+-- Source authority scores used by crawler quality evaluation.
 CREATE TABLE IF NOT EXISTS source_authority (
     id          BIGINT PRIMARY KEY,
     domain      VARCHAR(255) NOT NULL UNIQUE,
@@ -10,9 +10,7 @@ CREATE TABLE IF NOT EXISTS source_authority (
     is_deleted  BOOLEAN DEFAULT FALSE
 );
 
--- 种子数据：从 Python quality.py 硬编码列表导入
 INSERT INTO source_authority (id, domain, score, level) VALUES
--- 官方/权威来源 (90-100)
 (-1, 'docs.spring.io', 95, 'official'),
 (-2, 'spring.io', 95, 'official'),
 (-3, 'docs.python.org', 95, 'official'),
@@ -28,7 +26,6 @@ INSERT INTO source_authority (id, domain, score, level) VALUES
 (-13, 'anthropic.com', 95, 'official'),
 (-14, 'arxiv.org', 95, 'official'),
 (-15, 'huggingface.co', 95, 'official'),
--- 高质量技术社区 (70-89)
 (-100, 'medium.com', 80, 'high'),
 (-101, 'dev.to', 80, 'high'),
 (-102, 'stackoverflow.com', 80, 'high'),
@@ -41,7 +38,6 @@ INSERT INTO source_authority (id, domain, score, level) VALUES
 (-109, 'csdn.net', 80, 'high'),
 (-110, 'blog.csdn.net', 80, 'high'),
 (-111, 'ruanyifeng.com', 80, 'high'),
--- 技术博客 (50-69)
 (-200, 'github.io', 60, 'medium'),
 (-201, 'github.com', 60, 'medium'),
 (-202, 'netlify.app', 60, 'medium'),
@@ -51,4 +47,4 @@ ON CONFLICT (domain) DO NOTHING;
 CREATE INDEX IF NOT EXISTS idx_source_authority_domain ON source_authority(domain) WHERE is_deleted = FALSE;
 CREATE INDEX IF NOT EXISTS idx_source_authority_level ON source_authority(level) WHERE is_deleted = FALSE;
 
-COMMENT ON TABLE source_authority IS '来源可信度表 - 域名→评分映射，支持动态管理';
+COMMENT ON TABLE source_authority IS 'Source authority scores for dynamic crawler quality evaluation';

@@ -237,6 +237,10 @@ class KnowledgeBase:
                                      suggestions: list[str] | None = None) -> None:
         """保存日报最终质量评估记录，供下次 _build_plan() 消费"""
         import json as _json
+        weak_dims = [
+            dim for dim, score in dimension_scores.items()
+            if score is not None and float(score) < 0.5
+        ]
         async with get_db() as db:
             await db.execute(
                 """INSERT INTO optimization_record
@@ -260,7 +264,7 @@ class KnowledgeBase:
                  digest_date, "digest", "",
                  "digest_final_eval",
                  _json.dumps(section_scores or [], ensure_ascii=False),
-                 _json.dumps([], ensure_ascii=False),
+                 _json.dumps(weak_dims, ensure_ascii=False),
                  _json.dumps(suggestions or [], ensure_ascii=False)),
             )
             await db.commit()

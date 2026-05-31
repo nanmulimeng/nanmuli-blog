@@ -1,6 +1,6 @@
 # Web Collector - Python Crawler Service
 
-基于 **Crawl4AI** 的异步网页内容采集服务，支持双模式部署。
+基于 **Crawl4AI** 的异步网页内容采集服务，可作为独立服务被博客或其他系统调用。
 
 ## 功能特性
 
@@ -20,11 +20,12 @@
 - **关键词优化/扩展** — AI 优化搜索关键词并生成变体
 - **日报生成** — 定时调度（默认工作日 8:00）+ 多板块 + 跨日去重
 
-### 独立模式（STANDALONE=true）
+### 服务模式
 - SQLite 任务管理（创建/查询/重试/删除/导出）
 - API Key 认证 + SSRF 防护
 - APScheduler 定时日报调度
 - 5 态任务状态机（PENDING → CRAWLING → PROCESSING → COMPLETED / FAILED）
+- 可选任务级 callback_url，外部服务可接收完成/失败通知
 
 ## 技术栈
 
@@ -35,13 +36,13 @@
 | FastAPI | >=0.109.0 | Web 框架 |
 | httpx | >=0.26.0 | 异步 HTTP 客户端 |
 | Pydantic Settings | >=2.1.0 | 配置管理 |
-| APScheduler | >=3.10.0 | 定时调度（独立模式） |
+| APScheduler | >=3.10.0 | 定时调度 |
 
-## 双模式部署
+## API 端点
 
-### 纯 API 模式（默认）
+### 即时 API
 
-作为微服务被 Java 后端调用，仅暴露爬取端点：
+适合外部服务同步调用，直接返回爬取或 AI 整理结果：
 
 | 方法 | 端点 | 描述 |
 |------|------|------|
@@ -52,9 +53,9 @@
 | POST | `/organize` | AI 内容整理 |
 | POST | `/keyword` | 关键词搜索 + AI 整理（一站式） |
 
-### 独立模式（STANDALONE=true）
+### 任务 API
 
-完整任务管理系统，额外暴露 `/api/v1/*` 端点：
+适合外部服务异步提交任务、轮询结果或接收 callback：
 
 | 方法 | 端点 | 描述 |
 |------|------|------|
@@ -78,15 +79,16 @@
 cd crawler-service
 docker build -t nanmuli-crawler:latest .
 
-# 纯 API 模式
+# 最小运行
 docker run -d -p 8500:8500 nanmuli-crawler:latest
 
-# 独立模式
+# 带任务持久化和 API Key
 docker run -d -p 8500:8500 \
-  -e STANDALONE=true \
+  -e API_KEYS=sk-your-secret-key \
   -e AI_ENABLED=true \
   -e AI_API_KEY=sk-xxx \
   -e DIGEST_ENABLED=true \
+  -v crawler_data:/app/data \
   nanmuli-crawler:latest
 ```
 
@@ -109,14 +111,43 @@ uvicorn main:app --host 0.0.0.0 --port 8500 --reload
 
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
-| `STANDALONE` | false | 启用独立模式 |
 | `AI_ENABLED` | false | 启用 AI 内容整理 |
 | `AI_BASE_URL` | DashScope | OpenAI 兼容 API 地址 |
 | `DIGEST_ENABLED` | false | 启用定时日报 |
 | `DIGEST_CRON` | `0 8 * * 1-5` | 工作日早 8 点 |
 | `PROXY_URL` | 空 | HTTP/SOCKS5 代理 |
+| `API_KEYS` | 空 | API Key 列表，逗号分隔 |
+| `CALLBACK_URL` | 空 | 全局任务完成回调，任务级 `callback_url` 优先 |
+| `JAVA_API_URL` | 空 | 博客集成地址；为空则不拉博客配置 |
 
-## 与 Java 后端集成
+### 创建异步任务示例
+
+```bash
+curl -X POST http://localhost:8500/api/v1/tasks \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: sk-your-secret-key" \
+  -d '{
+    "task_type": "single",
+    "url": "https://example.com/article",
+    "callback_url": "https://client.example.com/crawler/callback",
+    "callback_headers": {
+      "X-Client-Token": "client-secret"
+    }
+  }'
+```
+
+任务完成或失败后，服务会向 callback 发送：
+
+```json
+{
+  "python_task_id": 123,
+  "status": 3
+}
+```
+
+## 与博客 Java 后端集成
+
+博客只是 crawler-service 的一个可选 client。需要博客日报订阅源、指纹和回调时，再配置：
 
 ```yaml
 # application-prod.yml

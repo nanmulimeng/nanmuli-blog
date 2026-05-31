@@ -76,6 +76,18 @@ class TestTranslateKeyword:
         assert result == "Spring Boot tutorial"
 
     @pytest.mark.asyncio
+    async def test_translate_english_keyword_to_chinese(self):
+        organizer = MagicMock()
+        organizer.is_available = True
+        organizer._call_ai = AsyncMock(return_value={
+            "content": "Spring Boot 入门教程",
+            "total_tokens": 50,
+        })
+        breaker = BubbleBreaker(organizer=organizer)
+        result = await breaker.translate_keyword("Spring Boot tutorial")
+        assert result == "Spring Boot 入门教程"
+
+    @pytest.mark.asyncio
     async def test_translate_no_organizer(self):
         breaker = BubbleBreaker(organizer=None)
         result = await breaker.translate_keyword("Spring Boot 入门")

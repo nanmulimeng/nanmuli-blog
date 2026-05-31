@@ -152,6 +152,12 @@ DIGEST_SYSTEM_PROMPT = """你是一位资深技术资讯编辑，负责生成每
 7. sourceUrl 必须原样复制输入中提供的 URL，不可修改、截断或编造
 8. 论文类内容（category=paper）需包含：论文标题、核心发现、对从业者的实际意义
 9. 只输出有实际内容支撑的分类，空分类不要出现在输出中。不要为凑分类而编造条目
+## 质量护栏
+1. 事实边界：只使用输入来源中明确出现的信息；没有来源支撑的版本号、性能数据、发布时间、融资金额、安全影响不要写入日报。
+2. 去重合并：同一事件、同一项目版本、同一论文解读只保留一条，避免换标题重复报道。
+3. 低可信来源：标注为 low 或 spam 的来源仅作背景参考；除非没有更高可信来源且内容具体可核验，否则不要选为核心条目或 highlight。
+4. 可执行影响：oneLiner 不只复述新闻，要回答“对开发者/团队有什么影响，是否需要行动”。
+5. 质量取舍：优先选择影响大、时效强、来源权威、信息具体的 5-12 条；不要为了覆盖所有来源而降低日报密度。
 ## 热点排序优先级（从高到低）
 按以下标准判断事件重要性，重要事件排在各分类的前面：
 1. **影响范围**：影响全行业/多数开发者 > 仅影响特定技术栈用户
@@ -691,7 +697,7 @@ class ContentOrganizer:
                 parts.append(f"URL: {page.url or '未知'}\n")
                 if page.source_name:
                     parts.append(f"信息源: {page.source_name}\n")
-                if page.source_level and page.source_level in ("official", "high"):
+                if page.source_level:
                     parts.append(f"来源可信度: {page.source_level}\n")
 
                 # 超过 full_detail_count 的条目：仅发 summary，节省 token
@@ -737,6 +743,13 @@ class ContentOrganizer:
             for h in recent_highlights:
                 parts.append(f"- {h}\n")
 
+        if sorted_cats:
+            parts.append("\n## Coverage requirements\n")
+            parts.append(f"- Input categories: {', '.join(sorted_cats)}.\n")
+            parts.append("- If a category has valid source content, include at least one supported item for it.\n")
+            parts.append("- Target 5-12 total items when there are enough distinct sources. Do not collapse the digest to a single item unless only one valid event exists.\n")
+            parts.append("- Every item must copy sourceUrl from the provided URL line exactly.\n")
+
         parts.append("\n请根据以上内容生成结构化技术日报。")
         return "".join(parts)
 
@@ -746,6 +759,15 @@ class ContentOrganizer:
         if not self._settings.is_configured:
             raise RuntimeError("AI not configured")
 
+        if self._uses_anthropic_messages_api():
+            return await self._call_anthropic_ai(system_prompt, user_prompt, max_tokens=max_tokens)
+        return await self._call_openai_ai(system_prompt, user_prompt, max_tokens=max_tokens)
+
+    def _uses_anthropic_messages_api(self) -> bool:
+        base_url = str(self._settings.ai_base_url or "").rstrip("/")
+        return base_url.endswith("/anthropic")
+
+    async def _call_openai_ai(self, system_prompt: str, user_prompt: str, max_tokens: int | None = None) -> dict:
         request_body = {
             "model": self._settings.ai_model,
             "temperature": self._settings.ai_temperature,
@@ -794,6 +816,52 @@ class ContentOrganizer:
         total_tokens = data.get("usage", {}).get("total_tokens", 0)
 
         if finish_reason == "length":
+            raise TruncatedError(f"AI output truncated, tokens={total_tokens}")
+
+        return {"content": content, "total_tokens": total_tokens, "finish_reason": finish_reason}
+
+    async def _call_anthropic_ai(self, system_prompt: str, user_prompt: str, max_tokens: int | None = None) -> dict:
+        request_body = {
+            "model": self._settings.ai_model,
+            "temperature": self._settings.ai_temperature,
+            "max_tokens": max_tokens or self._settings.ai_max_tokens,
+            "system": system_prompt,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [{"type": "text", "text": user_prompt}],
+                },
+            ],
+        }
+
+        client = await self._get_client()
+        response = await client.post(
+            f"{self._settings.ai_base_url.rstrip('/')}/v1/messages",
+            json=request_body,
+            headers={
+                "x-api-key": self._settings.ai_api_key,
+                "anthropic-version": "2023-06-01",
+                "Content-Type": "application/json",
+            },
+        )
+
+        if response.status_code == 429:
+            raise RateLimitError("Rate limited by AI API")
+        if 400 <= response.status_code < 500 and response.status_code != 429:
+            raise UnrecoverableError(f"API client error {response.status_code}: {response.text[:200]}")
+        if response.status_code >= 500:
+            raise RuntimeError(f"API server error {response.status_code}")
+
+        data = response.json()
+        content = _extract_message_content(data.get("content"))
+        if not content:
+            raise RuntimeError("Empty content in AI response")
+
+        finish_reason = data.get("stop_reason", "unknown")
+        usage = data.get("usage", {})
+        total_tokens = usage.get("input_tokens", 0) + usage.get("output_tokens", 0)
+
+        if finish_reason == "max_tokens":
             raise TruncatedError(f"AI output truncated, tokens={total_tokens}")
 
         return {"content": content, "total_tokens": total_tokens, "finish_reason": finish_reason}
@@ -910,6 +978,9 @@ class ContentOrganizer:
                 sec.category_name = cat_info[0]
                 sec.emoji = cat_info[1]
 
+        _prune_incomplete_digest_items(c.sections)
+        c.sections = [sec for sec in c.sections if sec.items]
+
         # 跨板块 sourceUrl 去重：保留 oneLiner 最完整的条目
         # url -> (section_idx, item_idx) 指向当前胜出者
         seen_urls: dict[str, tuple[int, int]] = {}
@@ -952,6 +1023,7 @@ class ContentOrganizer:
         # sourceUrl 原始输入校验：修正或清除 LLM 篡改的 URL
         if input_urls:
             _validate_source_urls(c.sections, input_urls)
+            _prune_incomplete_digest_items(c.sections)
             c.sections = [sec for sec in c.sections if sec.items]
 
         has_valid = any(
@@ -1020,6 +1092,15 @@ def _validate_source_urls(sections: list[DigestSection], input_urls: frozenset):
 
             logger.warning("[DigestValidate] Unmatched sourceUrl dropped: %s", url)
             item.source_url = ""
+
+
+def _prune_incomplete_digest_items(sections: list[DigestSection]):
+    """移除字段不完整的日报条目，避免低质量 item 被保存。"""
+    for sec in sections:
+        sec.items = [
+            item for item in sec.items
+            if item.title and item.one_liner and item.source_url and item.source_name
+        ]
 
 
 def _extract_message_content(content) -> str:

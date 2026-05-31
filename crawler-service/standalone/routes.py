@@ -33,6 +33,21 @@ class CreateTaskRequest(BaseModel):
     ai_template: str = Field(default="tech_summary", pattern="^(tech_summary|tutorial|comparison|knowledge_report|daily_digest)$")
     time_range: str = Field(default="week", pattern="^(day|week|month|year|all)$")
     config: Opt[CrawlConfig] = None
+    callback_url: Opt[HttpUrl] = None
+    callback_headers: dict[str, str] = Field(default_factory=dict)
+
+
+class SourceTestRequest(BaseModel):
+    type: str = Field(..., pattern="^(url|keyword|rss)$")
+    value: str = Field(..., min_length=1, max_length=2048)
+    content_category: str = Field(default="tech_article", pattern="^(hot_trend|open_source|tech_article|dev_tool|creative|paper)$")
+    crawl_mode: str = Field(default="single", pattern="^(single|deep)$")
+    max_depth: int = Field(default=1, ge=1, le=settings.max_depth_limit)
+    max_pages: int = Field(default=3, ge=1, le=5)
+    freshness_hours: int = Field(default=24, ge=1, le=720)
+    search_engine: str = Field(default="bing", pattern="^(sogou|bing|baidu|google)$")
+    source_id: Opt[str] = None
+    source_name: Opt[str] = None
 
 
 # ============== Helpers ==============
@@ -40,6 +55,7 @@ class CreateTaskRequest(BaseModel):
 def _enrich_task(task: dict) -> dict:
     """为任务响应添加标签和进度（不修改原始 dict）"""
     task = dict(task)
+    task.pop("callback_headers", None)
     task["task_type_label"] = TASK_TYPE_LABELS.get(task["task_type"], task["task_type"])
     task["status_label"] = TaskStatus.label(task["status"])
 
@@ -71,6 +87,32 @@ def _enrich_task(task: dict) -> dict:
     return task
 
 
+def _summarize_source_test_results(results: list) -> dict:
+    items = []
+    for result in results[:5]:
+        metadata = getattr(result, "metadata", {}) or {}
+        items.append({
+            "success": bool(getattr(result, "success", False)),
+            "url": getattr(result, "url", "") or "",
+            "title": getattr(result, "title", "") or metadata.get("feed_title") or "",
+            "word_count": getattr(result, "word_count", 0) or 0,
+            "markdown_len": len(getattr(result, "markdown", "") or ""),
+            "source_id": metadata.get("source_id"),
+            "source_name": metadata.get("source_name"),
+            "error": getattr(result, "error_message", None),
+        })
+
+    success_count = sum(1 for result in results if getattr(result, "success", False))
+    total = len(results)
+    return {
+        "total": total,
+        "success_count": success_count,
+        "failed_count": max(total - success_count, 0),
+        "crawlable": success_count > 0,
+        "items": items,
+    }
+
+
 # ============== Endpoints ==============
 
 @router.post("/tasks", status_code=201)
@@ -84,9 +126,20 @@ async def create_task(request: CreateTaskRequest):
     # SSRF 防护：禁止爬取内网地址
     if request.url and _is_private_url(str(request.url)):
         raise HTTPException(400, "不允许爬取内网/私有地址")
+    if (
+        request.callback_url
+        and not settings.callback_allow_private_urls
+        and _is_private_url(str(request.callback_url))
+    ):
+        raise HTTPException(400, "callback_url 不允许使用内网/私有地址")
 
     source_url = str(request.url) if request.url else None
     config_json = request.config.model_dump_json() if request.config else None
+    callback_url = str(request.callback_url) if request.callback_url else None
+    callback_headers_json = (
+        json.dumps(request.callback_headers, ensure_ascii=False)
+        if request.callback_headers else None
+    )
 
     task_id = await repo.create_task(
         task_type=request.task_type,
@@ -98,6 +151,8 @@ async def create_task(request: CreateTaskRequest):
         config_json=config_json,
         ai_template=request.ai_template,
         time_range=request.time_range,
+        callback_url=callback_url,
+        callback_headers_json=callback_headers_json,
     )
 
     await executor.submit(task_id)
@@ -111,6 +166,83 @@ async def create_task(request: CreateTaskRequest):
         "status_label": TaskStatus.label(TaskStatus.PENDING),
         "message": "任务已创建，正在后台执行（爬取 + AI 整理）",
     }
+
+
+@router.post("/sources/test")
+async def test_source(request: SourceTestRequest):
+    """Run a small, non-persistent crawl preview for one source configuration."""
+    source_type = request.type
+    source_value = request.value.strip()
+
+    if source_type in ("url", "rss") and _is_private_url(source_value):
+        raise HTTPException(400, "source value 不允许使用内网/私有地址")
+
+    max_items = min(request.max_pages or 3, 5)
+    source_id = request.source_id
+    source_name = request.source_name or ""
+    section = {
+        "name": request.content_category,
+        "max_items": max_items,
+    }
+
+    try:
+        if source_type == "rss":
+            from crawl4ai import AsyncWebCrawler
+            from crawler.config import get_browser_config
+            from crawler.source_crawler import crawl_rss_sources
+
+            section["rss_sources"] = [{
+                "feed_url": source_value,
+                "freshness_hours": request.freshness_hours,
+                "max_entries": max_items,
+                "source_id": source_id,
+                "source_name": source_name,
+                "effectiveness": {"dead": False},
+            }]
+            browser_config = await get_browser_config(text_mode=True, light_mode=True, proxy=settings.proxy_url)
+            async with AsyncWebCrawler(config=browser_config) as crawler:
+                results = await crawl_rss_sources(section, config=None, crawler=crawler)
+        elif source_type == "url":
+            from crawl4ai import AsyncWebCrawler
+            from crawler.config import get_browser_config
+            from crawler.source_crawler import crawl_url_sources
+
+            section["url_sources"] = [{
+                "url": source_value,
+                "crawl_mode": request.crawl_mode,
+                "max_depth": request.max_depth,
+                "max_pages": max_items,
+                "source_id": source_id,
+                "source_name": source_name,
+                "effectiveness": {"dead": False},
+            }]
+            browser_config = await get_browser_config(text_mode=True, light_mode=True, proxy=settings.proxy_url)
+            async with AsyncWebCrawler(config=browser_config) as crawler:
+                results = await crawl_url_sources(section, config=None, crawler=crawler)
+        else:
+            from crawler.search import crawl_by_keyword
+
+            results = await crawl_by_keyword(
+                keyword=source_value,
+                engine=request.search_engine,
+                max_results=max_items,
+                time_range="day" if request.freshness_hours <= 24 else "week",
+                config=None,
+                skip_dedup=True,
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning("Source test failed: type=%s value=%s error=%s", source_type, source_value, e)
+        raise HTTPException(502, f"source test failed: {e}")
+
+    summary = _summarize_source_test_results(results)
+    summary.update({
+        "source_type": source_type,
+        "source_value": source_value,
+        "content_category": request.content_category,
+    })
+    return summary
 
 
 @router.get("/tasks")
@@ -387,9 +519,16 @@ async def get_active_optimizations():
 async def list_digests(
     page: int = Query(1, ge=1),
     size: int = Query(10, ge=1, le=50),
+    include_all: bool = Query(False),
 ):
-    """日报列表（按日期倒序，仅返回有 AI 内容的记录）"""
-    records, total = await repo.list_digests_with_ai(page=page, size=size)
+    """日报列表。
+
+    默认仅返回有 AI 内容的记录；include_all=True 时返回生成中/失败记录，
+    供管理端轮询使用。
+    """
+    records, total = await repo.list_digests_with_ai(
+        page=page, size=size, include_all=include_all,
+    )
     digests = []
     for r in records:
         r = _enrich_task(r)
@@ -421,6 +560,13 @@ async def get_latest_digest():
 async def refresh_config():
     """刷新配置（从 Java 后端重新拉取）"""
     result = await backend_config.refresh()
+    from standalone.task_executor import invalidate_digest_sections_cache
+    invalidate_digest_sections_cache()
+    try:
+        from standalone.scheduler import refresh_source_schedules
+        await refresh_source_schedules()
+    except Exception as e:
+        logger.warning("Source schedule refresh failed during config refresh: %s", e)
     return {
         "message": "配置已刷新",
         "keys": list(result.keys()) if result else [],
@@ -428,10 +574,10 @@ async def refresh_config():
 
 
 @router.get("/digests/config/sections")
-async def get_digest_sections_config():
+async def get_digest_sections_config(force_refresh: bool = Query(False)):
     """查看日报板块配置"""
     from standalone.task_executor import get_digest_sections
-    sections = await get_digest_sections()
+    sections = await get_digest_sections(force_refresh=force_refresh)
     return {"sections": sections}
 
 

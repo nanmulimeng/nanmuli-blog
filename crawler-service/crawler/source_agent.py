@@ -118,12 +118,13 @@ class SourceAgent:
         # 4. 能力 6: 基于上次评估弱点调整参数
         last_weaknesses = (kb_hint or {}).get("last_weaknesses", [])
         if last_weaknesses:
-            if "source_diversity" in last_weaknesses:
+            weakness_text = " ".join(str(w) for w in last_weaknesses)
+            if "source_diversity" in weakness_text:
                 plan.adjusted_max_items = min(int(plan.adjusted_max_items * 1.2), _MAX_ITEMS_CAP)
                 plan.analysis_log.append(
                     f"Boosted max_items (last weakness: source_diversity) → {plan.adjusted_max_items}"
                 )
-            if "language" in last_weaknesses or "language_coverage" in last_weaknesses:
+            if "language" in weakness_text or "language_coverage" in weakness_text:
                 plan.analysis_log.append(
                     "Hint: last weakness was language coverage — cross-language may activate in optimization"
                 )

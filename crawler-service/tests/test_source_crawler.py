@@ -4,6 +4,7 @@
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -15,6 +16,10 @@ def _make_crawl_result(url="https://example.com", success=True, title="Test",
         success=success, url=url, title=title,
         markdown=markdown, word_count=word_count, metadata={},
     )
+
+
+def _iso_days_ago(days: int) -> str:
+    return (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
 
 
 # ============== crawl_url_sources ==============
@@ -65,7 +70,7 @@ class TestCrawlUrlSources:
         section = {
             "url_sources": [{
                 "url": "https://example.com/dead",
-                "effectiveness": {"dead": True, "last_run_at": "2026-05-20T10:00:00"},
+                "effectiveness": {"dead": True, "last_run_at": _iso_days_ago(1)},
             }],
             "max_items": 5,
         }
@@ -75,6 +80,23 @@ class TestCrawlUrlSources:
 
         assert len(results) == 0
         mock_single.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_dead_source_retried_after_recovery_window(self):
+        """dead 状态超过恢复窗口后允许重试。"""
+        section = {
+            "url_sources": [{
+                "url": "https://example.com/retry",
+                "effectiveness": {"dead": True, "last_run_at": _iso_days_ago(8)},
+            }],
+            "max_items": 5,
+        }
+        with patch("crawler.single.crawl_single_page",
+                   AsyncMock(return_value=_make_crawl_result())) as mock_single:
+            results = await self._run(section)
+
+        assert len(results) == 1
+        mock_single.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_max_items_limits_sources(self):
@@ -175,7 +197,7 @@ class TestCrawlRssSources:
         section = {
             "rss_sources": [{
                 "feed_url": "https://dead.xml",
-                "effectiveness": {"dead": True, "last_run_at": "2026-05-20T10:00:00"},
+                "effectiveness": {"dead": True, "last_run_at": _iso_days_ago(1)},
             }],
             "max_items": 5,
         }

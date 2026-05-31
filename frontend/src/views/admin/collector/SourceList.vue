@@ -1,17 +1,20 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { getSourceList, createSource, updateSource, deleteSource, toggleSource } from '@/api/collector'
-import type { Source, CreateSourceCommand } from '@/types/collector'
+import { getSourceList, createSource, updateSource, deleteSource, toggleSource, testSource } from '@/api/collector'
+import type { Source, SourceTestResult, CreateSourceCommand } from '@/types/collector'
 import { SourceTypeMap, ContentCategoryMap, AiTemplateMap } from '@/types/collector'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
-import { Plus, Delete, Edit } from '@element-plus/icons-vue'
+import { Plus, Delete, Edit, VideoPlay } from '@element-plus/icons-vue'
 
 const loading = ref(false)
 const sources = ref<Source[]>([])
 const showDialog = ref(false)
 const editingId = ref<string | null>(null)
 const formRef = ref<FormInstance>()
+const testingId = ref<string | null>(null)
+const testDialogVisible = ref(false)
+const testResult = ref<SourceTestResult | null>(null)
 
 const form = ref<CreateSourceCommand & { isActive?: boolean }>({
   name: '',
@@ -123,6 +126,24 @@ async function handleToggle(row: Source): Promise<void> {
   } catch { /* request util handles error */ }
 }
 
+async function handleTest(row: Source): Promise<void> {
+  testingId.value = row.id
+  testResult.value = null
+  try {
+    const result = await testSource(row.id)
+    testResult.value = result
+    testDialogVisible.value = true
+    if (result.crawlable) {
+      ElMessage.success(`测试成功，抓取 ${result.success_count} 条有效内容`)
+    } else {
+      ElMessage.warning('测试完成，但没有抓取到有效内容')
+    }
+  } catch { /* request util handles error */ }
+  finally {
+    testingId.value = null
+  }
+}
+
 function categoryLabel(cat: string | null): string {
   if (!cat) return '-'
   return ContentCategoryMap[cat]?.label || cat
@@ -217,9 +238,17 @@ onMounted(fetchData)
         </template>
       </el-table-column>
 
-      <el-table-column label="操作" width="140" fixed="right" align="center">
+      <el-table-column label="操作" width="180" fixed="right" align="center">
         <template #default="{ row }">
           <el-button-group>
+            <el-button
+              type="success"
+              size="small"
+              :icon="VideoPlay"
+              :loading="testingId === row.id"
+              @click="handleTest(row)"
+              title="测试"
+            />
             <el-button type="primary" size="small" :icon="Edit" @click="openEdit(row)" title="编辑" />
             <el-button type="danger" size="small" :icon="Delete" @click="handleDelete(row)" title="删除" />
           </el-button-group>
@@ -297,6 +326,58 @@ onMounted(fetchData)
         <el-button @click="showDialog = false">取消</el-button>
         <el-button type="primary" @click="handleSubmit">{{ editingId ? '更新' : '创建' }}</el-button>
       </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="testDialogVisible"
+      title="订阅源测试结果"
+      width="720px"
+      destroy-on-close
+    >
+      <div v-if="testResult" class="space-y-4">
+        <div class="grid grid-cols-3 gap-3 text-sm">
+          <div>
+            <div class="text-content-tertiary">有效内容</div>
+            <div class="mt-1 text-lg font-semibold text-success">{{ testResult.success_count }}</div>
+          </div>
+          <div>
+            <div class="text-content-tertiary">失败内容</div>
+            <div class="mt-1 text-lg font-semibold text-error">{{ testResult.failed_count }}</div>
+          </div>
+          <div>
+            <div class="text-content-tertiary">总计</div>
+            <div class="mt-1 text-lg font-semibold text-content-primary">{{ testResult.total }}</div>
+          </div>
+        </div>
+
+        <el-alert
+          :type="testResult.crawlable ? 'success' : 'warning'"
+          :closable="false"
+          :title="testResult.crawlable ? '该订阅源可以被爬虫扫描' : '该订阅源暂未抓取到有效内容'"
+        />
+
+        <el-table :data="testResult.items" border size="small">
+          <el-table-column label="状态" width="80">
+            <template #default="{ row }">
+              <el-tag :type="row.success ? 'success' : 'danger'" size="small">
+                {{ row.success ? '成功' : '失败' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="标题" min-width="180">
+            <template #default="{ row }">
+              <div class="truncate" :title="row.title || row.url">{{ row.title || row.url || '-' }}</div>
+              <div v-if="row.url" class="mt-1 truncate text-xs text-content-tertiary" :title="row.url">{{ row.url }}</div>
+            </template>
+          </el-table-column>
+          <el-table-column label="字数" width="80" prop="word_count" />
+          <el-table-column label="错误" min-width="160">
+            <template #default="{ row }">
+              <span class="text-xs text-error/70">{{ row.error || '-' }}</span>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
     </el-dialog>
   </div>
 </template>

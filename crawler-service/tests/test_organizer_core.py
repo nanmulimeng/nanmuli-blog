@@ -6,7 +6,7 @@ from ai.organizer import (
     _normalize_list, _normalize_category, _extract_message_content,
     ContentOrganizer, OrganizedContent, DigestContent,
     CATEGORY_ALIASES, ALLOWED_CATEGORIES, DIGEST_CATEGORY_MAP,
-    InvalidOutputError,
+    DIGEST_SYSTEM_PROMPT, InvalidOutputError,
 )
 from ai.utils import extract_json as _extract_json
 from ai.config import AiSettings
@@ -344,6 +344,78 @@ class TestParseDigestContent:
         with pytest.raises(InvalidOutputError, match="missing valid items"):
             self.organizer._parse_digest_content(response)
 
+    def test_incomplete_digest_items_are_dropped(self):
+        response = """{
+            "title": "Daily Digest 2026-05-07",
+            "summary": "This digest summary is definitely long enough for validation.",
+            "highlight": "Big news today",
+            "tags": ["ai", "cloud"],
+            "fullContent": "This full digest content is definitely long enough for validation.",
+            "sections": [
+                {
+                    "category": "hot_trend",
+                    "categoryName": "Hot Trend",
+                    "emoji": "🔥",
+                    "items": [
+                        {
+                            "title": "AI Breakthrough",
+                            "oneLiner": "New model released",
+                            "sourceUrl": "https://example.com/valid",
+                            "sourceName": "example.com"
+                        },
+                        {
+                            "title": "Missing source",
+                            "oneLiner": "This should not be saved",
+                            "sourceUrl": "",
+                            "sourceName": ""
+                        }
+                    ]
+                }
+            ]
+        }"""
+
+        result = self.organizer._parse_digest_content(response)
+
+        assert len(result.sections[0].items) == 1
+        assert result.sections[0].items[0].title == "AI Breakthrough"
+
+    def test_unmatched_input_url_items_are_dropped(self):
+        response = """{
+            "title": "Daily Digest 2026-05-07",
+            "summary": "This digest summary is definitely long enough for validation.",
+            "highlight": "Big news today",
+            "tags": ["ai", "cloud"],
+            "fullContent": "This full digest content is definitely long enough for validation.",
+            "sections": [
+                {
+                    "category": "hot_trend",
+                    "categoryName": "Hot Trend",
+                    "emoji": "🔥",
+                    "items": [
+                        {
+                            "title": "Valid item",
+                            "oneLiner": "New model released",
+                            "sourceUrl": "https://example.com/valid",
+                            "sourceName": "example.com"
+                        },
+                        {
+                            "title": "Fabricated item",
+                            "oneLiner": "This URL was not in the inputs",
+                            "sourceUrl": "https://fake.example.com/post",
+                            "sourceName": "fake.example.com"
+                        }
+                    ]
+                }
+            ]
+        }"""
+
+        result = self.organizer._parse_digest_content(
+            response,
+            input_urls=frozenset({"https://example.com/valid"}),
+        )
+
+        assert [item.source_url for item in result.sections[0].items] == ["https://example.com/valid"]
+
 
 # ============== Prompt builders ==============
 
@@ -398,6 +470,29 @@ class TestPromptBuilders:
         # 验证两个条目都出现在 prompt 中
         assert "Alpha" in prompt
         assert "Zulu" in prompt
+
+    def test_digest_prompt_exposes_all_source_levels(self):
+        from ai.organizer import DigestPageContent
+        pages = [
+            DigestPageContent(
+                url="http://low.example.com/post",
+                title="Low confidence",
+                markdown="Low confidence content",
+                category="tech_article",
+                source_name="low.example.com",
+                source_level="low",
+            )
+        ]
+
+        prompt = self.organizer._build_digest_prompt(pages, "2026-05-07")
+
+        assert "来源可信度: low" in prompt
+
+    def test_digest_system_prompt_contains_quality_guardrails(self):
+        assert "事实边界" in DIGEST_SYSTEM_PROMPT
+        assert "没有来源支撑" in DIGEST_SYSTEM_PROMPT
+        assert "低可信" in DIGEST_SYSTEM_PROMPT
+        assert "可执行影响" in DIGEST_SYSTEM_PROMPT
 
 
 # ============== Constants ==============

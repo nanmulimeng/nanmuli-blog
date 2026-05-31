@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { getDigestList, triggerDigest } from '@/api/collector'
-import type { DigestListItem } from '@/types/collector'
+import { getDigestList, getDigestSchedulerStatus, triggerDigest } from '@/api/collector'
+import type { DigestListItem, DigestSchedulerStatus } from '@/types/collector'
 import { CollectTaskStatusMap } from '@/types/collector'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Refresh, Calendar, View, Promotion } from '@element-plus/icons-vue'
+import { Refresh, Calendar, View, Promotion, Timer } from '@element-plus/icons-vue'
 import { usePolling } from '@/composables/usePolling'
 import { PAGE_SIZE, POLLING_INTERVAL, DELAY } from '@/constants/api'
 
@@ -16,6 +16,7 @@ const total = ref(0)
 const currentPage = ref(1)
 const pageSize = ref(PAGE_SIZE.DIGEST)
 const triggerLoading = ref(false)
+const schedulerStatus = ref<DigestSchedulerStatus | null>(null)
 
 async function fetchData(): Promise<void> {
   loading.value = true
@@ -25,6 +26,14 @@ async function fetchData(): Promise<void> {
     total.value = res.total
   } finally {
     loading.value = false
+  }
+}
+
+async function fetchSchedulerStatus(): Promise<void> {
+  try {
+    schedulerStatus.value = await getDigestSchedulerStatus()
+  } catch {
+    schedulerStatus.value = null
   }
 }
 
@@ -44,10 +53,11 @@ function handleView(row: DigestListItem): void {
 async function handleTrigger(): Promise<void> {
   try {
     // 检测今天是否已有日报
-    const today = new Date().toISOString().slice(0, 10)
+    const now = new Date()
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
     const todayDigest = digests.value.find(d => d.digest_date?.startsWith(today) && d.status === 3)
 
-    let res: { status: string; message: string }
+    let res: { status: string; message: string; task_id?: number }
     if (todayDigest) {
       await ElMessageBox.confirm(
         '今日已有日报，确定要强制重新生成吗？',
@@ -64,6 +74,10 @@ async function handleTrigger(): Promise<void> {
 
     if (res.status === 'created') {
       ElMessage.success(res.message || '日报生成已触发')
+      if (res.task_id) {
+        router.push(`/admin/digest/task/${res.task_id}`)
+        return
+      }
       setTimeout(() => { fetchData(); startPolling() }, DELAY.DIGEST_REFRESH)
     } else {
       ElMessage.warning(res.message || '日报生成已跳过')
@@ -93,6 +107,7 @@ const { start: startPolling } = usePolling(fetchData, POLLING_INTERVAL.DIGEST_ST
 
 onMounted(() => {
   fetchData()
+  fetchSchedulerStatus()
   startPolling()
 })
 </script>
@@ -107,6 +122,17 @@ onMounted(() => {
       <el-button type="primary" :icon="Promotion" :loading="triggerLoading" @click="handleTrigger">
         生成日报
       </el-button>
+    </div>
+
+    <div v-if="schedulerStatus" class="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-border bg-surface-secondary px-4 py-3 text-sm text-content-secondary">
+      <div class="flex items-center gap-2 text-content-primary">
+        <el-icon><Timer /></el-icon>
+        <span>{{ schedulerStatus.enabled ? '自动日报已启用' : '自动日报未启用' }}</span>
+      </div>
+      <span>调度器: {{ schedulerStatus.running ? '运行中' : '未运行' }}</span>
+      <span v-if="schedulerStatus.cron">Cron: {{ schedulerStatus.cron }}</span>
+      <span v-if="schedulerStatus.next_run">下次: {{ schedulerStatus.next_run }}</span>
+      <span>信息源任务: {{ schedulerStatus.source_jobs || 0 }}</span>
     </div>
 
     <el-table v-loading="loading" :data="digests" border>

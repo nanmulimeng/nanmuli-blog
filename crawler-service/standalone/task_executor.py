@@ -13,6 +13,7 @@ import re
 import time
 import uuid
 from typing import Dict
+from urllib.parse import urlsplit
 
 from config import settings
 from standalone.models import TaskStatus
@@ -23,24 +24,36 @@ logger = logging.getLogger(__name__)
 
 
 async def _fire_callback(task_id: int, status: int):
-    """任务完成/失败后通知 Java 后端（指数退避重试，最多 3 次）"""
-    url = settings.callback_url
+    """任务完成/失败后通知调用方（任务级 callback 优先，配置级 callback 兜底）。"""
+    task = await repo.get_task(task_id)
+    task_callback_url = task.get("callback_url") if task else None
+    url = task_callback_url or settings.callback_url
     if not url:
+        return
+    if not task_callback_url and _should_skip_global_callback(task, url):
+        logger.info("Global callback skipped: task_id=%d task_type=%s url=%s",
+                    task_id, task.get("task_type") if task else None, url)
         return
 
     payload = {"python_task_id": task_id, "status": status}
     headers = {"Content-Type": "application/json"}
+    task_headers = _parse_callback_headers(task.get("callback_headers") if task else None)
+    headers.update(task_headers)
     if settings.callback_api_key:
-        headers["X-Callback-Key"] = settings.callback_api_key
+        headers.setdefault("X-Callback-Key", settings.callback_api_key)
 
     import httpx
     async with httpx.AsyncClient(timeout=settings.callback_timeout) as client:
         for attempt in range(3):
             try:
                 resp = await client.post(url, json=payload, headers=headers)
-                if 200 <= resp.status_code < 300:
+                if 200 <= resp.status_code < 300 and _is_callback_success(resp):
                     logger.info("Callback fired: task_id=%d status=%d -> %d (attempt=%d)",
                                 task_id, status, resp.status_code, attempt + 1)
+                    return
+                if 200 <= resp.status_code < 300:
+                    logger.warning("Callback rejected (unrecoverable): task_id=%d -> body=%s",
+                                   task_id, getattr(resp, "text", "")[:200])
                     return
                 if 400 <= resp.status_code < 500:
                     logger.warning("Callback rejected (unrecoverable): task_id=%d -> %d",
@@ -55,6 +68,49 @@ async def _fire_callback(task_id: int, status: int):
             if attempt < 2:
                 await asyncio.sleep(2 ** attempt)
     logger.warning("Callback failed after 3 retries: task_id=%d status=%d", task_id, status)
+
+
+def _should_skip_global_callback(task: dict | None, url: str) -> bool:
+    """Digest trigger is Python-native; Java's task callback has no matching task row."""
+    if not task or task.get("task_type") != "digest":
+        return False
+    try:
+        path = urlsplit(url).path.rstrip("/")
+    except Exception:
+        return False
+    return path.endswith("/api/internal/collector/callback")
+
+
+def _is_callback_success(resp) -> bool:
+    try:
+        data = resp.json()
+    except Exception:
+        return True
+    if not isinstance(data, dict) or "code" not in data:
+        return True
+    return int(data.get("code") or 0) == 200
+
+
+def _parse_callback_headers(raw_headers: str | None) -> dict[str, str]:
+    """解析任务级 callback headers，过滤协议敏感头。"""
+    if not raw_headers:
+        return {}
+    try:
+        data = json.loads(raw_headers)
+    except Exception:
+        logger.warning("Invalid callback_headers JSON ignored")
+        return {}
+    if not isinstance(data, dict):
+        return {}
+
+    blocked = {"host", "content-length", "transfer-encoding", "connection"}
+    headers: dict[str, str] = {}
+    for key, value in data.items():
+        key_str = str(key).strip()
+        if not key_str or key_str.lower() in blocked:
+            continue
+        headers[key_str] = str(value)
+    return headers
 
 
 class TaskExecutor:
@@ -169,7 +225,7 @@ class TaskExecutor:
 
             elif task["task_type"] == "keyword":
                 from standalone.keyword_handler import KeywordTaskHandler
-                results = await KeywordTaskHandler().execute(task, config)
+                results = await KeywordTaskHandler(repository=repo).execute(task, config)
 
             elif task["task_type"] == "digest":
                 from crawler.digest_orchestrator import DigestOrchestrator
@@ -252,7 +308,7 @@ class TaskExecutor:
                 await repo.update_task_status(task_id, TaskStatus.PROCESSING)
 
                 from standalone.digest_post_processor import DigestPostProcessor
-                processor = DigestPostProcessor()
+                processor = DigestPostProcessor(repository=repo)
 
                 # 日报任务：优先使用 Orchestrator 预生成的日报
                 pre_generated = None
@@ -566,6 +622,7 @@ _SOURCE_CATEGORY_MAP: dict[str, str] = {
     "fly.io": "dev_tool",
     # 热点动态
     "hackernewsletter.com": "hot_trend",
+    "hnrss.org": "hot_trend",
     "news.ycombinator.com": "hot_trend",
     "github.blog": "hot_trend",
     "techcrunch.com": "hot_trend",
@@ -684,12 +741,24 @@ def infer_category(url: str, title: str) -> str:
 # 板块配置内存缓存（TTL=5分钟，避免每次日报任务重复 HTTP 请求）
 _sections_cache: dict = {"data": None, "expires": 0.0}
 _SECTIONS_CACHE_TTL = 300
+_DIGEST_SECTION_MAX_ITEMS_CAP = 6
+_DIGEST_RSS_MAX_ENTRIES_CAP = 3
 
 
-async def get_digest_sections() -> list[dict]:
+def invalidate_digest_sections_cache():
+    """清空日报板块配置缓存。"""
+    global _sections_cache
+    _sections_cache = {"data": None, "expires": 0.0}
+
+
+async def get_digest_sections(force_refresh: bool = False) -> list[dict]:
     """获取日报板块配置（优先 Java 订阅源 API，回退到本地配置，带 TTL 缓存）"""
     global _sections_cache
-    if _sections_cache["data"] is not None and time.time() < _sections_cache["expires"]:
+    if (
+        not force_refresh
+        and _sections_cache["data"] is not None
+        and time.time() < _sections_cache["expires"]
+    ):
         return _sections_cache["data"]
 
     result = await _fetch_digest_sections()
@@ -747,7 +816,7 @@ def _sources_to_sections(sources: list[dict]) -> list[dict]:
         if not src_value:
             logger.debug("Skipping source %s: missing 'value' field", src.get("id", "?"))
             continue
-        cat = src.get("contentCategory") or "tech_article"
+        cat = src.get("contentCategory") or infer_category(src_value, src.get("name", ""))
         group = groups.setdefault(cat, {"keywords": [], "url_sources": [], "rss_sources": []})
         kw_freshness.setdefault(cat, [])
         all_freshness.setdefault(cat, [])
@@ -785,10 +854,11 @@ def _sources_to_sections(sources: list[dict]) -> list[dict]:
                 "effectiveness": effectiveness,
             })
         elif src_type == "rss":
+            max_entries = src.get("maxPages", 10) or 10
             group["rss_sources"].append({
                 "feed_url": src_value,
                 "freshness_hours": src.get("freshnessHours", 24),
-                "max_entries": src.get("maxPages", 10) or 10,
+                "max_entries": min(max_entries, _DIGEST_RSS_MAX_ENTRIES_CAP),
                 "source_id": src.get("id"),
                 "source_name": src.get("name", ""),
                 "effectiveness": effectiveness,
@@ -824,7 +894,10 @@ def _sources_to_sections(sources: list[dict]) -> list[dict]:
         section: dict = {
             "name": cat,
             "source_type": source_type,
-            "max_items": min(max(max_pages_list.get(cat, [5])), 30) if max_pages_list.get(cat) else 5,
+            "max_items": min(
+                max(max_pages_list.get(cat, [5])),
+                _DIGEST_SECTION_MAX_ITEMS_CAP,
+            ) if max_pages_list.get(cat) else 5,
         }
 
         if has_kw:

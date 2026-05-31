@@ -66,12 +66,13 @@ services:
       - AI_MODEL=${AI_MODEL:-qwen-plus}
       # 日报配置
       - DIGEST_ENABLED=${DIGEST_ENABLED:-false}
-      - STANDALONE=true
       - PROXY_URL=${PROXY_URL:-http://host.docker.internal:7890}
       # 回调相关
       - JAVA_API_URL=${JAVA_API_URL:-http://host.docker.internal:8081}
       - CALLBACK_API_KEY=${CALLBACK_API_KEY:-}
       - CALLBACK_URL=${CALLBACK_URL:-http://host.docker.internal:8081/api/internal/collector/callback}
+    volumes:
+      - crawler_data:/app/data
     ports:
       - "8500:8500"
     networks:
@@ -84,3 +85,4 @@ networks:
 volumes:
   postgres_data:
   redis_data:
+  crawler_data:

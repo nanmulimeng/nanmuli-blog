@@ -5,6 +5,8 @@ Crawl4AI 配置模块
 """
 
 from typing import Optional
+import os
+import sys
 
 from crawl4ai import BrowserConfig, CrawlerRunConfig, CacheMode
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
@@ -40,6 +42,23 @@ DEFAULT_EXCLUDED_SELECTOR = (
     "[role='complementary'],[role='contentinfo'],"
     "[aria-label='Cookie notice'],[aria-label='Cookie banner']"
 )
+
+
+def _ensure_utf8_stdio() -> None:
+    """Keep Crawl4AI/Rich logging from crashing on Windows GBK consoles."""
+    os.environ.setdefault("PYTHONUTF8", "1")
+    if sys.platform != "win32":
+        return
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+    os.environ.setdefault("TERM", "xterm-256color")
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            logger.debug("Failed to reconfigure stdio encoding", exc_info=True)
 
 
 async def check_proxy_health(proxy_url: str) -> bool:
@@ -185,6 +204,8 @@ async def get_browser_config(text_mode: bool = True, light_mode: bool = False,
     Returns:
         BrowserConfig 实例
     """
+    _ensure_utf8_stdio()
+
     extra_args = [
         "--disable-gpu",
         "--disable-dev-shm-usage",

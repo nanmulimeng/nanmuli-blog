@@ -94,6 +94,19 @@ SEARCH_ENGINES = {
 }
 
 ENGINE_PRIORITY = ["bing", "baidu", "sogou", "google"]
+BAIDU_REDIRECT_TIMEOUT_SECONDS = 6.0
+WEAK_ENGLISH_KEYWORD_PARTS = {
+    "tech", "blog", "blogs", "article", "articles", "news", "today", "latest",
+    "update", "updates", "tutorial", "tutorials", "guide", "guides", "how", "best",
+    "practice", "practices",
+}
+
+
+def _search_fallback_threshold(max_results: int) -> int:
+    """Enough primary-engine results to skip slow fallback engines."""
+    if max_results <= 0:
+        return 1
+    return min(max_results, max(3, (max_results * 3 + 4) // 5))
 
 TIME_FILTER_PARAMS = {
     "bing": {
@@ -177,6 +190,15 @@ def _extract_keyword_parts(keyword: str) -> list[str]:
     return parts
 
 
+def _effective_keyword_parts(parts: list[str], has_cjk: bool) -> list[str]:
+    """Drop weak search-intent tokens for broad English queries."""
+    if has_cjk or len(parts) < 2:
+        return parts
+
+    strong_parts = [part for part in parts if part not in WEAK_ENGLISH_KEYWORD_PARTS]
+    return strong_parts or parts
+
+
 def _is_relevant_to_keyword(keyword: str, title: str, snippet: str) -> bool:
     if not title or title.strip().lower() in ("no title", ""):
         return False
@@ -207,17 +229,18 @@ def _is_relevant_to_keyword(keyword: str, title: str, snippet: str) -> bool:
     parts = _extract_keyword_parts(keyword_lower)
     if not parts:
         return False
+    effective_parts = _effective_keyword_parts(parts, has_cjk)
 
     title_lower = title.lower()
 
     # 标题中匹配任意一个片段即通过（标题匹配权重高）
-    for part in parts:
+    for part in effective_parts:
         if part in title_lower:
             return True
 
     # snippet 需要匹配 2/3 以上片段（收紧阈值，降低误匹配率）
-    snippet_matches = sum(1 for part in parts if part in combined)
-    min_required = max(1, (len(parts) * 2 + 2) // 3)
+    snippet_matches = sum(1 for part in effective_parts if part in combined)
+    min_required = max(1, (len(effective_parts) * 2 + 2) // 3)
     return snippet_matches >= min_required
 
 
@@ -311,11 +334,16 @@ async def _decode_baidu_redirect(href: str, search_url: str, headers: dict, clie
         "Referer": search_url,
         "User-Agent": headers["User-Agent"],
     }
-    max_retries = 2
+    max_retries = 0
 
     for attempt in range(max_retries + 1):
         try:
-            resp = await client.head(href, headers=link_headers, follow_redirects=True)
+            resp = await client.head(
+                href,
+                headers=link_headers,
+                follow_redirects=True,
+                timeout=BAIDU_REDIRECT_TIMEOUT_SECONDS,
+            )
             candidate = str(resp.url)
             if resp.status_code < 400 and "baidu.com/link?url=" not in candidate:
                 return candidate
@@ -323,7 +351,12 @@ async def _decode_baidu_redirect(href: str, search_url: str, headers: dict, clie
             logger.debug("[Search] Baidu redirect HEAD attempt %s failed: %s", attempt + 1, head_err)
 
         try:
-            resp = await client.get(href, headers=link_headers, follow_redirects=True)
+            resp = await client.get(
+                href,
+                headers=link_headers,
+                follow_redirects=True,
+                timeout=BAIDU_REDIRECT_TIMEOUT_SECONDS,
+            )
             candidate = str(resp.url)
             if resp.status_code < 400 and "baidu.com/link?url=" not in candidate:
                 return candidate
@@ -740,6 +773,7 @@ async def crawl_by_keyword(
     url_source_map = {}
     tried_engines = []
     results = []
+    fallback_threshold = _search_fallback_threshold(max_results)
 
     async def _search_and_crawl():
         nonlocal results
@@ -763,6 +797,15 @@ async def crawl_by_keyword(
                         len(all_search_urls),
                     )
                     if len(all_search_urls) >= max_results:
+                        break
+                    if idx == 0 and len(all_search_urls) >= fallback_threshold:
+                        logger.info(
+                            "[Search] Engine '%s' returned enough URLs (%s/%s, threshold=%s); skipping fallback engines",
+                            current_engine,
+                            len(all_search_urls),
+                            max_results,
+                            fallback_threshold,
+                        )
                         break
                 else:
                     logger.warning("[Search] Engine '%s' returned 0 results for '%s'", current_engine, keyword)

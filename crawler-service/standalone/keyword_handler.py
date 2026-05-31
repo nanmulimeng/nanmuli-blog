@@ -16,8 +16,11 @@ logger = logging.getLogger(__name__)
 class KeywordTaskHandler:
     """关键词任务处理器：搜索 + AI 关键词优化/扩展 + 优化循环"""
 
-    def __init__(self):
-        pass
+    def __init__(self, repository=None):
+        self.repo = repository
+
+    def _repo(self):
+        return self.repo or repo
 
     async def execute(self, task: dict, config) -> list:
         """执行关键词搜索爬取（含 AI 关键词优化/扩展 + 自动优化）"""
@@ -56,7 +59,7 @@ class KeywordTaskHandler:
                 logger.warning("Keyword expansion failed: %s", e)
 
         # 保存 AI 搜索元数据
-        await repo.save_ai_search_metadata(task["id"], {
+        await self._repo().save_ai_search_metadata(task["id"], {
             "originalKeyword": keyword,
             "optimizedKeyword": optimized_keyword,
             "searchVariants": keywords,

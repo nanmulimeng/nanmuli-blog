@@ -5,15 +5,20 @@ import com.nanmuli.blog.application.webcollector.command.UpdateSourceCommand;
 import com.nanmuli.blog.application.webcollector.dto.SourceDTO;
 import com.nanmuli.blog.domain.webcollector.WebCollectSource;
 import com.nanmuli.blog.domain.webcollector.WebCollectSourceRepository;
+import com.nanmuli.blog.infrastructure.crawler.CrawlerTaskClient;
 import com.nanmuli.blog.shared.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -22,6 +27,7 @@ import java.util.List;
 public class WebCollectSourceAppService {
 
     private final WebCollectSourceRepository sourceRepository;
+    private final CrawlerTaskClient crawlerTaskClient;
 
     @Transactional
     public Long create(CreateSourceCommand command, Long userId) {
@@ -37,6 +43,7 @@ public class WebCollectSourceAppService {
         applyDefaults(source);
 
         sourceRepository.save(source);
+        notifyCrawlerSourceConfigChanged();
         log.info("[Source] Created: id={}, name={}, type={}", source.getId(), source.getName(), source.getType());
         return source.getId();
     }
@@ -65,6 +72,7 @@ public class WebCollectSourceAppService {
         }
 
         sourceRepository.save(source);
+        notifyCrawlerSourceConfigChanged();
         log.info("[Source] Updated: id={}", id);
     }
 
@@ -88,10 +96,26 @@ public class WebCollectSourceAppService {
                 .toList();
     }
 
+    public Map<String, Object> testSource(Long id, Long userId) {
+        WebCollectSource source = getSourceOrThrow(id, userId);
+        Map<String, Object> body = new HashMap<>();
+        body.put("type", source.getType());
+        body.put("value", source.getValue());
+        body.put("content_category", source.getContentCategory() != null ? source.getContentCategory() : "tech_article");
+        body.put("crawl_mode", source.getCrawlMode() != null ? source.getCrawlMode() : "single");
+        body.put("max_depth", source.getMaxDepth() != null ? source.getMaxDepth() : 1);
+        body.put("max_pages", Math.min(source.getMaxPages() != null ? source.getMaxPages() : 3, 3));
+        body.put("freshness_hours", source.getFreshnessHours() != null ? source.getFreshnessHours() : 24);
+        body.put("source_id", String.valueOf(source.getId()));
+        body.put("source_name", source.getName());
+        return crawlerTaskClient.testSource(body);
+    }
+
     @Transactional
     public void delete(Long id, Long userId) {
         WebCollectSource source = getSourceOrThrow(id, userId);
         sourceRepository.deleteById(source.getId());
+        notifyCrawlerSourceConfigChanged();
         log.info("[Source] Deleted: id={}", id);
     }
 
@@ -103,6 +127,7 @@ public class WebCollectSourceAppService {
                 WebCollectSource source = getSourceOrThrow(id, userId);
                 source.setIsActive(!source.isActive());
                 sourceRepository.save(source);
+                notifyCrawlerSourceConfigChanged();
                 log.info("[Source] Toggled: id={}, isActive={}", id, source.isActive());
                 return;
             } catch (org.springframework.dao.OptimisticLockingFailureException e) {
@@ -160,6 +185,26 @@ public class WebCollectSourceAppService {
                     throw e;
                 }
             }
+        }
+    }
+
+    private void notifyCrawlerSourceConfigChanged() {
+        Runnable refresh = () -> {
+            try {
+                crawlerTaskClient.refreshConfig();
+            } catch (Exception e) {
+                log.warn("[Source] Failed to notify crawler source config refresh: {}", e.getMessage());
+            }
+        };
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    refresh.run();
+                }
+            });
+        } else {
+            refresh.run();
         }
     }
 

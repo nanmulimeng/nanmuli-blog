@@ -117,6 +117,7 @@ export interface DigestSchedulerStatus {
   cron: string | null
   enabled: boolean
   next_run: string | null
+  source_jobs: number
 }
 
 export interface DigestListResult {
@@ -131,6 +132,11 @@ export interface DigestSectionConfig {
   keyword: string
   max_items: number
   time_range?: string
+}
+
+export interface DigestOptimizationTrend {
+  trend: Array<Record<string, any>>
+  count: number
 }
 
 export interface CollectPage {
@@ -234,6 +240,28 @@ export interface Source {
   lastError: string | null
   createdAt: string
   updatedAt: string
+}
+
+export interface SourceTestItem {
+  success: boolean
+  url: string
+  title: string
+  word_count: number
+  markdown_len: number
+  source_id?: string | null
+  source_name?: string | null
+  error?: string | null
+}
+
+export interface SourceTestResult {
+  source_type: string
+  source_value: string
+  content_category: string
+  total: number
+  success_count: number
+  failed_count: number
+  crawlable: boolean
+  items: SourceTestItem[]
 }
 
 export interface CreateSourceCommand {

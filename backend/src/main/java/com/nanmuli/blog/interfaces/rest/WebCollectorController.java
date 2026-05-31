@@ -219,6 +219,18 @@ public class WebCollectorController {
         return Result.success();
     }
 
+    @Operation(summary = "测试订阅源")
+    @PostMapping("/source/{id}/test")
+    public Result<Object> testSource(@PathVariable Long id) {
+        Long userId = getCurrentUserId();
+        try {
+            return Result.success(sourceAppService.testSource(id, userId));
+        } catch (Exception e) {
+            log.warn("[Source] test failed: id={}, error={}", id, e.getMessage());
+            throw new BusinessException(503, "订阅源测试失败: " + e.getMessage());
+        }
+    }
+
     // ============== Digest Proxy ==============
 
     /**
@@ -230,7 +242,7 @@ public class WebCollectorController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size) {
         try {
-            return Result.success(crawlerTaskClient.proxyGet("/api/v1/digests?page=" + page + "&size=" + size));
+            return Result.success(crawlerTaskClient.proxyGet("/api/v1/digests?page=" + page + "&size=" + size + "&include_all=true"));
         } catch (Exception e) {
             log.warn("[DigestProxy] listDigests failed: {}", e.getMessage());
             throw new BusinessException(503, "Python 爬虫服务不可用: " + e.getMessage());
@@ -323,6 +335,22 @@ public class WebCollectorController {
             return Result.success(crawlerTaskClient.proxyGet("/api/v1/digests/config/sections"));
         } catch (Exception e) {
             log.warn("[DigestProxy] getSectionConfig failed: {}", e.getMessage());
+            throw new BusinessException(503, "Python 爬虫服务不可用: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 获取日报自动优化趋势
+     */
+    @Operation(summary = "获取日报自动优化趋势")
+    @GetMapping("/optimization/digest-trend")
+    public Result<Object> getDigestOptimizationTrend(
+            @RequestParam(defaultValue = "5") int limit) {
+        try {
+            int safeLimit = Math.max(1, Math.min(limit, 50));
+            return Result.success(crawlerTaskClient.proxyGet("/api/v1/optimization/digest-trend?limit=" + safeLimit));
+        } catch (Exception e) {
+            log.warn("[DigestProxy] getDigestOptimizationTrend failed: {}", e.getMessage());
             throw new BusinessException(503, "Python 爬虫服务不可用: " + e.getMessage());
         }
     }

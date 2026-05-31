@@ -140,7 +140,7 @@ public class DailyLogAppService {
         // 填充分类信息（优先从批量查询的Map中获取，回退到单独查询）
         if (dailyLog.getCategoryId() != null) {
             Category category = categoryMap.get(dailyLog.getCategoryId());
-            if (category == null && categoryMap.isEmpty()) {
+            if (category == null && !categoryMap.containsKey(dailyLog.getCategoryId())) {
                 category = categoryRepository.findById(dailyLog.getCategoryId()).orElse(null);
             }
             if (category != null) {

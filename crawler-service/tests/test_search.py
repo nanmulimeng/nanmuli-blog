@@ -132,6 +132,20 @@ class TestIsRelevantToKeyword(unittest.TestCase):
             "zodiac", "Your Daily Horoscope", "love compatibility chart"
         ))
 
+    def test_broad_english_keyword_rejects_weak_title_match(self):
+        self.assertFalse(search._is_relevant_to_keyword(
+            "tech blog deep dive engineering",
+            "TECH definition and meaning",
+            "English dictionary entry for the word tech",
+        ))
+
+    def test_broad_english_keyword_accepts_strong_title_match(self):
+        self.assertTrue(search._is_relevant_to_keyword(
+            "tech blog deep dive engineering",
+            "Engineering deep dive: scaling event pipelines",
+            "A production postmortem from a platform team",
+        ))
+
 
 # ============== baidu_time_filter ==============
 
@@ -898,6 +912,25 @@ class TestCrawlByKeyword(unittest.IsolatedAsyncioTestCase):
         self.assertIn("baidu", call_order)
         self.assertLess(call_order.index("bing"), call_order.index("baidu"))
 
+    async def test_primary_engine_enough_results_skips_fallback_chain(self):
+        """Primary engine enough candidates should skip slow fallback engines."""
+        call_order = []
+
+        async def fake_get_results(keyword, engine, max_results, time_range):
+            call_order.append(engine)
+            if engine == "bing":
+                return [f"https://example{i}.com/page" for i in range(6)]
+            return ["https://baidu-result.com/article"]
+
+        with patch.object(search, "_get_search_results", fake_get_results), \
+             patch.object(search, "_crawl_urls_with_shared_browser", AsyncMock(return_value=[])):
+            with patch.object(search, "dedup_results", lambda x: x):
+                await search.crawl_by_keyword(
+                    keyword="docker", engine="bing", max_results=10
+                )
+
+        self.assertEqual(call_order, ["bing"])
+
     async def test_invalid_time_range_raises(self):
         """无效 time_range → ValueError"""
         with self.assertRaises(ValueError):
@@ -1192,6 +1225,8 @@ class TestDecodeBaiduRedirect(unittest.IsolatedAsyncioTestCase):
             client=client,
         )
         self.assertEqual(result, "https://example.com/resolved")
+        self.assertEqual(client.head.await_args.kwargs["timeout"], search.BAIDU_REDIRECT_TIMEOUT_SECONDS)
+        self.assertEqual(client.get.await_args.kwargs["timeout"], search.BAIDU_REDIRECT_TIMEOUT_SECONDS)
 
     async def test_head_and_get_both_unresolved_returns_none(self):
         """HEAD 和 GET 都未解析（仍为 baidu.com/link）→ 返回 None"""

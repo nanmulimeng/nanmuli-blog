@@ -145,6 +145,37 @@ class TestCreateTask:
         assert call_args.kwargs.get("ai_template") == "tutorial" or \
                call_args[1].get("ai_template") == "tutorial"
 
+    def test_create_task_with_callback_url(self, app_client, mem_db):
+        """创建任务时可指定外部服务 callback_url"""
+        with patch.object(repo, "create_task", new_callable=AsyncMock, return_value=4) as mock_create, \
+             patch("standalone.routes.executor") as mock_executor:
+            mock_executor.submit = AsyncMock()
+
+            resp = app_client.post("/api/v1/tasks", json={
+                "task_type": "single",
+                "url": "https://example.com/article",
+                "callback_url": "https://client.example.com/crawler/callback",
+                "callback_headers": {"X-Client-Token": "client-secret"},
+            })
+
+        assert resp.status_code == 201
+        call_args = mock_create.call_args
+        assert call_args.kwargs["callback_url"] == "https://client.example.com/crawler/callback"
+        assert json.loads(call_args.kwargs["callback_headers_json"]) == {
+            "X-Client-Token": "client-secret"
+        }
+
+    def test_private_callback_url_rejected_by_default(self, app_client, mem_db):
+        """默认拒绝私有网段 callback_url，避免通用服务 SSRF"""
+        resp = app_client.post("/api/v1/tasks", json={
+            "task_type": "single",
+            "url": "https://example.com/article",
+            "callback_url": "http://127.0.0.1:9000/callback",
+        })
+
+        assert resp.status_code == 400
+        assert "callback_url" in resp.json()["detail"]
+
 
 # ============== List Tasks Tests ==============
 
@@ -238,6 +269,27 @@ class TestGetTaskDetail:
         assert data["ai_title"] == "Docker Guide"
         assert data["ai_tags"] == ["docker", "container"]  # parsed from JSON
         assert data["ai_template_label"] == "技术摘要"
+
+    @pytest.mark.asyncio
+    async def test_get_task_detail_does_not_expose_callback_headers(self, app_client, mem_db):
+        """任务详情不回显 callback_headers，避免泄露外部服务密钥"""
+        tid = await _create_task_directly(mem_db, task_type="single")
+        await mem_db.execute(
+            "UPDATE crawl_task SET callback_url = ?, callback_headers = ? WHERE id = ?",
+            (
+                "https://client.example.com/crawler/callback",
+                '{"X-Client-Token":"secret"}',
+                tid,
+            ),
+        )
+        await mem_db.commit()
+
+        resp = app_client.get(f"/api/v1/tasks/{tid}")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["callback_url"] == "https://client.example.com/crawler/callback"
+        assert "callback_headers" not in data
 
     def test_get_nonexistent_task_returns_404(self, app_client, mem_db):
         """查询不存在的任务返回 404"""

@@ -42,6 +42,8 @@ EXCLUDED_DOMAINS = {
     'webmd.com', 'mayoclinic.org', 'healthline.com',
     # 婚恋/情感
     'match.com', 'eharmony.com', 'tinder.com',
+    # Low-value encyclopedias, dictionaries, and domain sales pages for digests
+    'baike.baidu.com', 'dictionary.cambridge.org', 'iciba.com', 'get.tech',
 }
 
 # ============ 域名后缀黑名单 ============

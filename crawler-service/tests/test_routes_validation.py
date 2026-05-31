@@ -213,6 +213,7 @@ class TestCreateTaskValidation:
             })
         assert resp.status_code == 201
 
+
     def test_single_without_url_returns_400(self, app_client):
         """single 类型缺少 url → 400"""
         resp = app_client.post("/api/v1/tasks", json={
@@ -347,6 +348,56 @@ class TestCreateTaskValidation:
             "max_pages": 0,
         })
         assert resp.status_code == 422
+
+
+class TestSourceTestEndpoint:
+    class DummyCrawler:
+        async def __aenter__(self):
+            return MagicMock()
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    def test_rss_source_test_returns_crawl_summary(self, app_client):
+        from crawler.models import CrawlResult
+
+        result = CrawlResult(
+            success=True,
+            url="https://example.com/post",
+            title="Example Post",
+            markdown="content " * 120,
+            word_count=120,
+            metadata={"source_id": "10", "source_name": "Example Feed"},
+        )
+
+        with patch("crawler.config.get_browser_config", new_callable=AsyncMock, return_value=MagicMock()), \
+             patch("crawl4ai.AsyncWebCrawler", return_value=self.DummyCrawler()), \
+             patch("crawler.source_crawler.crawl_rss_sources", new_callable=AsyncMock, return_value=[result]) as mock_crawl:
+            resp = app_client.post("/api/v1/sources/test", json={
+                "type": "rss",
+                "value": "https://example.com/feed.xml",
+                "content_category": "hot_trend",
+                "max_pages": 2,
+                "freshness_hours": 24,
+                "source_id": "10",
+                "source_name": "Example Feed",
+            })
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["crawlable"] is True
+        assert data["success_count"] == 1
+        assert data["failed_count"] == 0
+        assert data["items"][0]["title"] == "Example Post"
+        mock_crawl.assert_awaited_once()
+
+    def test_source_test_blocks_private_url(self, app_client):
+        resp = app_client.post("/api/v1/sources/test", json={
+            "type": "url",
+            "value": "http://127.0.0.1/admin",
+        })
+
+        assert resp.status_code == 400
 
 
 # ============================================================
@@ -623,6 +674,29 @@ class TestRepositoryCreateTask:
         assert row["max_pages"] == 5
         assert row["ai_template"] == "tutorial"
         assert row["time_range"] == "month"
+
+    @pytest.mark.asyncio
+    async def test_create_task_persists_callback_settings(self, mem_db):
+        """任务级 callback 配置随任务保存，供通用服务客户端接收通知"""
+        @asynccontextmanager
+        async def _mock_get_db():
+            yield mem_db
+
+        orig = repo.get_db
+        repo.get_db = _mock_get_db
+        try:
+            task_id = await repo.create_task(
+                task_type="single",
+                source_url="https://example.com/article",
+                callback_url="https://client.example.com/crawler/callback",
+                callback_headers_json='{"X-Client-Token": "secret"}',
+            )
+            task = await repo.get_task(task_id)
+        finally:
+            repo.get_db = orig
+
+        assert task["callback_url"] == "https://client.example.com/crawler/callback"
+        assert task["callback_headers"] == '{"X-Client-Token": "secret"}'
 
 
 # ============================================================

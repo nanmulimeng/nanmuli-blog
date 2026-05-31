@@ -51,6 +51,12 @@ class TestExactDomainMatch:
     def test_stackoverflow_not_excluded(self):
         assert is_excluded_domain("https://stackoverflow.com/questions/123") is False
 
+    def test_low_value_reference_domains_excluded(self):
+        assert is_excluded_domain("https://baike.baidu.com/item/tech/10906792") is True
+        assert is_excluded_domain("https://dictionary.cambridge.org/dictionary/english/tech") is True
+        assert is_excluded_domain("https://www.iciba.com/word?w=tech") is True
+        assert is_excluded_domain("https://get.tech/") is True
+
 
 # ============== www 前缀处理 ==============
 

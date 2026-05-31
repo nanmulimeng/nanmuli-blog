@@ -8,6 +8,7 @@ from types import SimpleNamespace
 
 from crawler.digest_orchestrator import (
     DigestOrchestrator, DigestCrawlPlan, PlannedSection,
+    _calculate_digest_output_quality,
 )
 
 # 预加载 crawler.config 避免 execute() 内延迟 import 触发 crawl4ai
@@ -106,6 +107,26 @@ class TestBuildPlan:
              patch("optimization.knowledge_base.KnowledgeBase.get_last_digest_weaknesses", return_value=None):
             plan = await orch._build_plan({"id": 1})
         assert plan.kb_hint["recommended_engine"] == "bing"
+
+    @pytest.mark.asyncio
+    async def test_quality_trend_uses_actual_dimension_fields(self):
+        sections = [{"name": "s1", "source_type": "keyword", "keyword": "AI"}]
+        trend = [{
+            "overall_score": 0.4,
+            "source_diversity": 0.8,
+            "depth_coverage": 0.8,
+            "angle_coverage": 0.8,
+            "temporal_coverage": 0.8,
+            "perspective_balance": 0.8,
+            "language_coverage": 0.8,
+        }]
+        orch = DigestOrchestrator()
+        with patch("standalone.task_executor.get_digest_sections", return_value=sections), \
+             patch("optimization.knowledge_base.KnowledgeBase.get_strategy_hint", return_value=None), \
+             patch("optimization.knowledge_base.KnowledgeBase.get_last_digest_weaknesses", return_value=None), \
+             patch("optimization.knowledge_base.KnowledgeBase.get_digest_quality_trend", return_value=trend):
+            plan = await orch._build_plan({"id": 1})
+        assert "persistent_weak_dims" not in plan.kb_hint
 
 
 # ============== TestMergeResults ==============
@@ -460,6 +481,37 @@ class TestExecuteIntegration:
 class TestPhase4Evaluation:
     """Phase 4 日报后评估：CoverageEvaluator 评分 → KB 写入，非致命"""
 
+    def test_calculate_digest_output_quality_flags_thin_digest(self):
+        from ai.organizer import DigestContent, DigestSection, DigestItem
+
+        digest = DigestContent(
+            title="技术日报",
+            summary="summary",
+            highlight="highlight",
+            tags=["ai"],
+            full_content="plain text without markdown heading",
+            sections=[
+                DigestSection(
+                    category="hot_trend",
+                    items=[
+                        DigestItem(
+                            title="One item",
+                            one_liner="Short",
+                            source_url="https://example.com/1",
+                            source_name="example.com",
+                        )
+                    ],
+                )
+            ],
+        )
+
+        quality = _calculate_digest_output_quality(digest)
+
+        assert quality["score"] < 0.7
+        assert quality["item_count"] == 1
+        assert any("日报条目数偏少" in s for s in quality["suggestions"])
+        assert "fullContent 缺少 Markdown 标题结构" in quality["suggestions"]
+
     @pytest.mark.asyncio
     async def test_evaluate_digest_quality_writes_to_kb(self):
         """_evaluate_digest_quality() 正确调用 KnowledgeBase.save_digest_evaluation()"""
@@ -472,9 +524,31 @@ class TestPhase4Evaluation:
         all_results = [_make_result(url=f"https://x.com/{i}") for i in range(3)]
 
         from crawler.digest_gen_agent import DigestGenAgentResult
+        from ai.organizer import DigestContent, DigestSection, DigestItem
+        digest_content = DigestContent(
+            title="技术日报",
+            summary="summary",
+            highlight="highlight",
+            tags=["ai"],
+            full_content="# 技术日报\n\n## 热点\n\n内容足够完整",
+            sections=[
+                DigestSection(
+                    category="hot_trend",
+                    items=[
+                        DigestItem(
+                            title=f"Item {i}",
+                            one_liner="This one liner explains developer impact clearly",
+                            source_url=f"https://example.com/{i}",
+                            source_name="example.com",
+                        )
+                        for i in range(5)
+                    ],
+                )
+            ],
+        )
         digest_result = DigestGenAgentResult(
             success=True,
-            digest_content=MagicMock(title="技术日报", sections=[]),
+            digest_content=digest_content,
             tokens_used=100,
             duration_ms=500,
         )
@@ -514,13 +588,51 @@ class TestPhase4Evaluation:
             kb_kwargs = mock_kb.save_digest_evaluation.call_args[1]
             assert kb_kwargs["task_id"] == 42
             assert kb_kwargs["digest_date"] == "2026-05-25"
-            assert kb_kwargs["overall_score"] == 0.55
+            assert kb_kwargs["overall_score"] > 0.55
             dims = kb_kwargs["dimension_scores"]
             assert dims["angle"] == 0.7
             assert dims["source_diversity"] == 0.6
             assert dims["language"] == 0.3
             assert isinstance(kb_kwargs["section_scores"], list)
             assert kb_kwargs["section_scores"][0]["name"] == "tech"
+            assert kb_kwargs["section_scores"][-1]["name"] == "__digest_output__"
+
+    @pytest.mark.asyncio
+    async def test_evaluate_digest_quality_passes_available_ai_organizer_to_evaluator(self):
+        """Phase 4 coverage evaluation should use AI when global organizer is available."""
+        from optimization.evaluator import CoverageEvaluation
+
+        orch = DigestOrchestrator()
+        plan = _make_plan(sections=[_make_section(name="tech", keywords=["AI"])])
+        task = {"id": 43, "digest_date": "2026-05-25"}
+        all_results = [_make_result(url="https://x.com/1")]
+
+        from crawler.digest_gen_agent import DigestGenAgentResult
+        from ai.organizer import DigestContent
+        digest_result = DigestGenAgentResult(
+            success=True,
+            digest_content=DigestContent(
+                title="日报",
+                summary="summary",
+                highlight="highlight",
+                tags=["ai"],
+                full_content="# 日报\n\n内容",
+                sections=[],
+            ),
+        )
+        fake_eval = CoverageEvaluation(overall_score=0.5)
+        fake_organizer = MagicMock()
+        fake_organizer.is_available = True
+
+        with patch("ai.content_organizer", fake_organizer), \
+             patch("optimization.evaluator.CoverageEvaluator") as MockEval, \
+             patch("optimization.knowledge_base.KnowledgeBase") as MockKB:
+            MockEval.return_value.evaluate = AsyncMock(return_value=fake_eval)
+            MockKB.return_value.save_digest_evaluation = AsyncMock()
+
+            await orch._evaluate_digest_quality(digest_result, plan, task, all_results)
+
+        MockEval.assert_called_once_with(fake_organizer)
 
     @pytest.mark.asyncio
     async def test_phase4_failure_non_critical(self):

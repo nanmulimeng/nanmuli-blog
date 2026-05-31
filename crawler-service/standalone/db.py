@@ -52,6 +52,8 @@ CREATE TABLE IF NOT EXISTS crawl_task (
     ai_search_metadata TEXT,
 
     time_range      TEXT DEFAULT 'week',
+    callback_url    TEXT,
+    callback_headers TEXT,
 
     created_at      TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
@@ -134,6 +136,7 @@ CREATE TABLE IF NOT EXISTS optimization_record (
 CREATE INDEX IF NOT EXISTS idx_opt_record_task ON optimization_record(task_id);
 CREATE INDEX IF NOT EXISTS idx_opt_record_delta ON optimization_record(score_delta DESC);
 CREATE INDEX IF NOT EXISTS idx_opt_record_engine ON optimization_record(search_engine, score_delta DESC);
+CREATE INDEX IF NOT EXISTS idx_opt_record_keyword ON optimization_record(search_keyword);
 """
 
 # Incremental migration for existing databases
@@ -153,6 +156,9 @@ _MIGRATIONS = [
     ("digest_highlight", "ALTER TABLE crawl_task ADD COLUMN digest_highlight TEXT"),
     ("idx_digest_date", "CREATE INDEX IF NOT EXISTS idx_digest_date ON crawl_task(digest_date)"),
     ("time_range", "ALTER TABLE crawl_task ADD COLUMN time_range TEXT DEFAULT 'week'"),
+    ("callback_url", "ALTER TABLE crawl_task ADD COLUMN callback_url TEXT"),
+    ("callback_headers", "ALTER TABLE crawl_task ADD COLUMN callback_headers TEXT"),
+    ("idx_opt_record_keyword", "CREATE INDEX IF NOT EXISTS idx_opt_record_keyword ON optimization_record(search_keyword)"),
 ]
 
 

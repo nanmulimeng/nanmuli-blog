@@ -13,9 +13,11 @@ import com.nanmuli.blog.infrastructure.persistence.webcollector.SourceAuthorityM
 import com.nanmuli.blog.shared.result.Result;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.env.Environment;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,6 +39,7 @@ public class InternalCallbackController {
     private final ConfigService configService;
     private final DigestFingerprintRepositoryImpl fingerprintRepository;
     private final SourceAuthorityMapper sourceAuthorityMapper;
+    private final Environment environment;
 
     private volatile boolean apiKeyBlankWarned = false;
 
@@ -47,9 +50,9 @@ public class InternalCallbackController {
     private boolean authRequired(String callbackKey, boolean allowBootstrap) {
         String expectedKey = configService.get("crawler.callback.api-key", "");
         if (expectedKey.isBlank()) {
-            if (allowBootstrap) {
+            if (allowBootstrap && isBootstrapAllowedProfile()) {
                 if (!apiKeyBlankWarned) {
-                    log.warn("[Auth] crawler.callback.api-key is blank — allowing unauthenticated access for bootstrap endpoint");
+                    log.warn("[Auth] crawler.callback.api-key is blank — allowing unauthenticated access for bootstrap endpoint in non-production profile");
                     apiKeyBlankWarned = true;
                 }
                 return false;
@@ -62,6 +65,11 @@ public class InternalCallbackController {
         }
         apiKeyBlankWarned = false;
         return !expectedKey.equals(callbackKey);
+    }
+
+    private boolean isBootstrapAllowedProfile() {
+        return Arrays.stream(environment.getActiveProfiles())
+                .anyMatch(profile -> profile.equals("dev") || profile.equals("local") || profile.equals("test"));
     }
 
     @PostMapping("/callback")
@@ -183,13 +191,16 @@ public class InternalCallbackController {
         List<DigestFingerprint> fingerprints = payload.stream().map(m -> {
             DigestFingerprint fp = new DigestFingerprint();
             fp.setTaskId(m.get("taskId") instanceof Number n ? n.longValue() : null);
-            fp.setUrlHash(String.valueOf(m.getOrDefault("urlHash", "")));
-            fp.setUrl(String.valueOf(m.getOrDefault("url", "")));
-            fp.setTitle(String.valueOf(m.getOrDefault("title", "")));
+            Object urlHashObj = m.get("urlHash");
+            fp.setUrlHash(urlHashObj != null ? urlHashObj.toString() : "");
+            Object urlObj = m.get("url");
+            fp.setUrl(urlObj != null ? urlObj.toString() : "");
+            Object titleObj = m.get("title");
+            fp.setTitle(titleObj != null ? titleObj.toString() : "");
             fp.setSimhash(m.get("simhash") instanceof Number n ? n.longValue() : null);
-            String dateStr = String.valueOf(m.getOrDefault("digestDate", ""));
-            if (!dateStr.isBlank()) {
-                fp.setDigestDate(LocalDate.parse(dateStr));
+            Object dateObj = m.get("digestDate");
+            if (dateObj != null && !dateObj.toString().isBlank()) {
+                fp.setDigestDate(LocalDate.parse(dateObj.toString()));
             }
             return fp;
         }).toList();

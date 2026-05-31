@@ -51,6 +51,77 @@ class DigestCrawlPlan:
     plan_log: list[str] = field(default_factory=list)
 
 
+def _calculate_digest_output_quality(digest_content) -> dict:
+    """对最终日报成品做轻量质量评分，用于 Phase 4 闭环反馈。"""
+    if not digest_content:
+        return {
+            "name": "__digest_output__",
+            "score": 0.0,
+            "item_count": 0,
+            "section_count": 0,
+            "duplicate_source_count": 0,
+            "sourced_item_ratio": 0.0,
+            "avg_one_liner_length": 0,
+            "has_markdown_heading": False,
+            "suggestions": ["日报生成结果为空"],
+        }
+
+    sections = getattr(digest_content, "sections", []) or []
+    items = [
+        item
+        for sec in sections
+        for item in (getattr(sec, "items", []) or [])
+    ]
+    item_count = len(items)
+    section_count = len([sec for sec in sections if getattr(sec, "items", None)])
+    urls = [getattr(item, "source_url", "") for item in items if getattr(item, "source_url", "")]
+    unique_urls = set(urls)
+    duplicate_source_count = max(0, len(urls) - len(unique_urls))
+    sourced_item_ratio = round(len(urls) / item_count, 3) if item_count else 0.0
+    one_liners = [getattr(item, "one_liner", "") or "" for item in items]
+    avg_one_liner_length = int(sum(len(x) for x in one_liners) / item_count) if item_count else 0
+    full_content = getattr(digest_content, "full_content", "") or ""
+    has_markdown_heading = "#" in full_content
+
+    unique_url_ratio = len(unique_urls) / len(urls) if urls else 0.0
+    score = (
+        min(item_count / 5, 1.0) * 0.25
+        + min(section_count / 2, 1.0) * 0.15
+        + sourced_item_ratio * 0.20
+        + unique_url_ratio * 0.15
+        + min(avg_one_liner_length / 30, 1.0) * 0.10
+        + (0.15 if has_markdown_heading else 0.0)
+    )
+
+    suggestions = []
+    if item_count < 5:
+        suggestions.append("日报条目数偏少，建议增加有效来源或降低重复内容占比")
+    if section_count < 2:
+        suggestions.append("日报覆盖板块偏少，建议补充不同主题板块的信息源")
+    if duplicate_source_count:
+        suggestions.append("日报存在重复 sourceUrl，建议加强事件合并和来源去重")
+    if sourced_item_ratio < 1.0:
+        suggestions.append("部分日报条目缺少 sourceUrl，建议强化来源引用约束")
+    if avg_one_liner_length < 30:
+        suggestions.append("oneLiner 信息密度偏低，建议明确影响、动作和适用对象")
+    if not has_markdown_heading:
+        suggestions.append("fullContent 缺少 Markdown 标题结构")
+    if not suggestions:
+        suggestions.append("日报成品结构良好，保持当前生成策略")
+
+    return {
+        "name": "__digest_output__",
+        "score": round(score, 3),
+        "item_count": item_count,
+        "section_count": section_count,
+        "duplicate_source_count": duplicate_source_count,
+        "sourced_item_ratio": sourced_item_ratio,
+        "avg_one_liner_length": avg_one_liner_length,
+        "has_markdown_heading": has_markdown_heading,
+        "suggestions": suggestions,
+    }
+
+
 # ============== 总管 Agent ==============
 
 class DigestOrchestrator:
@@ -60,6 +131,7 @@ class DigestOrchestrator:
         self._crawl_plan: DigestCrawlPlan | None = None
         self._section_documents: list = []
         self._digest_result = None
+        self._global_timeout_reached = False
 
     async def execute(self, task: dict, config, task_executor) -> list:
         """总入口：替代原有 execute_digest_crawl()"""
@@ -68,6 +140,7 @@ class DigestOrchestrator:
         from crawl4ai import AsyncWebCrawler
 
         task_id = task.get("id", "?")
+        self._global_timeout_reached = False
 
         # Phase 0: 事前规划
         self._crawl_plan = await self._build_plan(task)
@@ -131,6 +204,9 @@ class DigestOrchestrator:
                     logger.warning("[Orchestrator] OptimizationAgent failed (non-critical): %s", e)
 
             # Phase 2: 日报生成 Agent（优化后再生成，获得完整数据）
+            # 注：超时后仍允许生成日报（不完整数据生成的日报比没有好）
+            if self._global_timeout_reached:
+                logger.warning("[Orchestrator] Generating digest with incomplete data due to global timeout")
             if self._section_documents:
                 try:
                     from crawler.digest_gen_agent import DigestGenAgent
@@ -165,14 +241,18 @@ class DigestOrchestrator:
                 logger.warning("[Orchestrator] Fingerprint save failed (non-critical): %s", e)
 
         # Phase 4: 日报后评估 → 写入 KB（闭环）
+        # 超时时跳过 KB 写入，避免不完整数据污染知识库推荐
         if self._digest_result and self._digest_result.success:
-            try:
-                await self._evaluate_digest_quality(
-                    self._digest_result, self._crawl_plan, task,
-                    all_results,
-                )
-            except Exception as e:
-                logger.warning("[Orchestrator] Phase 4 digest evaluation failed (non-critical): %s", e)
+            if self._global_timeout_reached:
+                logger.warning("[Orchestrator] Skipping Phase 4 KB write due to global timeout (incomplete data)")
+            else:
+                try:
+                    await self._evaluate_digest_quality(
+                        self._digest_result, self._crawl_plan, task,
+                        all_results,
+                    )
+                except Exception as e:
+                    logger.warning("[Orchestrator] Phase 4 digest evaluation failed (non-critical): %s", e)
 
         return all_results
 
@@ -191,7 +271,7 @@ class DigestOrchestrator:
         if not sections:
             return plan
 
-        # 2. KB 历史推荐 + 上次评估弱点
+        # 2. KB 历史推荐 + 上次评估弱点（复用同一 KB 实例）
         kb_hint = {}
         try:
             from optimization.knowledge_base import KnowledgeBase
@@ -205,39 +285,38 @@ class DigestOrchestrator:
                 kb_hint = {}
             plan.kb_hint = kb_hint
             plan.plan_log.append(f"KB hint: engine={kb_hint.get('recommended_engine')}, strategy={kb_hint.get('recommended_strategy_type')}")
-        except Exception as e:
-            logger.debug("[Orchestrator] KB hint failed: %s", e)
 
-        # 能力 6: 读取上次日报的评估弱点 → 传递给 SourceAgent 自适应
-        try:
-            from optimization.knowledge_base import KnowledgeBase as _KB
-            last_weaknesses = await _KB().get_last_digest_weaknesses()
+            # 能力 6: 读取上次日报的评估弱点 → 传递给 SourceAgent 自适应
+            last_weaknesses = await kb.get_last_digest_weaknesses()
             if last_weaknesses:
                 kb_hint["last_weaknesses"] = last_weaknesses.get("weaknesses", [])
                 kb_hint["last_suggestions"] = last_weaknesses.get("suggestions", [])
                 plan.plan_log.append(f"Last eval weaknesses: {last_weaknesses.get('weaknesses', [])[:3]}")
-        except Exception as e:
-            logger.debug("[Orchestrator] Last weaknesses read failed: %s", e)
 
-        # 能力 7: 读取日报质量趋势 → 影响板块优先级和参数
-        try:
-            from optimization.knowledge_base import KnowledgeBase as _KB2
-            trend = await _KB2().get_digest_quality_trend(limit=5)
+            # 能力 7: 读取日报质量趋势 → 影响板块优先级和参数
+            trend = await kb.get_digest_quality_trend(limit=5)
             if trend:
                 avg_score = sum(t.get("overall_score", 0) for t in trend) / len(trend)
                 plan.plan_log.append(f"Quality trend: avg={avg_score:.2f} over {len(trend)} runs")
-                # 将弱维度传递给板块优先级计算
                 if avg_score < 0.5:
                     weak_dims = []
-                    for dim in ("source_diversity", "depth", "angle", "temporal", "perspective", "language"):
-                        dim_avg = sum(t.get(f"{dim}_coverage", 0) for t in trend) / len(trend)
+                    dim_fields = {
+                        "source_diversity": "source_diversity",
+                        "depth": "depth_coverage",
+                        "angle": "angle_coverage",
+                        "temporal": "temporal_coverage",
+                        "perspective": "perspective_balance",
+                        "language": "language_coverage",
+                    }
+                    for dim, field in dim_fields.items():
+                        dim_avg = sum(t.get(field, 0) for t in trend) / len(trend)
                         if dim_avg < 0.5:
                             weak_dims.append(dim)
                     if weak_dims:
                         kb_hint["persistent_weak_dims"] = weak_dims
                         plan.plan_log.append(f"Persistent weak dimensions: {weak_dims}")
         except Exception as e:
-            logger.debug("[Orchestrator] Quality trend read failed: %s", e)
+            logger.debug("[Orchestrator] KB plan building failed: %s", e)
 
         recommended_engine = kb_hint.get("recommended_engine") or settings.digest_search_engine
 
@@ -386,6 +465,7 @@ class DigestOrchestrator:
                 timeout=snap.get("global_timeout", 600),
             )
         except asyncio.TimeoutError:
+            self._global_timeout_reached = True
             logger.warning("[Orchestrator] Global timeout reached, cancelling %d tasks", len(section_tasks))
             for t in section_tasks:
                 if not t.done():
@@ -406,6 +486,9 @@ class DigestOrchestrator:
 
     def _should_run_optimization(self, snap: dict, all_results: list) -> bool:
         """检查是否满足优化触发条件（按板块统计达标数，非全局总数）"""
+        if self._global_timeout_reached:
+            logger.info("[Orchestrator] Skip optimization because global timeout was reached")
+            return False
         if not (snap.get("optimization_enabled")
                 and snap.get("optimization_mode") in ("digest", "both")
                 and snap.get("digest_optimization_enabled")):
@@ -448,7 +531,9 @@ class DigestOrchestrator:
         from optimization.evaluator import CoverageEvaluator, _get_weights
 
         # 1. 用所有爬取结果做6维评估（复用评估器）
-        evaluator = CoverageEvaluator()
+        from ai import content_organizer as organizer
+
+        evaluator = CoverageEvaluator(organizer if organizer.is_available else None)
         keyword = " ".join(
             kw for s in plan.sections for kw in s.keywords[:2]
         ) if plan.sections else "技术日报"
@@ -483,6 +568,19 @@ class DigestOrchestrator:
         if not suggestions:
             suggestions.append("整体覆盖度良好，保持当前策略")
 
+        output_quality = _calculate_digest_output_quality(
+            getattr(digest_result, "digest_content", None)
+        )
+        section_scores.append(output_quality)
+        suggestions.extend(output_quality.get("suggestions", []))
+        # 覆盖度权重默认 0.7，成品质量权重默认 0.3，可通过配置调整
+        coverage_weight = plan.config_snapshot.get("digest_coverage_weight", 0.7) if plan.config_snapshot else 0.7
+        output_weight = 1.0 - coverage_weight
+        final_score = round(
+            evaluation.overall_score * coverage_weight + output_quality["score"] * output_weight,
+            3,
+        )
+
         # 4. 写入 KB
         digest_date = task.get("digest_date", "")
         task_id = task.get("id", 0)
@@ -492,14 +590,14 @@ class DigestOrchestrator:
             await kb.save_digest_evaluation(
                 task_id=task_id,
                 digest_date=digest_date,
-                overall_score=evaluation.overall_score,
+                overall_score=final_score,
                 dimension_scores=dims,
                 section_scores=section_scores,
                 suggestions=suggestions,
             )
             logger.info(
-                "[Orchestrator] Phase 4: digest quality=%.2f, saved to KB (date=%s)",
-                evaluation.overall_score, digest_date,
+                "[Orchestrator] Phase 4: coverage=%.2f, output=%.2f, final=%.2f, saved to KB (date=%s)",
+                evaluation.overall_score, output_quality["score"], final_score, digest_date,
             )
         except Exception as e:
             logger.warning("[Orchestrator] Phase 4 KB write failed: %s", e)

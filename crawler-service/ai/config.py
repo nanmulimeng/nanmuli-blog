@@ -18,6 +18,9 @@ class AiSettings:
             self._overrides["ai_api_key"] = ai_api_key
         if ai_model is not None:
             self._overrides["ai_model"] = ai_model
+        for key, value in _kwargs.items():
+            if key.startswith("ai_") and value is not None:
+                self._overrides[key] = value
 
     def __getattr__(self, name: str):
         if name.startswith("_"):

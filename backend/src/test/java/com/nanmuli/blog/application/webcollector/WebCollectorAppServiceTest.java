@@ -31,6 +31,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
@@ -78,6 +79,7 @@ class WebCollectorAppServiceTest {
 
     @BeforeEach
     void setUp() {
+        ReflectionTestUtils.setField(service, "self", self);
         tsmMock = mockStatic(TransactionSynchronizationManager.class);
         tsmMock.when(() -> TransactionSynchronizationManager.registerSynchronization(any()))
                 .thenAnswer(invocation -> {
@@ -1196,7 +1198,7 @@ class WebCollectorAppServiceTest {
         @Test
         @DisplayName("markTaskFailed - sets errorMessage and status to FAILED")
         void markTaskFailed_setsErrorAndStatus() {
-            WebCollectTask task = buildCompletedTask();
+            WebCollectTask task = buildTask(CollectTaskStatus.PENDING.getValue());
             when(taskRepository.findById(TASK_ID)).thenReturn(Optional.of(task));
 
             service.markTaskFailed(TASK_ID, "Something went wrong");

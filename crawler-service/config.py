@@ -30,13 +30,13 @@ class Settings(BaseSettings):
     digest_history_load_count: int = 3         # 加载最近 N 期日报用于去重
 
     # 外部服务调用超时
-    callback_timeout: float = 5.0              # Java 后端回调超时（秒）
-    sources_api_timeout: float = 5.0           # Java 订阅源 API 超时（秒）
+    callback_timeout: float = 5.0              # 回调超时（秒）
+    sources_api_timeout: float = 5.0           # 外部订阅源 API 超时（秒）
 
     # 模式切换（已移除，统一为全功能模式）
     # standalone: bool = False  # REMOVED: Phase 3 统一架构
 
-    # 独立模式专用
+    # 任务服务配置
     api_keys: str = ""
     auth_enabled: bool = True
     db_path: str = "data/crawler.db"
@@ -85,14 +85,14 @@ class Settings(BaseSettings):
     eval_weight_perspective: float = 0.15
     eval_weight_language: float = 0.10
 
-    # 独立模式认证配置
+    # 认证配置
     auth_protected_prefixes: str = "/api/v1,/crawl,/organize,/keyword"
     auth_header_name: str = "X-API-Key"
 
     # SQLite 配置
     db_busy_timeout: int = 5000               # SQLite busy_timeout (ms)
 
-    # AI 配置（独立模式 + AI 整理）
+    # AI 配置
     ai_enabled: bool = False
     ai_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     ai_api_key: str = ""
@@ -128,12 +128,13 @@ class Settings(BaseSettings):
     digest_parallel_sections: int = 2  # 板块并行爬取上限
     digest_global_timeout: int = 600  # 板块并行总时限（秒），超时返回已有结果
 
-    # 回调配置（任务完成后通知 Java 后端）
-    callback_url: str = "http://localhost:8081/api/internal/collector/callback"
+    # 回调配置（任务完成后通知调用方）
+    callback_url: str = ""
     callback_api_key: str = ""  # 与 Java 端 crawler.callback.api-key 一致
+    callback_allow_private_urls: bool = False  # 任务级 callback 默认禁止内网地址，避免 SSRF
 
     # Java 后端地址（用于拉取订阅源配置，为空则使用本地配置）
-    java_api_url: str = "http://localhost:8081"
+    java_api_url: str = ""
 
     # 自动优化引擎配置
     optimization_enabled: bool = False

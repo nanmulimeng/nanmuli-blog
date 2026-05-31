@@ -10,12 +10,15 @@
 
 import re
 import datetime
+import logging
 from typing import Dict, List, Optional
 from urllib.parse import urlparse
 
 from .utils import count_words
 from .filters import is_excluded_domain
 from config import settings
+
+logger = logging.getLogger(__name__)
 
 
 
@@ -83,7 +86,7 @@ class SourceAuthority:
         domain = cls._extract_domain(url)
 
         # 0. 优先从 Java API 查询（带缓存）
-        api_result = cls._query_from_api(domain)
+        api_result = cls._query_from_cache(domain)
         if api_result:
             return api_result
 
@@ -118,14 +121,23 @@ class SourceAuthority:
         return domain
 
     @classmethod
-    def _query_from_api(cls, domain: str) -> Dict | None:
-        """从内存缓存查询来源可信度（预热后不发起网络请求）"""
+    def _query_from_cache(cls, domain: str) -> Dict | None:
+        """从内存缓存查询来源可信度（由 preload_authority_cache 预热）"""
         import time as _time
         cached = cls._api_cache.get(domain)
         if cached:
             result, ts = cached
             if _time.time() - ts < cls._cache_ttl:
                 return result
+            # 缓存过期，移除并记录
+            del cls._api_cache[domain]
+            logger.debug("[SourceAuthority] Cache expired for '%s', falling back to hardcoded", domain)
+        elif cls._api_cache:
+            # 缓存非空但未命中 — 域名不在数据库中，正常
+            pass
+        else:
+            # 缓存从未预热 — 可能遗漏数据库配置
+            logger.debug("[SourceAuthority] Cache empty, preload_authority_cache() not called?")
         return None
 
     @classmethod

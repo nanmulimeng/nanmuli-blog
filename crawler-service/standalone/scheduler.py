@@ -85,6 +85,9 @@ async def generate_scheduled_digest(force: bool = False) -> dict:
                     return {"status": "skipped", "reason": "already_exists",
                             "message": f"今日日报已存在（task_id={existing['id']}）"}
 
+            from standalone.task_executor import invalidate_digest_sections_cache
+            invalidate_digest_sections_cache()
+
             task_id = await repo.create_task(
                 task_type="digest",
                 ai_template="daily_digest",

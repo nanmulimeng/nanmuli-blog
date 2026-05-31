@@ -243,3 +243,14 @@ class TestWeaknessFeedback:
         agent = SourceAgent(sec, _make_config(), {})
         plan = agent.analyze(kb_hint=kb_hint)
         assert any("language" in log.lower() for log in plan.analysis_log)
+
+    @patch("crawler.source_analysis.is_truly_dead", return_value=False)
+    def test_formatted_source_diversity_weakness_boosts_max_items(self, _mock):
+        sec = _make_section(
+            max_items=5,
+            keyword_details=[{"value": "AI", "effectiveness": {}}],
+        )
+        kb_hint = {"last_weaknesses": ["source_diversity=0.31 偏低"]}
+        agent = SourceAgent(sec, _make_config(), {})
+        plan = agent.analyze(kb_hint=kb_hint)
+        assert plan.adjusted_max_items > 5

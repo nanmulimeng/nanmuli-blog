@@ -18,6 +18,12 @@ logger = logging.getLogger(__name__)
 class DigestPostProcessor:
     """日报后处理器：预生成日报保存 + AI 整理回退"""
 
+    def __init__(self, repository=None):
+        self.repo = repository
+
+    def _repo(self):
+        return self.repo or repo
+
     async def save_pre_generated(self, task_id: int, task: dict, pre_generated) -> bool:
         """保存 Orchestrator 预生成的日报结果（回填 page_id）"""
         from standalone.organizer_helper import (
@@ -32,14 +38,15 @@ class DigestPostProcessor:
             date = task.get("digest_date") or task.get("keyword") or ""
 
             # 从已保存的 DB 页面获取 URL → page_id 映射
-            pages = await repo.get_pages_by_task(task_id)
+            repository = self._repo()
+            pages = await repository.get_pages_by_task(task_id)
             url_to_page_id = {}
             for p in pages:
                 if p.get("crawl_status") == 2 and p.get("url"):
                     url_to_page_id[p["url"]] = p["id"]
 
             # Highlight 去重
-            recent_highlights = await repo.get_recent_highlights(count=3)
+            recent_highlights = await repository.get_recent_highlights(count=3)
             if recent_highlights and digest.highlight:
                 if _is_highlight_duplicate(digest.highlight, recent_highlights):
                     _replace_duplicate_highlight(digest, recent_highlights)
@@ -47,7 +54,7 @@ class DigestPostProcessor:
             # 序列化 sections 并回填 page_id
             sections_data = serialize_digest_sections(digest, url_to_page_id=url_to_page_id)
 
-            await repo.save_digest_results(
+            await repository.save_digest_results(
                 task_id,
                 ai_title=digest.title,
                 ai_summary=digest.summary,
@@ -76,15 +83,17 @@ class DigestPostProcessor:
 
         if not organizer.is_available:
             logger.info("AI not configured, skipping organization for task %d", task_id)
-            await repo.save_ai_error(task_id, "AI 未配置")
+            repository = self._repo()
+            await repository.save_ai_error(task_id, "AI 未配置")
             return False
 
         task_type = task["task_type"]
         max_retries = ai_settings.ai_max_retries
 
-        pages = await repo.get_pages_by_task(task_id)
+        repository = self._repo()
+        pages = await repository.get_pages_by_task(task_id)
         if not pages or not any(p.get("crawl_status") == 2 and p.get("raw_markdown") for p in pages):
-            await repo.save_ai_error(task_id, "没有成功的页面可供 AI 整理")
+            await repository.save_ai_error(task_id, "没有成功的页面可供 AI 整理")
             return False
 
         for attempt in range(max_retries + 1):
@@ -120,19 +129,19 @@ class DigestPostProcessor:
                 except Exception as retry_err:
                     msg = f"AI 输出被截断且重试失败，原始爬取结果已保留：{retry_err}"
                     logger.warning("Task %d AI truncation retry also failed: %s", task_id, retry_err)
-                    await repo.save_ai_error(task_id, msg)
+                    await repository.save_ai_error(task_id, msg)
                     return False
 
             except UnrecoverableError as e:
                 msg = f"AI API 请求被拒绝：{e}"
                 logger.warning("Task %d AI unrecoverable: %s, skipping retry", task_id, e)
-                await repo.save_ai_error(task_id, msg)
+                await repository.save_ai_error(task_id, msg)
                 return False
 
             except InvalidOutputError as e:
                 msg = f"AI 输出格式校验失败：{e}"
                 logger.warning("Task %d AI invalid output: %s, skipping retry", task_id, e)
-                await repo.save_ai_error(task_id, msg)
+                await repository.save_ai_error(task_id, msg)
                 return False
 
             except RateLimitError as e:
@@ -142,7 +151,7 @@ class DigestPostProcessor:
                 if attempt < max_retries:
                     await asyncio.sleep(backoff)
                     continue
-                await repo.save_ai_error(task_id, "AI API 频率限制，已重试仍失败，请稍后再试")
+                await repository.save_ai_error(task_id, "AI API 频率限制，已重试仍失败，请稍后再试")
 
             except OrganizerError as e:
                 backoff = 2 ** attempt
@@ -151,13 +160,13 @@ class DigestPostProcessor:
                 if attempt < max_retries:
                     await asyncio.sleep(backoff)
                     continue
-                await repo.save_ai_error(task_id, f"AI 整理失败 (已重试 {max_retries} 次)：{e}")
+                await repository.save_ai_error(task_id, f"AI 整理失败 (已重试 {max_retries} 次)：{e}")
 
             except Exception as e:
                 logger.error("Task %d AI unexpected error: %s", task_id, e, exc_info=True)
                 if attempt < max_retries:
                     await asyncio.sleep(2 ** attempt)
                     continue
-                await repo.save_ai_error(task_id, f"AI 整理异常：{e}")
+                await repository.save_ai_error(task_id, f"AI 整理异常：{e}")
 
         return False

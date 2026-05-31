@@ -19,8 +19,8 @@ const digest = ref<DigestDetail | null>(null)
 
 // 路由参数解析：/admin/digest/latest | /admin/digest/:date | /admin/digest/task/:id
 const routeMode = computed(() => {
-  if (route.name === 'AdminDigestLatest' || !route.params.date) return 'latest'
   if (route.name === 'AdminDigestTaskDetail') return 'task'
+  if (route.name === 'AdminDigestLatest' || !route.params.date) return 'latest'
   return 'date'
 })
 

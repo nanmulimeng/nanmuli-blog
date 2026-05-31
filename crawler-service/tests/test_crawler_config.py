@@ -24,6 +24,7 @@ from crawler.config import (
     extract_markdown,
     DEFAULT_EXCLUDED_TAGS,
     _FIT_MIN_RATIO,
+    _ensure_utf8_stdio,
     _filter_nav_noise,
     _filter_breadcrumbs,
     _filter_boilerplate,
@@ -87,6 +88,27 @@ class TestRunParams:
 # ============== get_browser_config ==============
 
 class TestGetBrowserConfig:
+    def test_windows_stdio_is_reconfigured_for_crawl4ai_logs(self, monkeypatch):
+        class Stream:
+            def __init__(self):
+                self.calls = []
+
+            def reconfigure(self, **kwargs):
+                self.calls.append(kwargs)
+
+        stdout = Stream()
+        stderr = Stream()
+        monkeypatch.setattr(sys, "platform", "win32")
+        monkeypatch.setattr(sys, "stdout", stdout)
+        monkeypatch.setattr(sys, "stderr", stderr)
+        monkeypatch.delenv("PYTHONIOENCODING", raising=False)
+
+        _ensure_utf8_stdio()
+
+        assert os.environ["PYTHONIOENCODING"] == "utf-8"
+        assert stdout.calls == [{"encoding": "utf-8", "errors": "replace"}]
+        assert stderr.calls == [{"encoding": "utf-8", "errors": "replace"}]
+
     @pytest.mark.asyncio
     @patch("crawler.config.BrowserConfig")
     @patch("crawler.config.get_effective_proxy", new_callable=AsyncMock, return_value="http://127.0.0.1:7890")

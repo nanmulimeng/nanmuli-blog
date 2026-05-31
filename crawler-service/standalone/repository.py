@@ -33,6 +33,7 @@ async def create_task(
     max_pages: int = 10, config_json: str = None,
     ai_template: str = "tech_summary", time_range: str = "week",
     digest_date: str = None,
+    callback_url: str = None, callback_headers_json: str = None,
 ) -> int:
     """创建任务，返回 task_id"""
     async with get_db() as db:
@@ -40,10 +41,12 @@ async def create_task(
         cursor = await db.execute(
             """INSERT INTO crawl_task
                (task_type, source_url, keyword, search_engine, max_depth, max_pages,
-                crawl_config, ai_template, time_range, digest_date)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                crawl_config, ai_template, time_range, digest_date,
+                callback_url, callback_headers)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (task_type, source_url, keyword, search_engine, max_depth, max_pages,
-             config_json, ai_template, time_range, digest_date)
+             config_json, ai_template, time_range, digest_date,
+             callback_url, callback_headers_json)
         )
         await db.commit()
         return cursor.lastrowid
@@ -85,10 +88,18 @@ async def list_tasks(status: int = None, task_type: str = None,
         return [_row_to_dict(r) for r in rows], total
 
 
-async def list_digests_with_ai(page: int = 1, size: int = 10) -> tuple[list[dict], int]:
-    """分页查询有 AI 内容的日报任务（SQL 层面过滤 + 分页）"""
+async def list_digests_with_ai(
+    page: int = 1, size: int = 10, include_all: bool = False,
+) -> tuple[list[dict], int]:
+    """分页查询日报任务。
+
+    默认只返回有 AI 内容的日报，供公开列表使用；include_all=True 时返回
+    全状态日报，供管理端查看生成中的任务。
+    """
     async with get_db() as db:
-        where_sql = "WHERE task_type = 'digest' AND ai_title IS NOT NULL AND ai_title != ''"
+        where_sql = "WHERE task_type = 'digest'"
+        if not include_all:
+            where_sql += " AND ai_title IS NOT NULL AND ai_title != ''"
 
         count_cursor = await db.execute(
             "SELECT COUNT(*) FROM crawl_task " + where_sql

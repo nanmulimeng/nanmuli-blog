@@ -22,9 +22,18 @@ public class DigestFingerprintRepositoryImpl {
         }
     }
 
+    /**
+     * 批量保存指纹，分批执行避免单次 SQL 过长。
+     * 每批最多 100 条，使用批量 INSERT + ON CONFLICT DO NOTHING。
+     */
     public void saveAll(List<DigestFingerprint> fingerprints) {
-        for (DigestFingerprint fp : fingerprints) {
-            fingerprintMapper.insertIgnoreOnConflict(fp);
+        if (fingerprints == null || fingerprints.isEmpty()) {
+            return;
+        }
+        int batchSize = 100;
+        for (int i = 0; i < fingerprints.size(); i += batchSize) {
+            List<DigestFingerprint> batch = fingerprints.subList(i, Math.min(i + batchSize, fingerprints.size()));
+            fingerprintMapper.batchInsertIgnoreOnConflict(batch);
         }
     }
 

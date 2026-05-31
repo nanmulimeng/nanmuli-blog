@@ -1,5 +1,5 @@
 import { get, post, del, put } from '@/utils/request'
-import type { CollectTask, CollectTaskListDTO, CollectPage, CreateCollectTaskCommand, ConvertToArticleCommand, ConvertToDailyLogCommand, CollectTaskQuery, DigestListResult, DigestDetail, DigestSchedulerStatus, DigestSectionConfig, Source, CreateSourceCommand, UpdateSourceCommand } from '@/types/collector'
+import type { CollectTask, CollectTaskListDTO, CollectPage, CreateCollectTaskCommand, ConvertToArticleCommand, ConvertToDailyLogCommand, CollectTaskQuery, DigestListResult, DigestDetail, DigestSchedulerStatus, DigestSectionConfig, DigestOptimizationTrend, Source, SourceTestResult, CreateSourceCommand, UpdateSourceCommand } from '@/types/collector'
 import type { PageResult } from '@/types/api'
 
 // 创建采集任务
@@ -79,6 +79,11 @@ export function getDigestSectionConfig(): Promise<{ sections: DigestSectionConfi
   return get<{ sections: DigestSectionConfig[] }>('/admin/collector/digest/config/sections')
 }
 
+// 获取日报自动优化趋势
+export function getDigestOptimizationTrend(limit = 5): Promise<DigestOptimizationTrend> {
+  return get<DigestOptimizationTrend>('/admin/collector/optimization/digest-trend', { params: { limit } })
+}
+
 // ============== Public Digest API ==============
 
 // 公开日报列表
@@ -120,5 +125,9 @@ export function deleteSource(id: string | number): Promise<void> {
 
 export function toggleSource(id: string | number): Promise<void> {
   return post<void>(`/admin/collector/source/${id}/toggle`)
+}
+
+export function testSource(id: string | number): Promise<SourceTestResult> {
+  return post<SourceTestResult>(`/admin/collector/source/${id}/test`)
 }
 

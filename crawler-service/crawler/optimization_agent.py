@@ -160,14 +160,17 @@ class OptimizationAgent:
         self._fatigue.reset()
 
         # 跨运行疲劳预填充：从 KB 读取最近运行的趋势
+        # 只预填 window-1 次 False，保留 1 次机会避免维度被直接跳过
         try:
             cross_run_fatigue = await kb.get_recent_dimension_fatigue(limit=3)
             for dim, scores in cross_run_fatigue.items():
-                for _ in range(self._fatigue._window):
+                prefill_count = max(1, self._fatigue._window - 1)
+                for _ in range(prefill_count):
                     self._fatigue.record(dim, False)
                 logger.info(
-                    "[OptAgent] Cross-run fatigue pre-filled for '%s': %s",
-                    dim, [f"{s:.2f}" for s in scores],
+                    "[OptAgent] Cross-run fatigue pre-filled for '%s' (%d/%d): %s",
+                    dim, prefill_count, self._fatigue._window,
+                    [f"{s:.2f}" for s in scores],
                 )
         except Exception as e:
             logger.debug("[OptAgent] Cross-run fatigue check failed: %s", e)
@@ -514,14 +517,16 @@ class OptimizationAgent:
         strategy_history.append(strategy)
 
         # 合并结果 + 更新 SectionDocument
+        before_merge_count = len(all_results)
         added = self._merge_optimized_results(
             new_results, all_results, seen_urls, content_dedup,
         )
+        merged_results = all_results[before_merge_count:]
 
         if added > 0:
             doc = self._find_section_document(section_documents, section.name)
             if doc:
-                self._rebuild_section_document(doc, new_results)
+                self._rebuild_section_document(doc, merged_results)
             logger.debug(
                 "[OptAgent] Section '%s': +%d results (strategy=%s, engine=%s)",
                 section.name, added, strategy.strategy_type, strategy.engine,
@@ -534,8 +539,12 @@ class OptimizationAgent:
     def _rebuild_section_document(
         self, doc: SectionDocument, new_results: list,
     ):
-        """将重爬结果追加到 SectionDocument（heuristic 清洗）"""
+        """将重爬结果追加到 SectionDocument（heuristic 清洗 + URL 规范化去重）"""
         from crawler.config import _filter_breadcrumbs, _filter_boilerplate, _filter_nav_noise
+        from crawler.utils import normalize_url
+
+        # 用规范化 URL 构建已存在集合，避免 http/https/www 等变体重复
+        existing_urls = {normalize_url(e.url) for e in doc.entries if e.url}
 
         for r in new_results:
             content = getattr(r, "markdown", None) or (r.get("markdown", "") if isinstance(r, dict) else "")
@@ -550,10 +559,10 @@ class OptimizationAgent:
             if len(cleaned) < 100:
                 continue
 
-            # 去重：不追加已有的 URL
-            existing_urls = {e.url for e in doc.entries}
-            if url in existing_urls:
+            # 去重：用规范化 URL 比较
+            if not url or normalize_url(url) in existing_urls:
                 continue
+            existing_urls.add(normalize_url(url))
 
             doc.entries.append(SourceEntry(
                 url=url,

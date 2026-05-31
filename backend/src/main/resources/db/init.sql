@@ -631,7 +631,8 @@ CREATE TABLE IF NOT EXISTS web_collect_source (
     user_id         BIGINT NOT NULL,
     created_at      TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMP NOT NULL DEFAULT NOW(),
-    is_deleted      BOOLEAN NOT NULL DEFAULT FALSE
+    is_deleted      BOOLEAN NOT NULL DEFAULT FALSE,
+    version         INTEGER DEFAULT 0
 );
 
 COMMENT ON TABLE web_collect_source IS 'Web Collector 订阅源表 - 管理 URL/关键词/RSS 订阅';
@@ -643,6 +644,7 @@ COMMENT ON COLUMN web_collect_source.last_run_status IS '上次执行结果：su
 
 CREATE INDEX IF NOT EXISTS idx_source_active ON web_collect_source(is_active, schedule_cron) WHERE is_deleted = FALSE;
 CREATE INDEX IF NOT EXISTS idx_source_category ON web_collect_source(content_category) WHERE is_deleted = FALSE;
+CREATE UNIQUE INDEX IF NOT EXISTS uk_source_name_active ON web_collect_source (name) WHERE is_deleted = false;
 
 -- 采集任务表
 CREATE TABLE IF NOT EXISTS web_collect_task (
@@ -844,6 +846,77 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_category_slug_active ON category(slug) WHE
 
 -- 配置key部分唯一索引
 CREATE UNIQUE INDEX IF NOT EXISTS idx_config_key_active ON sys_config(config_key) WHERE is_deleted = FALSE;
+
+-- Digest dedupe fingerprints
+CREATE TABLE IF NOT EXISTS digest_fingerprint (
+    id          BIGINT PRIMARY KEY,
+    task_id     BIGINT,
+    url_hash    VARCHAR(64) NOT NULL,
+    url         VARCHAR(2048),
+    title       VARCHAR(500),
+    simhash     BIGINT,
+    digest_date DATE,
+    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    is_deleted  BOOLEAN DEFAULT FALSE
+);
+
+CREATE INDEX IF NOT EXISTS idx_digest_fp_date ON digest_fingerprint(digest_date);
+CREATE INDEX IF NOT EXISTS idx_digest_fp_url_hash ON digest_fingerprint(url_hash);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_digest_fp_unique ON digest_fingerprint(url_hash, digest_date);
+
+COMMENT ON TABLE digest_fingerprint IS 'Digest dedupe fingerprints for cross-day URL and SimHash matching';
+
+-- Source authority scores
+CREATE TABLE IF NOT EXISTS source_authority (
+    id          BIGINT PRIMARY KEY,
+    domain      VARCHAR(255) NOT NULL UNIQUE,
+    score       INT NOT NULL DEFAULT 50,
+    level       VARCHAR(20) NOT NULL DEFAULT 'medium',
+    is_active   BOOLEAN DEFAULT TRUE,
+    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    is_deleted  BOOLEAN DEFAULT FALSE
+);
+
+INSERT INTO source_authority (id, domain, score, level) VALUES
+(-1, 'docs.spring.io', 95, 'official'),
+(-2, 'spring.io', 95, 'official'),
+(-3, 'docs.python.org', 95, 'official'),
+(-4, 'python.org', 95, 'official'),
+(-5, 'developer.mozilla.org', 95, 'official'),
+(-6, 'kubernetes.io', 95, 'official'),
+(-7, 'react.dev', 95, 'official'),
+(-8, 'vuejs.org', 95, 'official'),
+(-9, 'docs.github.com', 95, 'official'),
+(-10, 'aws.amazon.com', 95, 'official'),
+(-11, 'cloud.google.com', 95, 'official'),
+(-12, 'openai.com', 95, 'official'),
+(-13, 'anthropic.com', 95, 'official'),
+(-14, 'arxiv.org', 95, 'official'),
+(-15, 'huggingface.co', 95, 'official'),
+(-100, 'medium.com', 80, 'high'),
+(-101, 'dev.to', 80, 'high'),
+(-102, 'stackoverflow.com', 80, 'high'),
+(-103, 'infoq.com', 80, 'high'),
+(-104, 'juejin.cn', 80, 'high'),
+(-105, 'zhihu.com', 80, 'high'),
+(-106, 'news.ycombinator.com', 80, 'high'),
+(-107, 'reddit.com', 80, 'high'),
+(-108, 'v2ex.com', 80, 'high'),
+(-109, 'csdn.net', 80, 'high'),
+(-110, 'blog.csdn.net', 80, 'high'),
+(-111, 'ruanyifeng.com', 80, 'high'),
+(-200, 'github.io', 60, 'medium'),
+(-201, 'github.com', 60, 'medium'),
+(-202, 'netlify.app', 60, 'medium'),
+(-203, 'vercel.app', 60, 'medium')
+ON CONFLICT (domain) DO NOTHING;
+
+CREATE INDEX IF NOT EXISTS idx_source_authority_domain ON source_authority(domain) WHERE is_deleted = FALSE;
+CREATE INDEX IF NOT EXISTS idx_source_authority_level ON source_authority(level) WHERE is_deleted = FALSE;
+
+COMMENT ON TABLE source_authority IS 'Source authority scores for dynamic crawler quality evaluation';
 
 -- ============================================
 -- 初始化数据

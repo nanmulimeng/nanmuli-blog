@@ -126,6 +126,19 @@ class TestShouldRunOptimization:
         orch = self._setup_orch([5, 4, 2])
         assert orch._should_run_optimization(snap, []) is True
 
+    def test_returns_false_after_global_timeout(self):
+        """全局超时后不再进入优化补爬"""
+        snap = {
+            "optimization_enabled": True,
+            "optimization_mode": "digest",
+            "digest_optimization_enabled": True,
+            "digest_optimization_min_sections": 2,
+            "digest_optimization_min_results_per_section": 3,
+        }
+        orch = self._setup_orch([5, 4, 2])
+        orch._global_timeout_reached = True
+        assert orch._should_run_optimization(snap, []) is False
+
     def test_returns_false_when_all_sections_weak(self):
         """所有板块都不达标时不触发"""
         snap = {
@@ -207,6 +220,62 @@ class TestRebuildSectionDocuments:
         assert doc.total_word_count > 0
         assert "---" in doc.merged_content
         assert doc.entries[0].source_type == "optimization"
+
+    @pytest.mark.asyncio
+    async def test_recrawl_updates_document_with_only_merged_new_results(self):
+        """重爬返回重复 URL 时，只把实际合并成功的新结果追加到 SectionDocument。"""
+        agent = _make_agent()
+        from crawler.optimization_agent import WeakSection
+        from crawler.section_document import SectionDocument
+        from crawler.utils import normalize_url
+        from optimization.strategy import SearchStrategy
+
+        duplicate = _make_result(url="https://dup.com/post", markdown="Duplicate " * 40)
+        fresh = _make_result(url="https://fresh.com/post", markdown="Fresh " * 40)
+        all_results = [duplicate]
+        seen_urls = {normalize_url(duplicate.url)}
+        doc = SectionDocument(section_name="tech", entries=[])
+
+        breadth_gen = MagicMock()
+        breadth_gen.generate.return_value = SearchStrategy(
+            keyword="AI",
+            engine="bing",
+            time_range="week",
+            strategy_type="engine_switch",
+            reason="test",
+            target_dimension="source_diversity",
+        )
+        kb = MagicMock()
+        kb.get_strategy_hint = AsyncMock(return_value={})
+        kb.get_similar_keyword_strategies = AsyncMock(return_value=[])
+        content_dedup = MagicMock()
+        content_dedup.is_duplicate.return_value = {"is_duplicate": False}
+        content_dedup.add = MagicMock()
+
+        with patch("crawler.search.crawl_by_keyword", new_callable=AsyncMock, return_value=[duplicate, fresh]):
+            added = await agent._recrawl_section(
+                WeakSection(
+                    section=_make_section("tech", keywords=["AI"], engine="bing"),
+                    evaluation=_make_eval(source_diversity=0.2),
+                    weakest_dimensions=["source_diversity"],
+                ),
+                evaluator=MagicMock(),
+                breadth_gen=breadth_gen,
+                depth_gen=MagicMock(),
+                kb=kb,
+                organizer=MagicMock(),
+                all_results=all_results,
+                seen_urls=seen_urls,
+                section_documents=[doc],
+                content_dedup=content_dedup,
+                ctx={"config": MagicMock(), "crawler": MagicMock()},
+                strategy_history=[],
+                round_num=1,
+                deadline=time.monotonic() + 30,
+            )
+
+        assert added == 1
+        assert [entry.url for entry in doc.entries] == ["https://fresh.com/post"]
 
 
 # ============== TestFatigueTracker ==============

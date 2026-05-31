@@ -90,6 +90,46 @@ class TestListDigests:
         data = resp.json()
         assert data["total"] == 1
 
+    @pytest.mark.asyncio
+    async def test_list_hides_in_progress_digest_by_default(self, app, patched_repo):
+        repo = patched_repo
+
+        await repo.create_task(
+            task_type="digest",
+            keyword="2026-05-10",
+            ai_template="daily_digest",
+            digest_date="2026-05-10",
+        )
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            resp = await ac.get("/digests")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 0
+        assert data["records"] == []
+
+    @pytest.mark.asyncio
+    async def test_list_can_include_in_progress_digest_for_admin(self, app, patched_repo):
+        repo = patched_repo
+
+        digest_id = await repo.create_task(
+            task_type="digest",
+            keyword="2026-05-10",
+            ai_template="daily_digest",
+            digest_date="2026-05-10",
+        )
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            resp = await ac.get("/digests?include_all=true")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["records"][0]["id"] == digest_id
+        assert data["records"][0]["status"] == 0
+        assert data["records"][0]["ai_title"] is None
+
 
 # ============== GET /digests/latest ==============
 
@@ -231,3 +271,53 @@ class TestDigestSectionsConfig:
         assert len(data["sections"]) >= 3
         # 验证板块结构有效
         assert all("keyword" in s for s in data["sections"])
+
+    @pytest.mark.asyncio
+    async def test_sections_cache_can_be_invalidated(self, monkeypatch):
+        from standalone import task_executor
+
+        task_executor.invalidate_digest_sections_cache()
+        calls = {"count": 0}
+
+        async def fake_fetch_sections():
+            calls["count"] += 1
+            return [{"name": f"section-{calls['count']}", "keyword": "python"}]
+
+        monkeypatch.setattr(task_executor, "_fetch_digest_sections", fake_fetch_sections)
+
+        first = await task_executor.get_digest_sections()
+        second = await task_executor.get_digest_sections()
+        task_executor.invalidate_digest_sections_cache()
+        third = await task_executor.get_digest_sections()
+
+        assert calls["count"] == 2
+        assert first == second
+        assert third[0]["name"] == "section-2"
+
+        task_executor.invalidate_digest_sections_cache()
+
+    @pytest.mark.asyncio
+    async def test_config_refresh_invalidates_sections_and_refreshes_source_schedules(self, app, monkeypatch):
+        from standalone import backend_config, scheduler, task_executor
+
+        calls = {"refresh": 0, "schedules": 0, "invalidate": 0}
+
+        async def fake_backend_refresh():
+            calls["refresh"] += 1
+            return {"digest.enabled": "true"}
+
+        async def fake_refresh_source_schedules():
+            calls["schedules"] += 1
+
+        def fake_invalidate():
+            calls["invalidate"] += 1
+
+        monkeypatch.setattr(backend_config, "refresh", fake_backend_refresh)
+        monkeypatch.setattr(scheduler, "refresh_source_schedules", fake_refresh_source_schedules)
+        monkeypatch.setattr(task_executor, "invalidate_digest_sections_cache", fake_invalidate)
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            resp = await ac.post("/config/refresh")
+
+        assert resp.status_code == 200
+        assert calls == {"refresh": 1, "schedules": 1, "invalidate": 1}

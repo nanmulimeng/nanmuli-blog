@@ -89,6 +89,14 @@ class TestRssSources:
         assert sections[0]["rss_sources"][0]["feed_url"] == "https://hnrss.org/newest"
         assert sections[0]["rss_sources"][0]["freshness_hours"] == 24
 
+    def test_rss_max_entries_is_capped_for_digest(self):
+        sources = [{
+            "type": "rss", "value": "https://hnrss.org/frontpage",
+            "contentCategory": "hot_trend", "maxPages": 10,
+        }]
+        sections = _sources_to_sections(sources)
+        assert sections[0]["rss_sources"][0]["max_entries"] == 3
+
 
 class TestMixedSources:
     def test_keyword_and_url_same_category(self):
@@ -191,6 +199,16 @@ class TestSourceEdgeCases:
         sources = [{"type": "keyword", "value": "test", "contentCategory": None}]
         sections = _sources_to_sections(sources)
         assert sections[0]["name"] == "tech_article"
+
+    def test_missing_content_category_can_be_inferred_from_domain(self):
+        sources = [{"type": "rss", "value": "https://hnrss.org/frontpage", "contentCategory": None}]
+        sections = _sources_to_sections(sources)
+        assert sections[0]["name"] == "hot_trend"
+
+    def test_section_max_items_is_capped_for_digest(self):
+        sources = [{"type": "keyword", "value": "AI", "contentCategory": "hot_trend", "maxPages": 30}]
+        sections = _sources_to_sections(sources)
+        assert sections[0]["max_items"] == 6
 
     def test_missing_type_defaults_to_keyword(self):
         """缺少 type 字段默认为 keyword"""

@@ -212,6 +212,11 @@ public class CrawlerTaskClient {
         }
     }
 
+    public Map<String, Object> testSource(Map<String, Object> sourceConfig) {
+        JsonNode resp = post("/api/v1/sources/test", sourceConfig);
+        return toMap(resp);
+    }
+
     /**
      * Digest 代理 POST — 返回原始 Map 给 Controller
      */

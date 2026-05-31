@@ -63,6 +63,12 @@ def _apply_ai_settings(config: dict[str, str]) -> None:
         settings.ai_model = config["ai.model"]
     if config.get("ai.max_tokens", ""):
         settings.ai_max_tokens = _to_int(config["ai.max_tokens"])
+    if config.get("ai.digest_per_max_chars", ""):
+        settings.ai_digest_per_max_chars = _to_int(config["ai.digest_per_max_chars"])
+    if config.get("ai.digest_total_budget", ""):
+        settings.ai_digest_total_budget = _to_int(config["ai.digest_total_budget"])
+    if config.get("ai.digest_max_tokens", ""):
+        settings.ai_digest_max_tokens = _to_int(config["ai.digest_max_tokens"])
     if "ai.base_url" in config:
         settings.ai_base_url = config["ai.base_url"]
     if "ai.api_key" in config:
@@ -81,6 +87,22 @@ def _apply_digest_settings(config: dict[str, str]) -> None:
         settings.digest_sections = config["digest.sections"]
     if config.get("digest.parallel_sections", ""):
         settings.digest_parallel_sections = _to_int(config["digest.parallel_sections"])
+    if config.get("digest.global_timeout", ""):
+        settings.digest_global_timeout = _to_int(config["digest.global_timeout"])
+    if config.get("digest.filter_min_content", ""):
+        settings.digest_filter_min_content = _to_int(config["digest.filter_min_content"])
+    if config.get("digest.optimization_enabled", ""):
+        settings.digest_optimization_enabled = _to_bool(config["digest.optimization_enabled"])
+    if config.get("digest.optimization_min_sections", ""):
+        settings.digest_optimization_min_sections = _to_int(config["digest.optimization_min_sections"])
+    if config.get("digest.optimization_min_results_per_section", ""):
+        settings.digest_optimization_min_results_per_section = _to_int(
+            config["digest.optimization_min_results_per_section"]
+        )
+    if config.get("digest.optimization_target_score", ""):
+        settings.digest_optimization_target_score = _to_float(
+            config["digest.optimization_target_score"]
+        )
 
 
 def _apply_callback_settings(config: dict[str, str]) -> None:
@@ -103,6 +125,22 @@ def _apply_optimization_settings(config: dict[str, str]) -> None:
         settings.optimization_mode = config["optimization.mode"]
     if config.get("optimization.max_rounds", ""):
         settings.optimization_max_rounds = _to_int(config["optimization.max_rounds"])
+    if config.get("optimization.breadth_max_rounds", ""):
+        settings.breadth_max_rounds = _to_int(config["optimization.breadth_max_rounds"])
+    if config.get("optimization.total_budget_seconds", ""):
+        settings.optimization_total_budget_seconds = _to_int(
+            config["optimization.total_budget_seconds"]
+        )
+    if config.get("optimization.min_improvement", ""):
+        settings.optimization_min_improvement = _to_float(config["optimization.min_improvement"])
+    if config.get("optimization.depth_target_score", ""):
+        settings.optimization_depth_target_score = _to_float(
+            config["optimization.depth_target_score"]
+        )
+    if config.get("optimization.breadth_target_score", ""):
+        settings.optimization_breadth_target_score = _to_float(
+            config["optimization.breadth_target_score"]
+        )
 
 
 def _apply_bubble_settings(config: dict[str, str]) -> None:

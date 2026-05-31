@@ -141,6 +141,52 @@ class TestCallAi:
         assert result["finish_reason"] == "stop"
 
     @pytest.mark.asyncio
+    async def test_anthropic_success_response(self):
+        organizer = ContentOrganizer(settings=_make_configured_settings(
+            ai_base_url="https://api.deepseek.com/anthropic",
+        ))
+        ai_data = {
+            "content": [{"type": "text", "text": '{"title":"test"}'}],
+            "stop_reason": "end_turn",
+            "usage": {"input_tokens": 12, "output_tokens": 8},
+        }
+        with patch.object(organizer, "_get_client", new_callable=AsyncMock) as mock_client:
+            client = AsyncMock()
+            client.post.return_value = self._mock_response(200, ai_data)
+            mock_client.return_value = client
+
+            result = await organizer._call_ai("sys", "user", max_tokens=200)
+
+        client.post.assert_awaited_once()
+        url = client.post.await_args.args[0]
+        kwargs = client.post.await_args.kwargs
+        assert url == "https://api.deepseek.com/anthropic/v1/messages"
+        assert kwargs["json"]["system"] == "sys"
+        assert kwargs["json"]["messages"][0]["content"][0]["text"] == "user"
+        assert kwargs["headers"]["anthropic-version"] == "2023-06-01"
+        assert result["content"] == '{"title":"test"}'
+        assert result["total_tokens"] == 20
+        assert result["finish_reason"] == "end_turn"
+
+    @pytest.mark.asyncio
+    async def test_anthropic_max_tokens_raises_truncated(self):
+        organizer = ContentOrganizer(settings=_make_configured_settings(
+            ai_base_url="https://api.deepseek.com/anthropic",
+        ))
+        ai_data = {
+            "content": [{"type": "text", "text": "partial"}],
+            "stop_reason": "max_tokens",
+            "usage": {"input_tokens": 10, "output_tokens": 200},
+        }
+        with patch.object(organizer, "_get_client", new_callable=AsyncMock) as mock_client:
+            client = AsyncMock()
+            client.post.return_value = self._mock_response(200, ai_data)
+            mock_client.return_value = client
+
+            with pytest.raises(TruncatedError, match="truncated"):
+                await organizer._call_ai("sys", "user")
+
+    @pytest.mark.asyncio
     async def test_429_raises_rate_limit(self, configured_organizer):
         with patch.object(configured_organizer, "_get_client", new_callable=AsyncMock) as mock_client:
             client = AsyncMock()

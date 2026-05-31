@@ -238,3 +238,68 @@ class TestCleanupOldRecords:
         cursor = await mem_db.execute("SELECT COUNT(*) AS cnt FROM optimization_record")
         row = await cursor.fetchone()
         assert row["cnt"] == 1
+
+
+# ============== Digest evaluation feedback ==============
+
+class TestDigestEvaluationFeedback:
+
+    @pytest.mark.asyncio
+    async def test_save_digest_evaluation_stores_weak_dimensions(self, mem_db):
+        await mem_db.execute(
+            "INSERT INTO crawl_task (id, task_type, status) VALUES (101, 'digest', 3)",
+        )
+        await mem_db.commit()
+
+        with patch("optimization.knowledge_base.get_db", _mock_get_db(mem_db)):
+            kb = KnowledgeBase()
+            await kb.save_digest_evaluation(
+                task_id=101,
+                digest_date="2026-05-28",
+                overall_score=0.42,
+                dimension_scores={
+                    "angle": 0.72,
+                    "source_diversity": 0.31,
+                    "depth": 0.61,
+                    "temporal": 0.66,
+                    "perspective": 0.54,
+                    "language": 0.29,
+                },
+                suggestions=["扩展来源", "补充英文资料"],
+            )
+            feedback = await kb.get_last_digest_weaknesses()
+
+        assert feedback is not None
+        assert feedback["weaknesses"] == ["source_diversity", "language"]
+        assert feedback["suggestions"] == ["扩展来源", "补充英文资料"]
+
+    @pytest.mark.asyncio
+    async def test_recent_dimension_fatigue_uses_actual_dimension_columns(self, mem_db):
+        await mem_db.execute(
+            "INSERT INTO crawl_task (id, task_type, status) VALUES (201, 'digest', 3)",
+        )
+        rows = [
+            ("2026-05-26 08:00:00", 0.70, 0.70, 0.30),
+            ("2026-05-27 08:00:00", 0.50, 0.50, 0.50),
+            ("2026-05-28 08:00:00", 0.30, 0.30, 0.80),
+        ]
+        for created_at, source_diversity, perspective_balance, depth_coverage in rows:
+            await mem_db.execute(
+                """INSERT INTO optimization_record
+                   (task_id, round_num, source_diversity, perspective_balance,
+                    depth_coverage, angle_coverage, temporal_coverage, language_coverage,
+                    overall_score, search_keyword, search_engine, time_range,
+                    strategy_type, score_delta, created_at)
+                   VALUES (201, 0, ?, ?, ?, 0.8, 0.8, 0.8,
+                           0.4, '2026-05-28', 'digest', '',
+                           'digest_final_eval', 0.0, ?)""",
+                (source_diversity, perspective_balance, depth_coverage, created_at),
+            )
+        await mem_db.commit()
+
+        with patch("optimization.knowledge_base.get_db", _mock_get_db(mem_db)):
+            fatigue = await KnowledgeBase().get_recent_dimension_fatigue(limit=3)
+
+        assert fatigue["source_diversity"] == [0.30, 0.50, 0.70]
+        assert fatigue["perspective"] == [0.30, 0.50, 0.70]
+        assert "depth" not in fatigue

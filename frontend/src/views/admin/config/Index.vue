@@ -138,7 +138,8 @@ async function handleSaveSection(group: string, sectionName: string): Promise<vo
       try { await updateConfig(config.configKey, value); saved++; originalData.value[config.configKey] = value } catch { failed++ }
     }
     const parts = [saved && `保存 ${saved}`, skipped && `跳过 ${skipped}`, failed && `失败 ${failed}`].filter(Boolean)
-    ElMessage.success(parts.length ? parts.join(' / ') : '无变更')
+    const msg = parts.length ? parts.join(' / ') : '无变更'
+    if (failed > 0) { ElMessage.warning(msg) } else { ElMessage.success(msg) }
     if (sectionName === 'proxy') await fetchProxyStatus()
   } catch { ElMessage.error('保存失败') }
   finally { savingSection.value = null }
@@ -266,7 +267,7 @@ onMounted(fetchData)
                           :model-value="formData[config.configKey]"
                           active-value="true"
                           inactive-value="false"
-                          @change="(val) => { formData[config.configKey] = String(val); handleSave(config.configKey) }"
+                          @change="(val: string | number | boolean) => { formData[config.configKey] = String(val); handleSave(config.configKey) }"
                         />
                         <span class="text-sm text-content-secondary">
                           {{ formData[config.configKey] === 'true' ? '已启用' : '已禁用' }}
