@@ -398,7 +398,7 @@ public class WebCollectorAppService {
     /**
      * 处理 Python 回调：按 pythonTaskId 找到 Java 任务并同步状态
      */
-    public void handleCallback(Integer pythonTaskId) {
+    public void handleCallback(Integer pythonTaskId, int payloadStatus) {
         Optional<WebCollectTask> opt = taskRepository.findByPythonTaskId(pythonTaskId);
         if (opt.isEmpty()) {
             log.warn("[Callback] No Java task found for pythonTaskId={}", pythonTaskId);
@@ -410,7 +410,17 @@ public class WebCollectorAppService {
             return;
         }
         log.info("[Callback] Syncing task {} from pythonTaskId={}", task.getId(), pythonTaskId);
-        syncFromPythonSilent(task);
+        try {
+            syncFromPythonSilent(task);
+        } catch (Exception e) {
+            // GET 同步失败时，用 payload 中的 status 作为 fallback
+            if (payloadStatus >= 0) {
+                log.warn("[Callback] Sync failed, using payload status={} as fallback for task {}", payloadStatus, task.getId());
+                if (updateTaskStatusIfKnown(task, payloadStatus, "Callback")) {
+                    taskRepository.save(task);
+                }
+            }
+        }
     }
 
     /**
@@ -420,7 +430,7 @@ public class WebCollectorAppService {
         // 状态同步
         Object statusObj = pythonTask.get("status");
         if (statusObj instanceof Number num) {
-            task.updateStatus(CollectTaskStatus.of(num.intValue()));
+            updateTaskStatusIfKnown(task, num.intValue(), "SyncFromPython");
         }
 
         // 错误信息 — 确保 FAILED 状态不显示空错误
@@ -467,6 +477,16 @@ public class WebCollectorAppService {
         if (aiDuration instanceof Number num) task.setAiDuration(num.intValue());
         Object tokensUsed = pythonTask.get("ai_tokens_used");
         if (tokensUsed instanceof Number num) task.setTokensUsed(num.intValue());
+    }
+
+    private boolean updateTaskStatusIfKnown(WebCollectTask task, Integer status, String source) {
+        CollectTaskStatus nextStatus = CollectTaskStatus.of(status);
+        if (nextStatus == CollectTaskStatus.UNKNOWN) {
+            log.warn("[{}] Unknown collect task status ignored: taskId={}, status={}", source, task.getId(), status);
+            return false;
+        }
+        task.updateStatus(nextStatus);
+        return true;
     }
 
     /**

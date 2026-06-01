@@ -57,6 +57,12 @@ class TestExactDomainMatch:
         assert is_excluded_domain("https://www.iciba.com/word?w=tech") is True
         assert is_excluded_domain("https://get.tech/") is True
 
+    def test_low_value_digest_domains_from_real_runs_excluded(self):
+        assert is_excluded_domain("https://www.merriam-webster.com/dictionary/production") is True
+        assert is_excluded_domain("https://www.runoob.com/w3cnote/llm-intro.html") is True
+        assert is_excluded_domain("https://www.investopedia.com/terms/f/factors-production.asp") is True
+        assert is_excluded_domain("https://educationleaves.com/what-is-production/") is True
+
 
 # ============== www 前缀处理 ==============
 
@@ -112,6 +118,37 @@ class TestPathPatterns:
     def test_generic_rss_path(self):
         assert is_excluded_domain("https://example.com/rss") is True
 
+    def test_low_value_digest_paths_from_real_runs_excluded(self):
+        assert is_excluded_domain("https://learn.microsoft.com/en-us/answers/questions/123/software-define") is True
+        assert is_excluded_domain("https://learn.microsoft.com/en-us/intune/configmgr/core/understand/software-center") is True
+        assert is_excluded_domain("https://www.techtarget.com/searchitoperations/definition/production") is True
+        assert is_excluded_domain("https://www.nvidia.com/en-us/industries/aec/") is True
+        assert is_excluded_domain("https://catalog.northeastern.edu/course-descriptions/csye/") is True
+        assert is_excluded_domain("https://www.udemy.com/course/road-from-software-engineer-to-software-architect/") is True
+        assert is_excluded_domain(
+            "https://github.blog/news-insights/company-news/still-a-developer-just-outside-our-latest-github-shop-collection-is-here/"
+        ) is True
+        assert is_excluded_domain(
+            "https://github.blog/news-insights/company-news/still-a-developer-just-outside-our-latest-github-shop-collection-is-here"
+        ) is True
+        assert is_excluded_domain("https://www.microsoft.com/en-us/software-download/?msockid=abc") is True
+        assert is_excluded_domain("https://www.britannica.com/technology/software") is True
+        assert is_excluded_domain("https://copilot.microsoft.com/?msockid=abc") is True
+        assert is_excluded_domain("https://en.wikipedia.org/wiki/Software") is True
+        assert is_excluded_domain("https://www.ofzenandcomputing.com/what-is-software-complete-guide-to-types-categories/") is True
+        assert is_excluded_domain("https://www.geeksforgeeks.org/computer-science-fundamentals/software-and-its-types/") is True
+
+    def test_file_extension_with_query_is_excluded(self):
+        assert is_excluded_domain(
+            "https://www.timextender.com/report.pdf?hsLang=en"
+        ) is True
+
+    def test_low_value_developer_homepages_excluded(self):
+        assert is_excluded_domain("https://developer.android.com/") is True
+        assert is_excluded_domain("https://developer.microsoft.com/en-us/") is True
+        assert is_excluded_domain("https://developer.apple.com/") is True
+        assert is_excluded_domain("https://developer.android.com/topic/performance") is False
+
 
 # ============== 扩展名排除 ==============
 
@@ -134,6 +171,10 @@ class TestSearchEnginePaths:
 
     def test_bing_search_path(self):
         assert is_excluded_domain("https://www.bing.com/search?q=test") is True
+
+    def test_bing_redirect_paths(self):
+        assert is_excluded_domain("https://www.bing.com/ck/a?u=a1abc") is True
+        assert is_excluded_domain("https://www.bing.com/url?u=https://example.com") is True
 
     def test_baidu_search_path(self):
         """百度搜索路径 /s? 匹配：URL 中需包含 '/s?' 子串"""

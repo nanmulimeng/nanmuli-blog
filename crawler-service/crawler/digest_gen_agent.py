@@ -16,6 +16,13 @@ _SOURCE_LEVEL_ORDER = {"official": 0, "high": 1, "medium": 2, "low": 3, "spam": 
 _MIN_DIGEST_SECTIONS = 2
 _MIN_DIGEST_ITEMS = 5
 _MAX_DIGEST_ITEMS = 12
+_OPEN_SOURCE_DOMAINS = {
+    "github.com", "github.blog", "gitlab.com", "gitee.com",
+    "npmjs.com", "pypi.org", "pkg.go.dev", "crates.io",
+    "huggingface.co", "apache.org", "cncf.io", "openjsf.org",
+    "rust-lang.org", "python.org", "nodejs.org", "deno.land",
+    "bun.sh", "kubernetes.io", "docker.com", "ossinsight.io",
+}
 
 
 @dataclass
@@ -136,6 +143,23 @@ class DigestGenAgent:
                 source_name = extract_source_name(url)
                 doc_category = getattr(doc, "section_name", "") or ""
                 category = doc_category if doc_category in DIGEST_CATEGORY_MAP else infer_category(url, title)
+                if category == "open_source" and not _is_open_source_digest_page(url):
+                    continue
+
+                expanded_pages = _expand_open_source_listing(
+                    url=url,
+                    title=title,
+                    content=content,
+                    category=category,
+                    source_level_provider=SourceAuthority.score,
+                )
+                if expanded_pages:
+                    for page in expanded_pages:
+                        dedupe_key = _canonical_digest_url(page.url)
+                        existing = pages_by_url.get(dedupe_key)
+                        if existing is None or _is_better_digest_page(page, existing):
+                            pages_by_url[dedupe_key] = page
+                    continue
 
                 try:
                     authority = SourceAuthority.score(url)
@@ -223,6 +247,131 @@ def _clean_source_url(url: str) -> str:
     return url.strip().rstrip(".,;:!?，。；：！？")
 
 
+def _is_open_source_digest_page(url: str) -> bool:
+    """Keep open_source focused on repositories and official project sources."""
+    if not url:
+        return False
+    try:
+        parsed = urlsplit(url.strip())
+    except Exception:
+        return False
+
+    domain = parsed.netloc.lower()
+    if domain.startswith("www."):
+        domain = domain[4:]
+
+    if domain == "github.com":
+        parts = [p for p in parsed.path.split("/") if p]
+        if parts[:1] == ["trending"]:
+            return True
+        return len(parts) >= 2 and parts[0] not in {"features", "topics", "marketplace"}
+
+    return domain in _OPEN_SOURCE_DOMAINS
+
+
+def _expand_open_source_listing(
+    *,
+    url: str,
+    title: str,
+    content: str,
+    category: str,
+    source_level_provider,
+) -> list:
+    """Split high-signal listing pages into source-specific project pages."""
+    if category != "open_source" or not _is_github_trending_url(url):
+        return []
+
+    from ai.organizer import DigestPageContent
+
+    pages = []
+    link_matches = list(re.finditer(
+        r"^##\s+\[\s*([^/\]\n]+?)\s*/\s*([^\]\n]+?)\]\((https://github\.com/[^)\s]+)\)",
+        content,
+        flags=re.MULTILINE,
+    ))
+    matches = [
+        {
+            "start": match.start(),
+            "owner": re.sub(r"\s+", "", match.group(1)).strip(),
+            "repo": re.sub(r"\s+", "", match.group(2)).strip(),
+            "url": match.group(3).strip(),
+        }
+        for match in link_matches
+    ]
+
+    if not matches:
+        matches = [
+            {
+                "start": match.start(),
+                "owner": match.group(1).strip(),
+                "repo": match.group(2).strip(),
+                "url": f"https://github.com/{match.group(1).strip()}/{match.group(2).strip()}",
+            }
+            for match in re.finditer(
+                r"^\*\*\s*([A-Za-z0-9_.-]+)\s*/\s*([A-Za-z0-9_.-]+)\s*\*\*(?:\s*\([^)]*\))?\s*:",
+                content,
+                flags=re.MULTILINE,
+            )
+        ]
+
+    if not matches:
+        return []
+
+    for idx, match in enumerate(matches[:12]):
+        owner = match["owner"]
+        repo = match["repo"]
+        repo_url = match["url"]
+        next_start = matches[idx + 1]["start"] if idx + 1 < len(matches) else len(content)
+        entry_markdown = content[match["start"]:next_start].strip()
+        if len(entry_markdown) < 80:
+            continue
+        try:
+            authority = source_level_provider(repo_url)
+            source_level = authority.get("level", "medium")
+        except Exception:
+            source_level = "medium"
+        pages.append(DigestPageContent(
+            url=repo_url,
+            title=f"{owner}/{repo}",
+            markdown=entry_markdown,
+            summary=_first_non_heading_line(entry_markdown),
+            category="open_source",
+            source_name="GitHub Trending",
+            source_level=source_level,
+            page_id=None,
+        ))
+    if pages:
+        logger.info(
+            "[DigestGenAgent] Expanded GitHub Trending listing into %d repo pages",
+            len(pages),
+        )
+    return pages
+
+
+def _is_github_trending_url(url: str) -> bool:
+    if not url:
+        return False
+    try:
+        parsed = urlsplit(url.strip())
+    except Exception:
+        return False
+    domain = parsed.netloc.lower()
+    if domain.startswith("www."):
+        domain = domain[4:]
+    return domain == "github.com" and parsed.path.rstrip("/") == "/trending"
+
+
+def _first_non_heading_line(markdown: str, max_chars: int = 220) -> str:
+    for line in (markdown or "").splitlines()[1:]:
+        text = line.strip()
+        if not text or text.startswith("[") or text.startswith("!"):
+            continue
+        if len(text) > max_chars:
+            return text[:max_chars].strip()
+        return text
+    return (markdown or "").strip()[:max_chars].strip()
+
+
 def _is_better_digest_page(candidate, current) -> bool:
     candidate_rank = _SOURCE_LEVEL_ORDER.get(candidate.source_level, _SOURCE_LEVEL_ORDER["medium"])
     current_rank = _SOURCE_LEVEL_ORDER.get(current.source_level, _SOURCE_LEVEL_ORDER["medium"])
@@ -261,11 +410,17 @@ def _supplement_digest_coverage(content, pages: list):
         for item in current_items
         if getattr(item, "source_url", "")
     }
+    current_categories = {
+        getattr(section, "category", "")
+        for section in content.sections
+        if getattr(section, "items", [])
+    }
+    missing_categories = [cat for cat in categories if cat not in current_categories]
     current_count = len(current_items)
     target_sections = min(len(categories), _MIN_DIGEST_SECTIONS)
     target_items = min(len(usable_pages), _MIN_DIGEST_ITEMS)
 
-    if len(content.sections) >= target_sections and current_count >= target_items:
+    if not missing_categories and len(content.sections) >= target_sections and current_count >= target_items:
         return content
 
     from ai.organizer import DIGEST_CATEGORY_MAP, DigestItem, DigestSection

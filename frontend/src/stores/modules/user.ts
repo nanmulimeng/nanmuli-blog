@@ -41,7 +41,10 @@ export const useUserStore = defineStore(
 
     async function checkAuthStatus(): Promise<boolean> {
       try {
-        const user = await getCurrentUser()
+        const user = await getCurrentUser({
+          skipAuthRedirect: true,
+          skipErrorMessage: true,
+        })
         userInfo.value = user
         isAuthenticated.value = true
         return true

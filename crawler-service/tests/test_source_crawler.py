@@ -82,6 +82,21 @@ class TestCrawlUrlSources:
         mock_single.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_excluded_url_source_skipped(self):
+        section = {
+            "url_sources": [{
+                "url": "https://www.microsoft.com/en-us/software-download/?msockid=abc",
+            }],
+            "max_items": 5,
+        }
+        with patch("crawler.single.crawl_single_page",
+                   AsyncMock(return_value=_make_crawl_result())) as mock_single:
+            results = await self._run(section)
+
+        assert results == []
+        mock_single.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_dead_source_retried_after_recovery_window(self):
         """dead 状态超过恢复窗口后允许重试。"""
         section = {
@@ -217,6 +232,38 @@ class TestCrawlRssSources:
         }
         results = await self._run(section)
         assert results == []
+
+    @pytest.mark.asyncio
+    async def test_excluded_rss_entry_skipped(self):
+        from crawler.feed import FeedEntry
+        from datetime import datetime, timezone
+
+        entries = [
+            FeedEntry(
+                url="https://github.blog/news-insights/company-news/still-a-developer-just-outside-our-latest-github-shop-collection-is-here/",
+                title="Shop",
+                published=datetime.now(timezone.utc),
+                feed_url="https://feed.xml",
+            ),
+            FeedEntry(
+                url="https://example.com/valid",
+                title="Valid",
+                published=datetime.now(timezone.utc),
+                feed_url="https://feed.xml",
+            ),
+        ]
+        section = {
+            "rss_sources": [{"feed_url": "https://feed.xml"}],
+            "max_items": 5,
+        }
+        with patch("crawler.feed.parse_feed",
+                   AsyncMock(return_value=entries)), \
+             patch("crawler.single.crawl_single_page",
+                   AsyncMock(return_value=_make_crawl_result(url="https://example.com/valid"))) as mock_single:
+            results = await self._run(section)
+
+        assert len(results) == 1
+        mock_single.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_feed_parse_failure_continues(self):

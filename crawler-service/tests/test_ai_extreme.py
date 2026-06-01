@@ -74,7 +74,7 @@ def _valid_digest_json(**overrides):
         "summary": "今日技术圈最值得关注：React 19 正式发布；Bun 1.2 性能创新高；一篇 Linux 内核调度深度解析引发广泛讨论。三大热点各有看点，对开发者影响深远。",
         "highlight": "React 19 正式发布，Server Components 进入稳定阶段",
         "tags": ["React 19", "Bun", "Linux内核"],
-        "fullContent": "# 技术日报 | 2026-05-16\n\n## 热点动态\n\n### React 19 正式发布\nServer Components 稳定版上线。\n\n## 开源项目\n\n### Bun 1.2 发布\n性能再创新高。",
+        "fullContent": "# 技术日报 | 2026-05-16\n\n## 热点动态\n\n### React 19 正式发布\nServer Components 稳定版上线，标志着 React 生态进入新纪元。开发者现在可以享受更好的性能和开发体验。\n\n## 开源项目\n\n### Bun 1.2 发布\n性能再创新高，在 Node.js 兼容性和包管理速度方面取得显著进步，成为 JavaScript 工具链的有力竞争者。\n\n## 深度解析\n\n### Linux 内核调度器优化\n最新的 CFS 调度器改进带来了更低的延迟和更好的多核扩展性。",
         "sections": [
             {
                 "category": "hot_trend",
@@ -478,6 +478,36 @@ class TestPublicAsyncMethods:
         assert result.tokens_used == 300
         assert result.duration_ms >= 0
 
+    @pytest.mark.asyncio
+    async def test_clean_section_retries_in_chunks_when_bulk_returns_empty(self, configured_organizer):
+        entries = [
+            {"url": "https://a.com/1", "title": "A", "content": "Alpha content " * 40},
+            {"url": "https://b.com/2", "title": "B", "content": "Beta content " * 40},
+            {"url": "https://c.com/3", "title": "C", "content": "Gamma content " * 40},
+            {"url": "https://d.com/4", "title": "D", "content": "Delta content " * 40},
+        ]
+        chunk_one = [
+            {"url": "https://a.com/1", "title": "A", "cleanedContent": "Alpha cleaned"},
+            {"url": "https://b.com/2", "title": "B", "cleanedContent": "Beta cleaned"},
+        ]
+        chunk_two = [
+            {"url": "https://c.com/3", "title": "C", "cleanedContent": "Gamma cleaned"},
+            {"url": "https://d.com/4", "title": "D", "cleanedContent": "Delta cleaned"},
+        ]
+        with patch.object(configured_organizer, "_call_ai", new_callable=AsyncMock) as mock_ai:
+            mock_ai.side_effect = [
+                {"content": "[]", "total_tokens": 100, "finish_reason": "stop"},
+                {"content": json.dumps(chunk_one), "total_tokens": 40, "finish_reason": "stop"},
+                {"content": json.dumps(chunk_two), "total_tokens": 50, "finish_reason": "stop"},
+            ]
+
+            cleaned, tokens, duration_ms = await configured_organizer.clean_section_content(entries)
+
+        assert [item["url"] for item in cleaned] == [entry["url"] for entry in entries]
+        assert tokens == 190
+        assert duration_ms >= 0
+        assert mock_ai.await_count == 3
+
 
 # ============== Step 3: API 端点测试 ==============
 
@@ -870,10 +900,10 @@ class TestSourceUrlValidation:
         """构造含指定 items 的 DigestContent 供 _validate_digest 测试"""
         c = DigestContent(
             title="技术日报 | 2026-05-16",
-            summary="这是一份技术日报摘要，包含最新技术动态和开源项目更新信息。",
+            summary="这是一份技术日报摘要，涵盖最新技术动态、开源项目更新以及深度技术解析，为开发者提供每日精选内容推荐。",
             highlight="今日热点",
             tags=["技术"],
-            full_content="# 日报内容\n\n这是足够长的正文内容" * 5,
+            full_content="# 日报内容\n\n这是足够长的正文内容，包含多个板块的技术新闻和深度分析，帮助开发者快速了解行业动态。" * 5,
             sections=[
                 DigestSection(
                     category="hot_trend",
@@ -969,10 +999,10 @@ class TestSourceUrlValidation:
         """跨板块 sourceUrl 去重：同一 URL 出现在两个板块，保留 oneLiner 更长的"""
         c = DigestContent(
             title="技术日报 | 2026-05-16",
-            summary="摘要内容" * 10,
+            summary="这是一份技术日报的每日摘要内容，涵盖了最新的技术动态与深度解析，为开发者提供精选的技术内容推荐与行业趋势洞察。",
             highlight="热点",
             tags=["技术"],
-            full_content="正文内容" * 10,
+            full_content="这是足够长的正文内容，包含多个板块的技术新闻和深度分析，帮助开发者快速了解行业动态和技术趋势。" * 5,
             sections=[
                 DigestSection(
                     category="hot_trend", category_name="热点", emoji="🔥",

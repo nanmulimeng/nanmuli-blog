@@ -68,10 +68,6 @@ async def generate_scheduled_digest(force: bool = False) -> dict:
     Returns:
         dict with keys: status ("created"|"skipped"|"error"), message, task_id?
     """
-    if _digest_lock.locked():
-        logger.info("Digest generation already in progress, skipping")
-        return {"status": "skipped", "reason": "in_progress", "message": "日报正在生成中，请稍后再试"}
-
     async with _digest_lock:
         today = datetime.date.today().isoformat()
         logger.info("Scheduled digest generation triggered for %s (force=%s)", today, force)
@@ -496,7 +492,7 @@ def start_scheduler():
 
     # 首次同步信息源
     try:
-        asyncio.get_event_loop().create_task(refresh_source_schedules())
+        asyncio.get_running_loop().create_task(refresh_source_schedules())
     except RuntimeError:
         pass
 

@@ -100,12 +100,16 @@ class Settings(BaseSettings):
     ai_temperature: float = 0.3
     ai_connect_timeout: int = 10
     ai_read_timeout: int = 90
+    ai_section_cleanup_timeout: int = 90       # 栏目清洗独立超时；真实模型清洗多页内容常超过 30s
     ai_max_retries: int = 2
     ai_rate_limit_backoff_ms: int = 10000
     ai_single_page_max_chars: int = 80_000
     ai_multi_page_per_max_chars: int = 20_000
     ai_multi_page_total_budget: int = 150_000
     ai_max_tokens: int = 8000                  # AI 调用最大输出 tokens
+    ai_section_cleanup_per_max_chars: int = 6000   # 栏目清洗单来源输入上限
+    ai_section_cleanup_total_budget: int = 24000   # 栏目清洗总输入上限
+    ai_section_cleanup_max_output_chars: int = 1200 # 栏目清洗单来源输出上限，避免 JSON 被截断
     ai_min_summary_length: int = 10            # 摘要最小长度
     ai_min_full_content_length: int = 20       # 全文最小长度
     ai_max_key_points: int = 10                # 最大要点数

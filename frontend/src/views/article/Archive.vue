@@ -3,6 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { getArticleList } from '@/api/article'
 import { formatDate } from '@/utils/format'
+import { PAGE_SIZE } from '@/constants/api'
 import type { Article } from '@/types/article'
 
 const router = useRouter()
@@ -12,7 +13,7 @@ const articles = ref<Article[]>([])
 async function fetchArticles(): Promise<void> {
   loading.value = true
   try {
-    const res = await getArticleList({ current: 1, size: 1000 })
+    const res = await getArticleList({ current: 1, size: PAGE_SIZE.ARCHIVE_ARTICLES })
     articles.value = res.records
   } finally {
     loading.value = false

@@ -187,6 +187,31 @@ class TestBuildSectionDocument:
         assert doc.cleanup_method == "heuristic"
         assert doc.cleaned_count >= 1
 
+    @pytest.mark.asyncio
+    async def test_open_source_section_filters_non_project_pages_before_cleanup(self):
+        section = PlannedSection(name="open_source", source_type="keyword")
+        plan = SourceCrawlPlan(section_name="open_source")
+        agent = CrawlerAgent(section, plan, MagicMock(), {})
+        results = [
+            self._make_result(
+                "https://blog.csdn.net/example/article/details/1",
+                "GitHub tutorial",
+                "tutorial content " * 20,
+            ),
+            self._make_result(
+                "https://github.com/example/repo",
+                "example/repo",
+                "repo content " * 20,
+            ),
+        ]
+
+        with patch.object(agent, "_should_use_ai", return_value=False):
+            doc = await agent._build_section_document(results)
+
+        assert doc.cleanup_method == "heuristic"
+        assert len(doc.entries) == 1
+        assert doc.entries[0].url == "https://github.com/example/repo"
+
 
 # ============== finalize_document 测试 ==============
 

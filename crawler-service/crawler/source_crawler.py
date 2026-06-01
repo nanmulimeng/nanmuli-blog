@@ -8,6 +8,7 @@ import asyncio
 import logging
 
 from config import settings
+from crawler.filters import is_excluded_domain
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,9 @@ async def crawl_url_sources(section: dict, config, crawler) -> list:
     for src in url_sources[:max_items]:
         url = src.get("url", "")
         if not url:
+            continue
+        if is_excluded_domain(url):
+            logger.info("Skipping excluded URL source: %s", url)
             continue
         eff = src.get("effectiveness", {})
         if is_truly_dead(eff):
@@ -125,13 +129,20 @@ async def crawl_rss_sources(section: dict, config, crawler) -> list:
 
         logger.info("RSS feed '%s': %d fresh entries to crawl", feed_url, len(entries))
 
-        tasks = [_crawl_feed_entry(e.url, e.title) for e in entries]
+        filtered_entries = []
+        for entry in entries:
+            if is_excluded_domain(entry.url):
+                logger.info("Skipping excluded RSS entry: %s", entry.url)
+                continue
+            filtered_entries.append(entry)
+
+        tasks = [_crawl_feed_entry(e.url, e.title) for e in filtered_entries]
         page_results = await asyncio.gather(*tasks, return_exceptions=True)
 
         failed_count = sum(1 for r in page_results if not isinstance(r, CrawlResult))
         if failed_count:
             logger.warning("RSS feed '%s': %d/%d entries failed",
-                           feed_url, failed_count, len(entries))
+                           feed_url, failed_count, len(filtered_entries))
 
         for r in page_results:
             if isinstance(r, CrawlResult):

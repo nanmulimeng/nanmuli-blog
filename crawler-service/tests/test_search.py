@@ -147,6 +147,32 @@ class TestIsRelevantToKeyword(unittest.TestCase):
         ))
 
 
+class TestSiteConstraint(unittest.TestCase):
+    def test_site_query_accepts_matching_domain_and_path(self):
+        self.assertTrue(search._matches_site_constraint(
+            "site:github.blog/engineering architecture performance",
+            "https://github.blog/engineering/github-issues/search-performance/",
+        ))
+
+    def test_site_query_rejects_off_domain_result(self):
+        self.assertFalse(search._matches_site_constraint(
+            "site:github.blog/engineering architecture performance",
+            "https://github.com/leejoon0/engineeringblog",
+        ))
+
+    def test_site_query_rejects_off_path_result(self):
+        self.assertFalse(search._matches_site_constraint(
+            "site:github.blog/engineering architecture performance",
+            "https://github.blog/news-insights/company-news/post/",
+        ))
+
+    def test_non_site_query_has_no_constraint(self):
+        self.assertTrue(search._matches_site_constraint(
+            "GitHub Copilot coding agent developer news",
+            "https://github.blog/news-insights/product-news/post/",
+        ))
+
+
 # ============== baidu_time_filter ==============
 
 class TestBaiduTimeFilter(unittest.TestCase):
@@ -588,7 +614,7 @@ class TestParseSearchResultsUrlDecoding(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(urls), 1)
         self.assertEqual(urls[0], "https://example.com/real-article")
 
-    async def test_bing_ck_a_bing_domain_keeps_original_href(self):
+    async def test_bing_ck_a_bing_domain_skipped(self):
         """Bing /ck/a? 解码后为 bing.com → 保留原始 href（不覆盖），原始 https URL 仍被收录"""
         real_url = b"https://www.bing.com/some-page"
         encoded = base64.b64encode(real_url).decode()
@@ -601,9 +627,7 @@ class TestParseSearchResultsUrlDecoding(unittest.IsolatedAsyncioTestCase):
             search_url="https://www.bing.com/search?q=docker",
             headers={"User-Agent": "test"}, client=None,
         )
-        # 解码后 href 仍是原始 /ck/a?u=... URL（以 https 开头），不会被过滤
-        # 因为 bing.com 本身不在排除域名列表中
-        self.assertEqual(len(urls), 1)
+        self.assertEqual(urls, [])
 
     async def test_google_url_q_decoding(self):
         """Google /url?q= 参数解码"""
@@ -1154,7 +1178,7 @@ BING_ALGO_HTML = """<html><body>
 class TestBingCkANonA1Prefix(unittest.IsolatedAsyncioTestCase):
     """Bing /ck/a? 只处理 'a1' 前缀的编码 URL"""
 
-    async def test_bing_ck_a_non_a1_prefix_ignored(self):
+    async def test_bing_ck_a_non_a1_prefix_skipped(self):
         """非 'a1' 前缀的 ck/a 参数被静默忽略（href 保留为原始 /ck/a? URL）"""
         real_url = b"https://example.com/article"
         encoded = base64.b64encode(real_url).decode()
@@ -1174,10 +1198,9 @@ class TestBingCkANonA1Prefix(unittest.IsolatedAsyncioTestCase):
         )
         # 非 a1 前缀不解码，原始 bing.com 中转 URL 被当作有效 URL 收录
         # 这是一个已知局限：非 a1 前缀的 ck/a URL 不会被解析出真实目标
-        self.assertEqual(len(urls), 1)
-        self.assertIn("bing.com/ck/a", urls[0])
+        self.assertEqual(urls, [])
 
-    async def test_bing_ck_a_decode_exception_keeps_original(self):
+    async def test_bing_ck_a_decode_exception_skips_original(self):
         """base64 解码异常时保留原始 href，不抛异常"""
         ck_param = "a1" + "!!!!not-valid-base64!!!!"
         href = f"https://www.bing.com/ck/a?u={ck_param}"
@@ -1190,7 +1213,7 @@ class TestBingCkANonA1Prefix(unittest.IsolatedAsyncioTestCase):
             search_url="https://www.bing.com/search?q=docker",
             headers={"User-Agent": "test"}, client=None,
         )
-        self.assertEqual(len(urls), 1)
+        self.assertEqual(urls, [])
 
 
 # ============== _decode_baidu_redirect 分支覆盖 ==============

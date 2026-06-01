@@ -20,6 +20,7 @@ from crawler.digest_gen_agent import (
 )
 from crawler.section_document import SectionDocument, SourceEntry
 from crawler.digest_orchestrator import DigestOrchestrator
+from standalone.organizer_helper import _collect_digest_allowed_urls, serialize_digest_sections
 
 
 # ============== 数据模型测试 ==============
@@ -243,6 +244,177 @@ class TestBuildDigestPages:
         assert "https://github.blog/" in allowed
         assert "https://github.blog/security/incident-report/" in allowed
 
+    @patch("crawler.quality.SourceAuthority")
+    @patch("standalone.organizer_helper._extract_summary", return_value="sum")
+    def test_open_source_section_skips_tutorial_articles(self, mock_summary, mock_auth):
+        mock_auth.score.return_value = {"level": "medium"}
+        agent = self._make_agent()
+        doc = SectionDocument(
+            section_name="open_source",
+            entries=[
+                SourceEntry(
+                    url="https://blog.csdn.net/black_sneak/article/details/139600633",
+                    title="Github入门教程，适合新手学习",
+                    cleaned_content="tutorial content " * 30,
+                ),
+                SourceEntry(
+                    url="https://github.com/example/repo",
+                    title="example/repo release",
+                    cleaned_content="release notes " * 30,
+                ),
+            ],
+        )
+
+        pages = agent._build_digest_pages([doc])
+
+        assert len(pages) == 1
+        assert pages[0].url == "https://github.com/example/repo"
+        assert pages[0].category == "open_source"
+
+    @patch("crawler.quality.SourceAuthority")
+    @patch("standalone.organizer_helper._extract_summary", return_value="sum")
+    def test_open_source_section_expands_github_trending_repos(self, mock_summary, mock_auth):
+        mock_auth.score.return_value = {"level": "medium"}
+        agent = self._make_agent()
+        doc = SectionDocument(
+            section_name="open_source",
+            entries=[
+                SourceEntry(
+                    url="https://github.com/trending?since=daily",
+                    title="GitHub Trending",
+                    cleaned_content=(
+                        "# Trending\n\n"
+                        "## [ owner-one / repo-one](https://github.com/owner-one/repo-one)\n"
+                        "First useful repository description for developers.\n\n"
+                        "## [ owner-two / repo-two](https://github.com/owner-two/repo-two)\n"
+                        "Second useful repository description for developers.\n"
+                    ),
+                ),
+            ],
+        )
+
+        pages = agent._build_digest_pages([doc])
+
+        assert sorted(p.url for p in pages) == [
+            "https://github.com/owner-one/repo-one",
+            "https://github.com/owner-two/repo-two",
+        ]
+        assert all(p.category == "open_source" for p in pages)
+        assert all(p.source_name == "GitHub Trending" for p in pages)
+
+    @patch("crawler.quality.SourceAuthority")
+    @patch("standalone.organizer_helper._extract_summary", return_value="sum")
+    def test_open_source_section_expands_cleaned_github_trending_repo_names(self, mock_summary, mock_auth):
+        mock_auth.score.return_value = {"level": "medium"}
+        agent = self._make_agent()
+        doc = SectionDocument(
+            section_name="open_source",
+            entries=[
+                SourceEntry(
+                    url="https://github.com/trending?since=daily",
+                    title="GitHub Trending",
+                    cleaned_content=(
+                        "**harry0703/MoneyPrinterTurbo** (Python): Generate short videos with one click using AI LLM.\n"
+                        "**microsoft/markitdown** (Python): Python tool for converting files to Markdown.\n"
+                    ),
+                ),
+            ],
+        )
+
+        pages = agent._build_digest_pages([doc])
+
+        assert sorted(p.url for p in pages) == [
+            "https://github.com/harry0703/MoneyPrinterTurbo",
+            "https://github.com/microsoft/markitdown",
+        ]
+        assert all(p.source_name == "GitHub Trending" for p in pages)
+
+    @patch("crawler.quality.SourceAuthority")
+    @patch("standalone.organizer_helper._extract_summary", return_value="sum")
+    def test_open_source_section_keeps_unparseable_github_trending_page(self, mock_summary, mock_auth):
+        mock_auth.score.return_value = {"level": "medium"}
+        agent = self._make_agent()
+        doc = SectionDocument(
+            section_name="open_source",
+            entries=[
+                SourceEntry(
+                    url="https://github.com/trending?since=daily",
+                    title="GitHub Trending",
+                    cleaned_content="repo list " * 30,
+                ),
+            ],
+        )
+
+        pages = agent._build_digest_pages([doc])
+
+        assert len(pages) == 1
+        assert pages[0].url == "https://github.com/trending?since=daily"
+        assert pages[0].category == "open_source"
+
+
+class TestSerializeDigestSections:
+    def test_page_id_lookup_normalizes_url(self):
+        from ai.organizer import DigestContent, DigestItem, DigestSection
+
+        digest = DigestContent(sections=[
+            DigestSection(
+                category="hot_trend",
+                category_name="Hot",
+                emoji="",
+                items=[
+                    DigestItem(
+                        title="OpenAI",
+                        one_liner="Update",
+                        source_url="https://openai.com/",
+                        source_name="openai.com",
+                    ),
+                    DigestItem(
+                        title="Trending",
+                        one_liner="Repo list",
+                        source_url="https://github.com/trending?since=daily",
+                        source_name="github.com",
+                    ),
+                ],
+            )
+        ])
+
+        sections = serialize_digest_sections(
+            digest,
+            url_to_page_id={
+                "https://openai.com": 101,
+                "https://github.com/trending": 102,
+            },
+        )
+
+        items = sections[0]["items"]
+        assert items[0]["page_id"] == 101
+        assert items[1]["page_id"] == 102
+
+    def test_fallback_allowed_urls_include_links_from_markdown(self):
+        from ai.organizer import DigestPageContent
+
+        pages = [
+            DigestPageContent(
+                url="https://github.blog/",
+                title="GitHub Blog",
+                markdown=(
+                    "Read https://github.blog/security/incident-report/ and "
+                    "https://github.com/microsoft/markitdown for details."
+                ),
+                summary="",
+                category="hot_trend",
+                source_name="GitHub Blog",
+                source_level="high",
+                page_id=1,
+            )
+        ]
+
+        allowed = _collect_digest_allowed_urls(pages)
+
+        assert "https://github.blog/" in allowed
+        assert "https://github.blog/security/incident-report/" in allowed
+        assert "https://github.com/microsoft/markitdown" in allowed
+
 
 # ============== execute 测试 ==============
 
@@ -373,6 +545,111 @@ class TestDigestGenAgentExecute:
         assert len(item_urls) == len(set(item_urls))
         assert all(url.startswith(("https://news.ycombinator.com/", "https://github.com/example/")) for url in item_urls)
         assert "补充覆盖" in result.digest_content.full_content
+
+    @pytest.mark.asyncio
+    async def test_ai_digest_with_enough_items_still_supplements_missing_category(self):
+        from ai.organizer import DigestContent, DigestItem, DigestSection
+
+        agent = self._make_agent()
+        docs = [
+            SectionDocument(
+                section_name="hot_trend",
+                entries=[
+                    SourceEntry(
+                        url=f"https://news.ycombinator.com/item?id={i}",
+                        title=f"Trend {i}",
+                        cleaned_content=("Trend content with concrete developer impact. " * 8),
+                    )
+                    for i in range(2)
+                ],
+            ),
+            SectionDocument(
+                section_name="open_source",
+                entries=[
+                    SourceEntry(
+                        url=f"https://github.com/example/repo{i}",
+                        title=f"Repo {i}",
+                        cleaned_content=("Open source release notes with actionable details. " * 8),
+                    )
+                    for i in range(3)
+                ],
+            ),
+            SectionDocument(
+                section_name="tech_article",
+                entries=[
+                    SourceEntry(
+                        url="https://martinfowler.com/articles/architecture-quality.html",
+                        title="Architecture Quality Notes",
+                        cleaned_content=("Deep technical article with practical architecture trade-offs. " * 8),
+                    )
+                ],
+            ),
+        ]
+        rich_but_incomplete_digest = DigestContent(
+            title="Daily Digest",
+            summary="This digest summary is long enough for validation.",
+            tags=["Architecture"],
+            highlight="Existing highlight",
+            full_content="Original full content that is long enough.",
+            tokens_used=1000,
+            duration_ms=5000,
+            sections=[
+                DigestSection(
+                    category="hot_trend",
+                    category_name="Hot Trend",
+                    emoji="",
+                    items=[
+                        DigestItem(
+                            title=f"Trend {i}",
+                            one_liner="Existing trend item with impact",
+                            source_url=f"https://news.ycombinator.com/item?id={i}",
+                            source_name="news.ycombinator.com",
+                        )
+                        for i in range(2)
+                    ],
+                ),
+                DigestSection(
+                    category="open_source",
+                    category_name="Open Source",
+                    emoji="",
+                    items=[
+                        DigestItem(
+                            title=f"Repo {i}",
+                            one_liner="Existing open source item with impact",
+                            source_url=f"https://github.com/example/repo{i}",
+                            source_name="github.com",
+                        )
+                        for i in range(3)
+                    ],
+                ),
+            ],
+        )
+
+        with patch.object(agent, "_precheck", return_value=True), \
+             patch("crawler.quality.SourceAuthority") as mock_sa, \
+             patch("standalone.repository.get_recent_highlights", new=AsyncMock(return_value=[])), \
+             patch("ai.organizer.ContentOrganizer") as mock_org_cls:
+            mock_sa.preload_authority_cache = AsyncMock()
+            mock_sa.score.return_value = {"level": "high"}
+            mock_org = MagicMock()
+            mock_org.generate_digest = AsyncMock(return_value=rich_but_incomplete_digest)
+            mock_org.close = AsyncMock()
+            mock_org_cls.return_value = mock_org
+
+            result = await agent.execute(docs, "2026-05-24")
+
+        assert result.success is True
+        sections = result.digest_content.sections
+        assert "tech_article" in {section.category for section in sections}
+        tech_items = [
+            item
+            for section in sections
+            if section.category == "tech_article"
+            for item in section.items
+        ]
+        assert [item.source_url for item in tech_items] == [
+            "https://martinfowler.com/articles/architecture-quality.html"
+        ]
 
     @pytest.mark.asyncio
     async def test_ai_failure_returns_error(self):

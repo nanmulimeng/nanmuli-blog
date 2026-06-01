@@ -244,6 +244,29 @@ def _is_relevant_to_keyword(keyword: str, title: str, snippet: str) -> bool:
     return snippet_matches >= min_required
 
 
+def _matches_site_constraint(keyword: str, url: str) -> bool:
+    """Enforce site:domain/path constraints after search-engine redirects."""
+    match = re.search(r'\bsite:([^\s]+)', (keyword or "").lower())
+    if not match:
+        return True
+
+    target = match.group(1).strip().rstrip("/")
+    target = re.sub(r'^https?://', '', target)
+    target_domain, _, target_path = target.partition("/")
+    target_domain = target_domain.lower().lstrip("www.")
+    target_path = "/" + target_path.strip("/") if target_path else ""
+    if not target_domain:
+        return True
+
+    parsed = urlparse(url.lower())
+    domain = parsed.netloc.lstrip("www.")
+    if domain != target_domain and not domain.endswith("." + target_domain):
+        return False
+    if target_path and not parsed.path.startswith(target_path):
+        return False
+    return True
+
+
 def _is_anti_bot_page(page_text: str, raw_html: str = "") -> bool:
     text_lower = page_text.lower()
     html_lower = raw_html.lower()
@@ -493,6 +516,8 @@ async def _parse_search_results(
         if not href or not href.startswith(("http://", "https://")):
             continue
         if is_excluded_domain(href):
+            continue
+        if not _matches_site_constraint(keyword, href):
             continue
         if not _is_relevant_to_keyword(keyword, title, snippet):
             continue

@@ -1,8 +1,9 @@
-# WebCollector 架构设计 v3.0
+# WebCollector 架构设计 v3.1
 
-> 版本：v3.0
-> 日期：2026-05-06
+> 版本：v3.1
+> 日期：2026-06-01
 > 目标：从博客附属模块升级为独立可用的智能信息聚合系统
+> 当前状态：MVP Beta 试用版，日报系统和自动优化系统已进入初步上线使用阶段
 
 ---
 
@@ -24,16 +25,16 @@
 
 ### 1.3 两种使用场景
 
-**场景A：作为博客系统的采集模块（当前）**
+**场景A：作为博客系统的采集模块（当前试用版）**
 ```
 博客前端 → 创建采集任务 → WebCollector服务 → AI整理 → 转为文章/日志
                                ↑
                         自动优化引擎提升内容质量
 ```
 
-**场景B：作为独立产品使用（未来）**
+**场景B：作为独立服务使用（当前已具备基础能力）**
 ```
-用户 → WebCollector API/CLI → 自动聚合每日资讯 → Markdown/JSON输出
+外部服务 → WebCollector HTTP API → 自动聚合每日资讯 → Markdown/JSON输出
                                               ↓
                                         自动优化引擎持续改进策略
 ```
@@ -81,7 +82,7 @@
 | `SINGLE` | 单页爬取 | 指定URL |
 | `DEEP` | BFS深度爬取 | 指定URL及其链接 |
 | `KEYWORD` | 关键词搜索爬取 | 搜索引擎 |
-| `DAILY_DIGEST` | 定时综合日报 | 搜索引擎+多板块关键词 | 规划中 |
+| `DAILY_DIGEST` | 定时综合日报 | 搜索引擎+URL+RSS+多板块配置 | ✅ MVP Beta |
 
 ---
 
@@ -405,18 +406,23 @@ public class WebCollectorClient {
 | Phase 2（P3） | 三层去重引擎 | ✅ `dedup.py` |
 | Phase 3（P1） | 来源可信度+质量评分+自动过滤 | ✅ `quality.py` |
 | time_range传递 | Java端到Python端全链路 | ✅ 10个文件已改 |
+| Phase 4 | 日报任务类型 + 管理端触发 + 公开展示 | ✅ MVP Beta |
+| Phase 5 | 自动优化评估 + 趋势知识库 + 轻反馈闭环 | ✅ MVP Beta |
+| Phase 7 | APScheduler 工作日定时调度 | ✅ MVP Beta |
+| 独立服务能力 | API Key + standalone SQLite + HTTP API | ✅ 可供最多少量内部服务接入 |
 
-### 规划中
+### 试用版后续优化
 
 | Phase | 目标 | 预计周期 | 关键文件 |
 |-------|------|---------|---------|
-| **Phase 4** | **日报任务类型** | 1-2周 | `CollectTaskType.DAILY_DIGEST` + `WebCollectorAsyncExecutor` |
-| Phase 5 | 自动优化引擎（覆盖度评估→策略生成→反馈循环） | 2-3周 | `optimization/evaluator.py` + `strategy.py` |
-| Phase 6 | 信息茧房突破（来源多样性/观点平衡/跨语言） | 1-2周 | `optimization/bubble_breaker.py` |
-| Phase 7 | 定时调度（APScheduler每日自动生成日报） | 1周 | `task/scheduler.py` |
-| Phase 8 | 独立项目拆分 | 2周 | 目录重构 + Docker独立镜像 |
+| Beta-1 | GitHub Trending repo 级 URL 展开和重复来源治理 | 1-2天 | `digest_gen_agent.py` + `digest_post_processor.py` |
+| Beta-2 | 技术文章源质量提升，过滤泛化定义页/下载页 | 1-2天 | `filters.py` + `source_crawler.py` |
+| Beta-3 | 将最终评估建议转成下一轮强策略约束 | 2-3天 | `digest_orchestrator.py` + `knowledge_base.py` |
+| Beta-4 | 完成态进度统一为 100%，优化管理端状态体验 | 0.5-1天 | `repository.py` + 前端详情页 |
+| Phase 6 | 信息茧房突破增强（来源多样性/观点平衡/跨语言） | 1-2周 | `optimization/bubble_breaker.py` |
+| Phase 8 | 独立项目拆分与多 client 接入文档 | 1-2周 | Docker/README/API 文档 |
 
-**Phase 4-5是当前重点**：日报是自动优化引擎的第一个真实用例，每次生成都让系统更聪明。
+当前重点是把 MVP Beta 的质量稳定住：日报生成必须可靠，来源必须可追溯，自动优化建议必须逐步变成实际采集策略。
 
 ---
 
@@ -443,7 +449,7 @@ public class WebCollectorClient {
 
 ### 7.3 自动优化的成本控制
 
-| 项目 | Token消耗 | 成本(按Qwen) |
+| 项目 | Token消耗 | 成本(按低价 OpenAI 兼容模型估算) |
 |------|-----------|-------------|
 | 覆盖度评估 | ~800 tokens | ¥0.003 |
 | 策略生成 | ~600 tokens | ¥0.002 |

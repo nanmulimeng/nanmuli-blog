@@ -136,7 +136,9 @@ class CoverageEvaluator:
                    "weaknesses": [], "suggestions": []}
         tokens_used = 0
 
-        if self.is_available and len(meta["entries"]) >= 1:
+        if ctx.get("task_type") == "digest":
+            ai_eval = self._heuristic_evaluate(meta, ctx)
+        elif self.is_available and len(meta["entries"]) >= 1:
             ai_eval, tokens_used = await self._ai_evaluate(keyword, meta, ctx)
         else:
             if not self.is_available:
@@ -314,6 +316,7 @@ class CoverageEvaluator:
         engine = ctx.get("engine", "unknown")
         time_range = ctx.get("time_range", "unknown")
         entries = meta["entries"]
+        is_digest = ctx.get("task_type") == "digest"
 
         lines = [
             f"## 搜索关键词\n{keyword}\n",
@@ -321,6 +324,21 @@ class CoverageEvaluator:
             f"- 结果数量: {meta['total']} 条\n",
             "## 搜索结果来源\n",
         ]
+        if is_digest:
+            section_counts = ctx.get("section_result_counts") or {}
+            if section_counts:
+                section_line = ", ".join(f"{name}={count}" for name, count in section_counts.items())
+                lines.insert(3, f"- Digest sections: {section_line}")
+            lines.insert(
+                3,
+                "\n## Evaluation mode: daily technical digest\n"
+                "Use a digest-specific rubric instead of a single-topic search rubric:\n"
+                "- angle: coverage across configured sections such as trends, open source, and engineering articles.\n"
+                "- depth: a useful mix of brief news, concrete project details, and deeper engineering analysis.\n"
+                "- temporal: freshness and time-sensitive relevance for today's digest; do not require historical background.\n"
+                "- perspective: source-type balance across official/vendor/community/independent sources; do not require pro/con debate.\n"
+            )
+
         if entries:
             lines.append("| # | 标题 | 来源域名 | 长度 | 内容预览 |")
             lines.append("|---|------|---------|------|---------|")
@@ -344,6 +362,8 @@ class CoverageEvaluator:
         total = meta["total"]
         domains = set(meta["domains"])
         entries = meta["entries"]
+        if ctx.get("task_type") == "digest":
+            return self._heuristic_evaluate_digest(meta, ctx)
 
         # 角度覆盖：域名数暗示来源多样性，但上限封 0.6（不如 AI 精确）
         angle = min(0.6, len(domains) / 8) + min(0.2, (total - 1) / 10) if total >= 3 else min(0.3, total / 5)
@@ -405,4 +425,52 @@ class CoverageEvaluator:
             "perspective": round(min(0.6, perspective), 3),
             "weaknesses": weaknesses,
             "suggestions": suggestions,
+        }
+
+    def _heuristic_evaluate_digest(self, meta: dict, ctx: dict) -> dict:
+        """Digest-specific fallback scoring when AI evaluation is unavailable."""
+        total = meta["total"]
+        domains = set(meta["domains"])
+        entries = meta["entries"]
+        section_counts = ctx.get("section_result_counts") or {}
+        configured_sections = len(section_counts)
+        covered_sections = sum(1 for count in section_counts.values() if count > 0)
+        section_ratio = (covered_sections / configured_sections) if configured_sections else min(1.0, total / 8)
+
+        angle = 0.25 + 0.65 * section_ratio
+        if total >= 10:
+            angle += 0.05
+
+        lengths = [e["content_length"] for e in entries]
+        has_short = any(300 <= l < 1200 for l in lengths)
+        has_long = any(l >= 2500 for l in lengths)
+        depth = 0.2 + (0.25 if has_short else 0) + (0.30 if has_long else 0) + min(0.15, total / 40)
+
+        temporal = 0.55 if (
+            ctx.get("time_range") in {"day", "week"} and (total >= 5 or section_ratio >= 0.8)
+        ) else 0.35
+        temporal += min(0.2, total / 50)
+
+        source_type_balance = min(1.0, len(domains) / 8)
+        perspective = 0.25 + 0.45 * source_type_balance + 0.20 * section_ratio
+
+        weaknesses = []
+        suggestions = []
+        if section_ratio < 0.8:
+            weaknesses.append("digest section coverage is incomplete")
+            suggestions.append("补齐缺失板块的信息源或降低过窄的 site: 约束")
+        if not has_long:
+            weaknesses.append("digest lacks deeper engineering analysis")
+            suggestions.append("为 tech_article 增加工程复盘、架构优化或性能分析来源")
+        if len(domains) < 5 and total >= 5:
+            weaknesses.append("digest sources are concentrated")
+            suggestions.append("增加 vendor/community/independent 多类型来源")
+
+        return {
+            "angle": round(min(0.95, angle), 3),
+            "depth": round(min(0.9, depth), 3),
+            "temporal": round(min(0.9, temporal), 3),
+            "perspective": round(min(0.9, perspective), 3),
+            "weaknesses": weaknesses[:3],
+            "suggestions": suggestions[:3],
         }

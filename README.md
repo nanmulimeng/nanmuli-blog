@@ -9,9 +9,32 @@
   <img src="https://img.shields.io/badge/TypeScript-5.3-3178C6?logo=typescript" alt="TypeScript">
   <img src="https://img.shields.io/badge/PostgreSQL-15+-336791?logo=postgresql" alt="PostgreSQL">
   <img src="https://img.shields.io/badge/Redis-7+-DC382D?logo=redis" alt="Redis">
+  <img src="https://img.shields.io/badge/Digest%20System-MVP%20Beta-blue" alt="Digest MVP Beta">
 </p>
 
 ---
+
+## 当前版本状态（2026-06-01）
+
+当前项目已进入 **MVP Beta 试用版**，可用于个人博客后台的初步上线试用。
+
+本轮试用版重点包含：
+
+- **技术日报系统**：支持后台手动触发、工作日定时生成、公开列表/详情展示、结构化章节和条目保存。
+- **自动优化系统**：支持日报质量评分、趋势记录、弱点建议、信息源策略反馈和优化记录查询。
+- **独立爬虫服务**：`crawler-service` 已可作为独立 HTTP 服务被博客或其他服务调用，博客系统只是其中一个 client。
+- **系统配置联动**：Java 后端 `sys_config` 作为配置中心，Python 爬虫服务可刷新并读取爬虫、AI、日报、优化相关配置。
+
+最近一次全链路验证结论：
+
+- `crawler-service /health` 正常，AI 模型为 `deepseek-v4-pro`，scheduler 已启用。
+- Java 后端 `/actuator/health` 返回 `UP`。
+- 前端 `npm run build` 通过。
+- 后端 `mvn -q -DskipTests compile` 通过。
+- 爬虫日报/优化关键测试 `77 passed`。
+- 管理端真实触发任务 `71` 成功生成 `2026-06-01` 技术日报，并可在后台详情页查看。
+
+试用版后续优化方向见：[试用版上线与后续优化路线](./docs/trial-release-roadmap.md)。
 
 ## 项目简介
 
@@ -23,7 +46,7 @@ Nanmuli Blog 是一个基于 **DDD（领域驱动设计）** 架构的个人技�
 - **Markdown 编辑器**：支持代码高亮、实时预览
 - **文章管理**：发布/草稿/回收站状态，置顶功能
 - **技术日志**：快速记录每日技术学习
-- **Web采集器**：网页采集、深度爬取、关键词搜索、AI内容整理
+- **Web采集器 / 技术日报**：网页采集、深度爬取、关键词搜索、AI内容整理、定时技术日报、自动优化反馈
 - **数据统计**：独立访客(UV)、页面浏览(PV)统计
 - **主题切换**：支持明暗主题
 - **响应式设计**：适配桌面端和移动端
@@ -45,7 +68,7 @@ Nanmuli Blog 是一个基于 **DDD（领域驱动设计）** 架构的个人技�
 | Sa-Token | 1.44.0 | 认证授权 |
 | Knife4j | 4.4.0 | API文档 |
 | Hutool | 5.8.36 | 工具库 |
-| DashScope | Qwen 3.6-plus | AI内容整理（OpenAI兼容端点）|
+| OpenAI兼容AI | deepseek-v4-pro（试用环境） | AI内容整理与技术日报生成 |
 
 ### 爬虫服务
 
@@ -166,7 +189,9 @@ nanmuli-blog/
 │   └── Dockerfile
 │
 ├── docs/                        # 项目文档
-│   └── project-plan.md         # 开发方案
+│   ├── digest-system.md         # 日报系统技术文档
+│   ├── trial-release-roadmap.md # 试用版上线与后续优化路线
+│   └── web-collector-module-design.md
 │
 └── deploy/                      # 部署配置
 ```
@@ -201,7 +226,9 @@ nanmuli-blog/
 - 单页采集：输入URL自动抓取并整理
 - 深度爬取：BFS多页爬取，可配置深度和页数上限
 - 关键词搜索：多搜索引擎支持，自动爬取搜索结果
-- AI内容整理：DashScope Qwen模型智能整理为结构化文章
+- AI内容整理：OpenAI 兼容模型智能整理为结构化文章、知识报告或技术日报
+- 技术日报：工作日定时或后台手动触发，按热点动态/开源项目/技术文章等板块生成
+- 自动优化：记录日报质量趋势、弱点建议和优化轮次，为下一次生成提供反馈
 - 一键转换：采集结果转为文章草稿或技术日志
 - 去重机制：30天URL去重 + 内容哈希去重
 
@@ -307,8 +334,10 @@ nanmuli-blog/
 
 ## 文档
 
-- [开发方案](./docs/project-plan.md) - 详细的项目架构设计文档
-- [Web采集器设计](./docs/web-collector-module-design.md) - WebCollector模块设计文档
+- [试用版上线与后续优化路线](./docs/trial-release-roadmap.md) - 当前 MVP Beta 基线、上线检查和后续开发路线
+- [日报系统完整技术文档](./docs/digest-system.md) - 日报生成、自动优化、前后端集成和部署检查
+- [Web采集器设计](./docs/web-collector-module-design.md) - WebCollector 产品设计与当前状态
+- [Crawler Service README](./crawler-service/README.md) - 独立爬虫服务 API、部署和版本说明
 
 ---
 

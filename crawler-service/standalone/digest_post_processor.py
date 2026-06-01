@@ -7,12 +7,27 @@
 
 import asyncio
 import logging
+from urllib.parse import urlsplit, urlunsplit
 
 from config import settings
 from ai.config import ai_settings
 from standalone import repository as repo
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_url(url: str) -> str:
+    """规范化 URL 用于匹配：小写 scheme+netloc，去尾斜杠，去 fragment，去 query"""
+    if not url:
+        return ""
+    try:
+        parts = urlsplit(url.strip())
+        scheme = parts.scheme.lower()
+        netloc = parts.netloc.lower()
+        path = parts.path.rstrip("/")
+        return urlunsplit((scheme, netloc, path, "", ""))
+    except Exception:
+        return url.strip().lower().rstrip("/").split("#")[0]
 
 
 class DigestPostProcessor:
@@ -37,13 +52,13 @@ class DigestPostProcessor:
 
             date = task.get("digest_date") or task.get("keyword") or ""
 
-            # 从已保存的 DB 页面获取 URL → page_id 映射
+            # 从已保存的 DB 页面获取 URL → page_id 映射（使用规范化 URL 匹配）
             repository = self._repo()
             pages = await repository.get_pages_by_task(task_id)
             url_to_page_id = {}
             for p in pages:
                 if p.get("crawl_status") == 2 and p.get("url"):
-                    url_to_page_id[p["url"]] = p["id"]
+                    url_to_page_id[_normalize_url(p["url"])] = p["id"]
 
             # Highlight 去重
             recent_highlights = await repository.get_recent_highlights(count=3)

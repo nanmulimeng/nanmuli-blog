@@ -287,7 +287,7 @@ class TestParseDigestContent:
             "summary": "This digest summary is definitely long enough for validation.",
             "highlight": "Big news today",
             "tags": ["ai", "cloud"],
-            "fullContent": "This full digest content is definitely long enough for validation.",
+            "fullContent": "This full digest content is definitely long enough for validation. It covers multiple topics including AI breakthroughs, cloud computing trends, open source updates, and deep technical analysis for developers who want to stay current with industry developments.",
             "sections": [
                 {
                     "category": "hot_trend",
@@ -326,10 +326,10 @@ class TestParseDigestContent:
     def test_no_valid_items_rejected(self):
         response = """{
             "title": "Digest",
-            "summary": "This summary is definitely long enough.",
+            "summary": "This summary is definitely long enough to pass the minimum validation threshold.",
             "highlight": "h",
             "tags": ["ai"],
-            "fullContent": "This full content is definitely long enough for validation.",
+            "fullContent": "This full content is definitely long enough to pass the minimum validation threshold for digest content length checks. It includes comprehensive coverage of all major technology developments, open source project updates, cloud infrastructure changes, and developer tool improvements that occurred during the reporting period.",
             "sections": [
                 {
                     "category": "unknown",
@@ -350,7 +350,7 @@ class TestParseDigestContent:
             "summary": "This digest summary is definitely long enough for validation.",
             "highlight": "Big news today",
             "tags": ["ai", "cloud"],
-            "fullContent": "This full digest content is definitely long enough for validation.",
+            "fullContent": "This full digest content is definitely long enough for validation. It covers multiple topics including AI breakthroughs, cloud computing trends, open source updates, and deep technical analysis for developers.",
             "sections": [
                 {
                     "category": "hot_trend",
@@ -385,7 +385,7 @@ class TestParseDigestContent:
             "summary": "This digest summary is definitely long enough for validation.",
             "highlight": "Big news today",
             "tags": ["ai", "cloud"],
-            "fullContent": "This full digest content is definitely long enough for validation.",
+            "fullContent": "This full digest content is definitely long enough for validation. It covers multiple topics including AI breakthroughs, cloud computing trends, open source updates, and deep technical analysis for developers.",
             "sections": [
                 {
                     "category": "hot_trend",

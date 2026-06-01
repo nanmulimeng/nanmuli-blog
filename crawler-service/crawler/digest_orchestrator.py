@@ -508,6 +508,7 @@ class DigestOrchestrator:
             "proxy_url": settings.proxy_url,
             "optimization_enabled": settings.optimization_enabled,
             "optimization_mode": settings.optimization_mode,
+            "optimization_max_rounds": settings.optimization_max_rounds,
             "digest_optimization_enabled": settings.digest_optimization_enabled,
             "digest_optimization_min_sections": settings.digest_optimization_min_sections,
             "digest_optimization_min_results_per_section": settings.digest_optimization_min_results_per_section,
@@ -533,24 +534,59 @@ class DigestOrchestrator:
         # 1. 用所有爬取结果做6维评估（复用评估器）
         from ai import content_organizer as organizer
 
-        evaluator = CoverageEvaluator(organizer if organizer.is_available else None)
+        # 创建独立实例用于评估，避免与 DigestGenAgent 共享状态导致 close 后不可用
+        eval_organizer = None
+        try:
+            if organizer.is_available:
+                eval_organizer = organizer
+        except Exception:
+            pass
+        evaluator = CoverageEvaluator(eval_organizer)
         keyword = " ".join(
             kw for s in plan.sections for kw in s.keywords[:2]
         ) if plan.sections else "技术日报"
+        eval_results = self._build_digest_eval_results(self._section_documents) or all_results
+        section_result_counts = {sec.name: 0 for sec in plan.sections}
+        for r in eval_results:
+            meta = r.get("metadata", {}) if isinstance(r, dict) else getattr(r, "metadata", {}) or {}
+            category = meta.get("section_category")
+            if category:
+                section_result_counts[category] = section_result_counts.get(category, 0) + 1
+        if not any(section_result_counts.values()):
+            section_result_counts = {sec.name: sec.result_count for sec in plan.sections}
+
         eval_ctx = {
             "engine": plan.config_snapshot.get("engine", "unknown"),
             "time_range": "week",
+            "task_type": "digest",
+            "section_result_counts": section_result_counts,
         }
-        evaluation = await evaluator.evaluate(keyword, all_results, eval_ctx)
+        evaluation = await evaluator.evaluate(keyword, eval_results, eval_ctx)
 
         # 2. 计算各板块得分
         section_scores = []
+        min_per_section = int(
+            plan.config_snapshot.get(
+                "digest_optimization_min_results_per_section",
+                settings.digest_optimization_min_results_per_section,
+            )
+            if plan.config_snapshot else settings.digest_optimization_min_results_per_section
+        )
+        min_per_section = max(1, min_per_section)
+        section_fill_scores = []
         for sec in plan.sections:
+            fill_score = min(1.0, max(0, sec.result_count) / min_per_section)
+            section_fill_scores.append(fill_score)
             section_scores.append({
                 "name": sec.name,
                 "result_count": sec.result_count,
                 "status": sec.status,
+                "fill_score": round(fill_score, 3),
             })
+        section_fill_ratio = (
+            sum(section_fill_scores) / len(section_fill_scores)
+            if section_fill_scores else 1.0
+        )
 
         # 3. 生成改进建议（基于弱维度）
         suggestions = []
@@ -567,6 +603,11 @@ class DigestOrchestrator:
                 suggestions.append(f"{dim}={score:.2f} 偏低，建议下次优先优化此维度")
         if not suggestions:
             suggestions.append("整体覆盖度良好，保持当前策略")
+        if section_fill_ratio < 0.8:
+            suggestions.append(
+                f"板块有效结果不足，当前充足度 {section_fill_ratio:.2f}，"
+                f"建议补足每板块至少 {min_per_section} 条有效来源"
+            )
 
         output_quality = _calculate_digest_output_quality(
             getattr(digest_result, "digest_content", None)
@@ -580,6 +621,9 @@ class DigestOrchestrator:
             evaluation.overall_score * coverage_weight + output_quality["score"] * output_weight,
             3,
         )
+        if section_fill_ratio < 0.8:
+            # 成品格式再好，也不能掩盖信息源覆盖不足；保留轻量惩罚避免趋势分虚高。
+            final_score = round(final_score * (0.7 + 0.3 * section_fill_ratio), 3)
 
         # 4. 写入 KB
         digest_date = task.get("digest_date", "")
@@ -601,6 +645,35 @@ class DigestOrchestrator:
             )
         except Exception as e:
             logger.warning("[Orchestrator] Phase 4 KB write failed: %s", e)
+
+    @staticmethod
+    def _build_digest_eval_results(section_documents: list) -> list[dict]:
+        """Build evaluation inputs from cleaned digest candidates instead of raw crawl pages."""
+        if not section_documents:
+            return []
+        try:
+            from crawler.digest_gen_agent import DigestGenAgent
+            pages = DigestGenAgent({})._build_digest_pages(section_documents)
+        except Exception as e:
+            logger.debug("[Orchestrator] Build digest eval results failed: %s", e)
+            return []
+
+        results = []
+        for page in pages:
+            markdown = getattr(page, "markdown", "") or getattr(page, "summary", "") or ""
+            if not markdown:
+                continue
+            results.append({
+                "success": True,
+                "url": getattr(page, "url", "") or "",
+                "title": getattr(page, "title", "") or "",
+                "markdown": markdown,
+                "metadata": {
+                    "section_category": getattr(page, "category", "") or "",
+                    "source_level": getattr(page, "source_level", "") or "",
+                },
+            })
+        return results
 
     def _quick_coverage_check(self, results: list, section_name: str, plan_log: list):
         """板块完成后的快速覆盖率评估（纯计算维度，无 AI 调用）"""

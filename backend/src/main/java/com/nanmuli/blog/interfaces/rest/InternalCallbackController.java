@@ -88,9 +88,14 @@ public class InternalCallbackController {
         }
 
         int pythonTaskId = num.intValue();
-        log.info("[Callback] Received: pythonTaskId={}, status={}", pythonTaskId, payload.get("status"));
+        int payloadStatus = -1;
+        Object statusObj = payload.get("status");
+        if (statusObj instanceof Number s) {
+            payloadStatus = s.intValue();
+        }
+        log.info("[Callback] Received: pythonTaskId={}, status={}", pythonTaskId, payloadStatus);
 
-        collectorAppService.handleCallback(pythonTaskId);
+        collectorAppService.handleCallback(pythonTaskId, payloadStatus);
         return Result.success();
     }
 

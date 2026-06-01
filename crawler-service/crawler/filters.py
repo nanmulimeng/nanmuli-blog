@@ -44,6 +44,10 @@ EXCLUDED_DOMAINS = {
     'match.com', 'eharmony.com', 'tinder.com',
     # Low-value encyclopedias, dictionaries, and domain sales pages for digests
     'baike.baidu.com', 'dictionary.cambridge.org', 'iciba.com', 'get.tech',
+    'merriam-webster.com', 'runoob.com', 'investopedia.com', 'educationleaves.com',
+    'britannica.com',
+    # AI tool directory pages are noisy for digest trend sections; keep articles/news instead.
+    'ai-bot.cn', 'ai-kit.cn', 'dongaigc.com',
 }
 
 # ============ 域名后缀黑名单 ============
@@ -67,7 +71,27 @@ DOMAIN_PATH_EXCLUSIONS = (
     ('ifeng.com', '/c/'),
     ('baidu.com', '/p/'),
     ('baidu.com', '/thread-'),
+    ('microsoft.com', '/software-download'),
+    ('learn.microsoft.com', '/en-us/answers/'),
+    ('learn.microsoft.com', '/software-center'),
+    ('techtarget.com', '/definition/'),
+    ('nvidia.com', '/industries/aec/'),
+    ('catalog.northeastern.edu', '/course-descriptions/'),
+    ('udemy.com', '/course/'),
+    ('iisd.org', '/taxonomy/term/'),
+    ('timextender.com', '/hubfs/downloads/'),
+    ('github.blog', '/news-insights/company-news/still-a-developer-just-outside-our-latest-github-shop-collection-is-here'),
+    ('wikipedia.org', '/wiki/software'),
+    ('ofzenandcomputing.com', '/what-is-software'),
+    ('geeksforgeeks.org', '/computer-science-fundamentals/software-and-its-types'),
 )
+
+LOW_VALUE_HOME_PAGES = {
+    'developer.android.com',
+    'developer.apple.com',
+    'developer.microsoft.com',
+    'copilot.microsoft.com',
+}
 
 # ============ 通用低价值路径（任何域名）============
 
@@ -106,7 +130,8 @@ def is_excluded_domain(url: str) -> bool:
     """
     parsed = urlparse(url.lower())
     domain = parsed.netloc
-    path = parsed.path
+    pure_path = parsed.path
+    path = pure_path
     if parsed.query:
         path = path + '?' + parsed.query
 
@@ -126,7 +151,7 @@ def is_excluded_domain(url: str) -> bool:
     # 搜索引擎路径排除
     if 'google.com' in domain and '/search' in path:
         return True
-    if 'bing.com' in domain and '/search' in path:
+    if 'bing.com' in domain and any(pattern in path for pattern in ('/search', '/ck/a', '/url?')):
         return True
     if 'baidu.com' in domain and ('/s?' in path or '/search' in path):
         return True
@@ -148,6 +173,9 @@ def is_excluded_domain(url: str) -> bool:
         if dom_pat in domain and path_pat in path:
             return True
 
+    if domain_no_www in LOW_VALUE_HOME_PAGES and pure_path.strip('/') in ('', 'en-us'):
+        return True
+
     # 通用低价值路径
     for pattern in GENERIC_PATH_PATTERNS:
         if pattern in path:
@@ -155,7 +183,7 @@ def is_excluded_domain(url: str) -> bool:
 
     # 文件扩展名排除
     for ext in EXCLUDED_EXTENSIONS:
-        if path.endswith(ext):
+        if pure_path.endswith(ext):
             return True
 
     return False

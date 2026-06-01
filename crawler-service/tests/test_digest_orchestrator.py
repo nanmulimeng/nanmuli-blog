@@ -269,6 +269,36 @@ class TestQuickCoverageCheck:
         assert not any("source_diversity" in log for log in plan_log)
 
 
+class TestDigestEvalResults:
+    def test_build_eval_results_expands_open_source_listing(self):
+        from crawler.section_document import SectionDocument, SourceEntry
+
+        doc = SectionDocument(
+            section_name="open_source",
+            entries=[
+                SourceEntry(
+                    url="https://github.com/trending?since=daily",
+                    title="GitHub Trending",
+                    cleaned_content=(
+                        "# Trending\n\n"
+                        "## [ owner-one / repo-one](https://github.com/owner-one/repo-one)\n"
+                        "First useful repository description for developers.\n\n"
+                        "## [ owner-two / repo-two](https://github.com/owner-two/repo-two)\n"
+                        "Second useful repository description for developers.\n"
+                    ),
+                ),
+            ],
+        )
+
+        results = DigestOrchestrator._build_digest_eval_results([doc])
+
+        assert sorted(r["url"] for r in results) == [
+            "https://github.com/owner-one/repo-one",
+            "https://github.com/owner-two/repo-two",
+        ]
+        assert all(r["metadata"]["section_category"] == "open_source" for r in results)
+
+
 # ============== TestExecuteIntegration ==============
 
 class TestExecuteIntegration:
@@ -518,7 +548,7 @@ class TestPhase4Evaluation:
         from optimization.evaluator import CoverageEvaluation
 
         orch = DigestOrchestrator()
-        sections = [_make_section(name="tech", keywords=["AI", "LLM"])]
+        sections = [_make_section(name="tech", keywords=["AI", "LLM"], result_count=3)]
         plan = _make_plan(sections=sections)
         task = {"id": 42, "digest_date": "2026-05-25"}
         all_results = [_make_result(url=f"https://x.com/{i}") for i in range(3)]
@@ -596,6 +626,70 @@ class TestPhase4Evaluation:
             assert isinstance(kb_kwargs["section_scores"], list)
             assert kb_kwargs["section_scores"][0]["name"] == "tech"
             assert kb_kwargs["section_scores"][-1]["name"] == "__digest_output__"
+
+    @pytest.mark.asyncio
+    async def test_evaluate_digest_quality_penalizes_underfilled_sections(self):
+        """板块结果数不足时，最终趋势分不能被成品格式分完全抬高。"""
+        from optimization.evaluator import CoverageEvaluation
+        from crawler.digest_gen_agent import DigestGenAgentResult
+        from ai.organizer import DigestContent, DigestSection, DigestItem
+
+        orch = DigestOrchestrator()
+        sections = [
+            _make_section(name="hot_trend", keywords=["AI news"], result_count=9),
+            _make_section(name="open_source", keywords=["GitHub trending"], result_count=1),
+            _make_section(name="tech_article", keywords=["engineering"], result_count=2),
+        ]
+        plan = _make_plan(sections=sections)
+        task = {"id": 43, "digest_date": "2026-06-01"}
+        digest_content = DigestContent(
+            title="技术日报",
+            summary="summary",
+            highlight="highlight",
+            tags=["ai"],
+            full_content="# 技术日报\n\n## 热点\n\n内容足够完整",
+            sections=[
+                DigestSection(
+                    category="hot_trend",
+                    items=[
+                        DigestItem(
+                            title=f"Item {i}",
+                            one_liner="This one liner explains developer impact clearly",
+                            source_url=f"https://example.com/{i}",
+                            source_name="example.com",
+                        )
+                        for i in range(6)
+                    ],
+                )
+            ],
+        )
+        digest_result = DigestGenAgentResult(
+            success=True,
+            digest_content=digest_content,
+            tokens_used=100,
+            duration_ms=500,
+        )
+        fake_eval = CoverageEvaluation(
+            angle_coverage=0.95,
+            source_diversity=0.96,
+            depth_coverage=0.9,
+            temporal_coverage=0.75,
+            perspective_balance=0.9,
+            language_coverage=0.56,
+            overall_score=0.86,
+        )
+
+        with patch("optimization.evaluator.CoverageEvaluator") as MockEval, \
+             patch("optimization.knowledge_base.KnowledgeBase") as MockKB:
+            MockEval.return_value.evaluate = AsyncMock(return_value=fake_eval)
+            mock_kb = MockKB.return_value
+            mock_kb.save_digest_evaluation = AsyncMock()
+
+            await orch._evaluate_digest_quality(digest_result, plan, task, [])
+
+            kb_kwargs = mock_kb.save_digest_evaluation.call_args[1]
+            assert kb_kwargs["overall_score"] < fake_eval.overall_score
+            assert any("板块有效结果不足" in s for s in kb_kwargs["suggestions"])
 
     @pytest.mark.asyncio
     async def test_evaluate_digest_quality_passes_available_ai_organizer_to_evaluator(self):

@@ -61,7 +61,10 @@ def _enrich_task(task: dict) -> dict:
 
     tp = task.get("total_pages", 0) or 0
     cp = task.get("completed_pages", 0) or 0
-    task["progress_percent"] = int(cp * 100 / tp) if tp > 0 else 0
+    progress = min(100, int(cp * 100 / tp)) if tp > 0 else 0
+    if task.get("status") not in (TaskStatus.COMPLETED, TaskStatus.FAILED):
+        progress = min(progress, 99)
+    task["progress_percent"] = progress
 
     # 解析 AI JSON 字段
     for field in ("ai_key_points", "ai_tags"):
@@ -352,6 +355,8 @@ async def re_organize_task(task_id: int):
             from standalone.organizer_helper import organize_content_and_save
             result = await organize_content_and_save(task_id, task, pages, organizer)
 
+        # 成功后恢复 COMPLETED 状态（之前设为了 PROCESSING）
+        await repo.update_task_status(task_id, TaskStatus.COMPLETED)
         return {"message": "AI 整理完成", "title": result.title}
 
     except ValueError as e:

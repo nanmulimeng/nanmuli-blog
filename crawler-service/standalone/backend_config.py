@@ -63,6 +63,14 @@ def _apply_ai_settings(config: dict[str, str]) -> None:
         settings.ai_model = config["ai.model"]
     if config.get("ai.max_tokens", ""):
         settings.ai_max_tokens = _to_int(config["ai.max_tokens"])
+    if config.get("ai.section_cleanup_timeout", ""):
+        settings.ai_section_cleanup_timeout = _to_int(config["ai.section_cleanup_timeout"])
+    if config.get("ai.section_cleanup_per_max_chars", ""):
+        settings.ai_section_cleanup_per_max_chars = _to_int(config["ai.section_cleanup_per_max_chars"])
+    if config.get("ai.section_cleanup_total_budget", ""):
+        settings.ai_section_cleanup_total_budget = _to_int(config["ai.section_cleanup_total_budget"])
+    if config.get("ai.section_cleanup_max_output_chars", ""):
+        settings.ai_section_cleanup_max_output_chars = _to_int(config["ai.section_cleanup_max_output_chars"])
     if config.get("ai.digest_per_max_chars", ""):
         settings.ai_digest_per_max_chars = _to_int(config["ai.digest_per_max_chars"])
     if config.get("ai.digest_total_budget", ""):
@@ -300,9 +308,12 @@ async def refresh() -> dict[str, str]:
             logger.info("Scheduler-relevant config changed (digest=%s, ai=%s, cron=%s), restarting scheduler",
                         old_digest != new_digest, old_ai != new_ai, cron_changed)
             try:
+                import asyncio
                 from standalone.scheduler import stop_scheduler, start_scheduler
-                stop_scheduler()
-                start_scheduler()
+                async def _restart():
+                    stop_scheduler()
+                    start_scheduler()
+                asyncio.get_event_loop().call_soon(lambda: asyncio.ensure_future(_restart()))
             except Exception:
                 logger.warning("Failed to restart scheduler", exc_info=True)
 

@@ -83,8 +83,6 @@ class OptimizationAgent:
         task: dict,
     ) -> OptimizationResult:
         budget_start = time.monotonic()
-        budget = max(30, settings.optimization_total_budget_seconds * 0.2)
-        deadline = budget_start + budget
         task_id = task.get("id", 0)
 
         # 1. 结果到板块映射
@@ -107,6 +105,8 @@ class OptimizationAgent:
             "time_range": "week",
             "config": config,
             "crawler": shared_crawler,
+            "task_type": "digest",
+            "section_result_counts": self._section_result_counts(section_map, crawl_plan),
         }
         target_score = self._snap.get(
             "digest_optimization_target_score",
@@ -164,7 +164,7 @@ class OptimizationAgent:
         try:
             cross_run_fatigue = await kb.get_recent_dimension_fatigue(limit=3)
             for dim, scores in cross_run_fatigue.items():
-                prefill_count = max(1, self._fatigue._window - 1)
+                prefill_count = max(0, self._fatigue._window - 2)  # window=2 → 0 次预填，保留完整机会
                 for _ in range(prefill_count):
                     self._fatigue.record(dim, False)
                 logger.info(
@@ -175,7 +175,15 @@ class OptimizationAgent:
         except Exception as e:
             logger.debug("[OptAgent] Cross-run fatigue check failed: %s", e)
 
-        for round_num in range(1, _MAX_OPT_ROUNDS + 1):
+        max_rounds = max(
+            1,
+            int(self._snap.get(
+                "optimization_max_rounds",
+                settings.optimization_max_rounds or _MAX_OPT_ROUNDS,
+            ) or _MAX_OPT_ROUNDS),
+        )
+        deadline = time.monotonic() + self._optimization_budget_seconds()
+        for round_num in range(1, max_rounds + 1):
             if time.monotonic() >= deadline:
                 logger.info("[OptAgent] Budget exhausted at round %d", round_num)
                 break
@@ -197,27 +205,42 @@ class OptimizationAgent:
                 if added > 0:
                     round_improved += 1
 
-            # 重新全局评估
+            # 重新映射 + 全局评估。补爬结果会改变板块分布，不能沿用初始 section_map。
+            section_map = self._map_results_to_sections(all_results, crawl_plan)
+            ctx["section_result_counts"] = self._section_result_counts(section_map, crawl_plan)
             prev_score = global_eval.overall_score
             global_eval = await self._safe_evaluate(
                 evaluator, eval_keyword, all_results, ctx,
             )
 
+            # 轮次间重新评估弱维度，避免用过时目标浪费预算
+            section_evals = await self._evaluate_per_section(
+                section_map, crawl_plan, evaluator, ctx,
+            )
+            next_weak_sections = self._identify_weak_sections(
+                section_evals, global_eval, crawl_plan, target_score,
+            )
+
             rounds_done = round_num
             delta = (global_eval.overall_score - prev_score) if global_eval else 0
+            sections_improved += round_improved
 
             # 能力 5: 全局优化轮次 KB 保存（关键词与评分语义一致）
             if global_eval:
+                weak_desc = (
+                    ", ".join(
+                        f"{ws.section.name}({','.join(ws.weakest_dimensions[:2])})"
+                        for ws in next_weak_sections
+                    )
+                    if next_weak_sections
+                    else "all sections met target"
+                )
                 global_strategy = SearchStrategy(
                     keyword=eval_keyword,
                     engine=ctx.get("engine", "sogou"),
                     time_range=ctx.get("time_range", "week"),
                     strategy_type="digest_section_opt",
-                    reason=f"Round {round_num}: optimized {len(weak_sections)} sections — "
-                           + ", ".join(
-                               f"{ws.section.name}({','.join(ws.weakest_dimensions[:2])})"
-                               for ws in weak_sections
-                           ),
+                    reason=f"Round {round_num}: optimized {round_improved} sections — {weak_desc}",
                 )
                 opt_round = _OptRound(
                     round_num=round_num,
@@ -235,7 +258,11 @@ class OptimizationAgent:
                 global_eval.overall_score if global_eval else 0,
                 delta, len(all_results) - urls_before, round_improved,
             )
-            sections_improved += round_improved
+
+            weak_sections = next_weak_sections
+            if not weak_sections:
+                logger.info("[OptAgent] All sections meet target after round %d", round_num)
+                break
 
             # 收敛检测（至少 2 轮后才判断收敛）
             if delta < 0.01 and round_num >= 2:
@@ -252,6 +279,10 @@ class OptimizationAgent:
             sections_improved=sections_improved,
             budget_used_seconds=budget_used,
         )
+
+    def _optimization_budget_seconds(self) -> float:
+        """Reserve enough post-evaluation time for actual recrawl attempts."""
+        return max(90.0, settings.optimization_total_budget_seconds * 0.6)
 
     # ============== 结果到板块映射 ==============
 
@@ -282,6 +313,7 @@ class OptimizationAgent:
                 if domain:
                     domain_to_sections.setdefault(domain, []).append(s.name)
 
+        section_names = set(section_map.keys())
         unmatched = []
         for r in results:
             url = self._get_url(r)
@@ -316,12 +348,29 @@ class OptimizationAgent:
             # Layer 3: 未匹配
             unmatched.append(r)
 
-        # 未匹配结果分配给所有板块
-        if unmatched and section_map:
-            for sec_name in section_map:
-                section_map[sec_name].extend(unmatched)
+        if unmatched:
+            try:
+                from standalone.task_executor import infer_category
+            except Exception:
+                infer_category = None
+
+            if infer_category:
+                for r in unmatched:
+                    inferred = infer_category(self._get_url(r), self._get_title(r))
+                    if inferred in section_names:
+                        section_map[inferred].append(r)
 
         return section_map
+
+    @staticmethod
+    def _section_result_counts(
+        section_map: dict[str, list],
+        crawl_plan: DigestCrawlPlan,
+    ) -> dict[str, int]:
+        return {
+            section.name: len(section_map.get(section.name, []))
+            for section in crawl_plan.sections
+        }
 
     # ============== 板块级评估 ==============
 
@@ -356,7 +405,18 @@ class OptimizationAgent:
         for section in crawl_plan.sections:
             eval_ = section_evals.get(section.name)
             if not eval_:
-                continue
+                from optimization.evaluator import CoverageEvaluation
+                eval_ = CoverageEvaluation(
+                    overall_score=0.0,
+                    source_diversity=0.0,
+                    depth_coverage=0.0,
+                    angle_coverage=0.0,
+                    temporal_coverage=0.0,
+                    perspective_balance=0.0,
+                    language_coverage=0.0,
+                    weaknesses=["section has no valid results"],
+                    suggestions=["补充该板块的信息源或放宽搜索策略"],
+                )
             if eval_.overall_score >= target_score:
                 continue
 
@@ -486,27 +546,39 @@ class OptimizationAgent:
         # 执行爬取（分 source_expand 和 keyword 两条路径）
         new_results = []
         try:
-            # 能力 2: source_expand — 利用板块已配置的 URL/RSS 源
-            if strategy.strategy_type == "source_expand" and strategy.source_expand_section:
-                from crawler.digest import apply_overrides
-                from crawler.source_crawler import crawl_url_sources, crawl_rss_sources
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return 0
 
-                sec = apply_overrides(strategy.source_expand_section, strategy.source_expand_overrides)
-                if sec.get("url_sources"):
-                    new_results.extend(await crawl_url_sources(sec, ctx["config"], ctx["crawler"]))
-                if sec.get("rss_sources"):
-                    new_results.extend(await crawl_rss_sources(sec, ctx["config"], ctx["crawler"]))
-            else:
-                from crawler.search import crawl_by_keyword
-                new_results = await crawl_by_keyword(
-                    keyword=strategy.keyword,
-                    engine=strategy.engine,
-                    max_results=_MAX_RECRAWL_RESULTS,
-                    time_range=strategy.time_range,
-                    config=ctx.get("config"),
-                    crawler=ctx.get("crawler"),
-                    skip_dedup=True,
-                )
+            async def _crawl_with_strategy():
+                crawled = []
+                # 能力 2: source_expand — 利用板块已配置的 URL/RSS 源
+                if strategy.strategy_type == "source_expand" and strategy.source_expand_section:
+                    from crawler.digest import apply_overrides
+                    from crawler.source_crawler import crawl_url_sources, crawl_rss_sources
+
+                    sec = apply_overrides(strategy.source_expand_section, strategy.source_expand_overrides)
+                    if sec.get("url_sources"):
+                        crawled.extend(await crawl_url_sources(sec, ctx["config"], ctx["crawler"]))
+                    if sec.get("rss_sources"):
+                        crawled.extend(await crawl_rss_sources(sec, ctx["config"], ctx["crawler"]))
+                else:
+                    from crawler.search import crawl_by_keyword
+                    crawled = await crawl_by_keyword(
+                        keyword=strategy.keyword,
+                        engine=strategy.engine,
+                        max_results=_MAX_RECRAWL_RESULTS,
+                        time_range=strategy.time_range,
+                        config=ctx.get("config"),
+                        crawler=ctx.get("crawler"),
+                        skip_dedup=True,
+                    )
+                return crawled
+
+            new_results = await asyncio.wait_for(_crawl_with_strategy(), timeout=remaining)
+        except asyncio.TimeoutError:
+            logger.info("[OptAgent] Recrawl timed out for '%s' within optimization budget", section.name)
+            return 0
         except Exception as e:
             logger.warning("[OptAgent] Recrawl failed for '%s': %s", section.name, e)
             return 0
@@ -524,9 +596,10 @@ class OptimizationAgent:
         merged_results = all_results[before_merge_count:]
 
         if added > 0:
+            section.result_count += added
             doc = self._find_section_document(section_documents, section.name)
             if doc:
-                self._rebuild_section_document(doc, merged_results)
+                self._rebuild_section_document(doc, merged_results, added)
             logger.debug(
                 "[OptAgent] Section '%s': +%d results (strategy=%s, engine=%s)",
                 section.name, added, strategy.strategy_type, strategy.engine,
@@ -537,7 +610,7 @@ class OptimizationAgent:
     # ============== SectionDocument 更新 ==============
 
     def _rebuild_section_document(
-        self, doc: SectionDocument, new_results: list,
+        self, doc: SectionDocument, new_results: list, added: int = 0,
     ):
         """将重爬结果追加到 SectionDocument（heuristic 清洗 + URL 规范化去重）"""
         from crawler.config import _filter_breadcrumbs, _filter_boilerplate, _filter_nav_noise
@@ -575,10 +648,7 @@ class OptimizationAgent:
         doc.cleaned_count = len(doc.entries)
         doc.total_word_count = sum(e.word_count for e in doc.entries)
         doc.merged_content = "\n\n---\n\n".join(e.cleaned_content for e in doc.entries)
-        doc.source_count = doc.source_count + len([
-            r for r in new_results
-            if len(getattr(r, "markdown", "") if hasattr(r, "markdown") else (r.get("markdown", "") if isinstance(r, dict) else "")) >= 100
-        ])
+        doc.source_count = doc.source_count + added
 
     def _merge_optimized_results(
         self, results: list, all_results: list, seen_urls: set, content_dedup,

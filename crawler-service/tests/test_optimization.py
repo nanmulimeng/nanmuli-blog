@@ -78,6 +78,77 @@ class TestEvaluatorHeuristic:
         result = evaluator._heuristic_evaluate(meta, {})
         assert result["angle"] > 0.5
 
+    def test_digest_fallback_uses_section_coverage(self):
+        evaluator = CoverageEvaluator(organizer=None)
+        entries = [
+            {"domain": "github.blog", "content_length": 900},
+            {"domain": "github.com", "content_length": 2600},
+            {"domain": "engineering.example.com", "content_length": 4200},
+        ]
+        meta = {
+            "entries": entries,
+            "domains": [e["domain"] for e in entries],
+            "titles": ["GitHub update", "Open source project", "Architecture case study"],
+            "total": 3,
+        }
+        result = evaluator._heuristic_evaluate(
+            meta,
+            {
+                "task_type": "digest",
+                "time_range": "week",
+                "section_result_counts": {"hot_trend": 2, "open_source": 1, "tech_article": 1},
+            },
+        )
+        assert result["angle"] >= 0.8
+        assert result["depth"] >= 0.7
+        assert result["temporal"] >= 0.55
+
+    def test_digest_eval_prompt_mentions_digest_rubric(self):
+        evaluator = CoverageEvaluator(organizer=None)
+        meta = {
+            "entries": [],
+            "domains": [],
+            "titles": [],
+            "total": 0,
+        }
+        prompt = evaluator._build_eval_prompt(
+            "technology digest",
+            meta,
+            {
+                "task_type": "digest",
+                "section_result_counts": {"hot_trend": 4, "open_source": 3, "tech_article": 3},
+            },
+        )
+        assert "daily technical digest" in prompt
+        assert "Digest sections: hot_trend=4" in prompt
+        assert "do not require pro/con debate" in prompt
+
+    @pytest.mark.asyncio
+    async def test_digest_evaluate_skips_ai_call(self):
+        organizer = MagicMock()
+        organizer.is_available = True
+        organizer._call_ai = AsyncMock()
+        evaluator = CoverageEvaluator(organizer=organizer)
+        results = [
+            {
+                "success": True,
+                "url": "https://github.blog/engineering/example",
+                "title": "Architecture example",
+                "markdown": "Detailed engineering writeup " * 100,
+                "metadata": {"section_category": "tech_article"},
+            }
+        ]
+
+        evaluation = await evaluator.evaluate(
+            "technology digest",
+            results,
+            {"task_type": "digest", "section_result_counts": {"tech_article": 1}, "time_range": "week"},
+        )
+
+        organizer._call_ai.assert_not_awaited()
+        assert evaluation.tokens_used == 0
+        assert evaluation.overall_score > 0
+
 
 class TestEvaluatorExtractMeta:
     def test_extract_from_dict(self):
@@ -237,15 +308,14 @@ class TestStrategyGenerator:
         assert s2.source_expand_section["name"] == "B"
 
     def test_source_expand_reuse_after_all_used(self):
-        """所有板块都用过后允许复用第一个有源的板块"""
+        """所有板块都用过后不再回退 source_expand，应切换到其他策略"""
         eval_result = self._make_eval(source_diversity=0.1)
         sections = [self._sec("only", url_sources=[{"url": "https://a.com"}])]
         s1 = self.gen.generate("AI", eval_result, "bing", "week", 2, sections=sections)
         assert s1.source_expand_section["name"] == "only"
         s2 = self.gen.generate("AI", eval_result, "bing", "week", 3, history=[s1], sections=sections)
         assert s2 is not None
-        assert s2.strategy_type == "source_expand"
-        assert s2.source_expand_section["name"] == "only"
+        assert s2.strategy_type != "source_expand"
 
     def test_source_expand_none_sections(self):
         """sections=None 时不触发 source_expand，正常走深度策略"""

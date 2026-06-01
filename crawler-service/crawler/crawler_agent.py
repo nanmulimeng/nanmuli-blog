@@ -185,6 +185,11 @@ class CrawlerAgent:
             content = r.markdown if hasattr(r, "markdown") else r.get("markdown", "")
             title = r.title if hasattr(r, "title") else r.get("title", "")
             url = r.url if hasattr(r, "url") else r.get("url", "")
+            if self.section.name == "open_source":
+                from crawler.digest_gen_agent import _is_open_source_digest_page
+                if not _is_open_source_digest_page(url):
+                    logger.info("[CrawlerAgent] Skip non-project open_source page: %s", url)
+                    continue
             if content and len(content) >= 100:
                 raw_entries.append({"url": url, "title": title, "content": content})
 
@@ -199,7 +204,8 @@ class CrawlerAgent:
                 organizer = ContentOrganizer()
                 try:
                     cleaned, tokens, duration = await asyncio.wait_for(
-                        organizer.clean_section_content(raw_entries), timeout=30.0
+                        organizer.clean_section_content(raw_entries),
+                        timeout=settings.ai_section_cleanup_timeout,
                     )
                 finally:
                     await organizer.close()

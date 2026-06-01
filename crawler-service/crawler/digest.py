@@ -166,7 +166,7 @@ def apply_overrides(section: dict, overrides: dict | None) -> dict:
     items_mult = overrides.get("max_items_multiplier", 1.0)
     if items_mult != 1.0:
         original_max = sec.get("max_items", 5)
-        sec["max_items"] = max(int(original_max * items_mult), original_max)
+        sec["max_items"] = max(int(original_max * items_mult), 1)
 
     skip_ids = set(overrides.get("skip_source_ids", []))
     if skip_ids:

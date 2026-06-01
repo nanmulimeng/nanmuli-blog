@@ -111,6 +111,16 @@ public class CrawlerTaskClient {
         if (aiTemplate != null) body.put("ai_template", aiTemplate);
         if (timeRange != null) body.put("time_range", timeRange);
 
+        // 传入 callback_url，确保 Python 任务完成后能回调 Java
+        String callbackUrl = configService.get("crawler.callback.url", "");
+        if (callbackUrl != null && !callbackUrl.isBlank()) {
+            body.put("callback_url", callbackUrl);
+            String callbackKey = configService.get("crawler.callback.api-key", "");
+            if (callbackKey != null && !callbackKey.isBlank()) {
+                body.put("callback_headers", Map.of("X-Callback-Key", callbackKey));
+            }
+        }
+
         JsonNode resp = post("/api/v1/tasks", body);
         int pythonTaskId = resp.path("id").asInt();
         if (pythonTaskId <= 0) {
@@ -160,7 +170,11 @@ public class CrawlerTaskClient {
      * 重试任务
      */
     public void retryTask(int pythonTaskId) {
-        post("/api/v1/tasks/" + pythonTaskId + "/retry", null);
+        JsonNode resp = post("/api/v1/tasks/" + pythonTaskId + "/retry", null);
+        if (resp.has("error") || resp.has("detail")) {
+            String errMsg = resp.has("error") ? resp.get("error").asText() : resp.get("detail").asText();
+            throw new RuntimeException("Python retry 失败 (task=" + pythonTaskId + "): " + errMsg);
+        }
         log.info("[CrawlerTaskClient] retried Python task: id={}", pythonTaskId);
     }
 

@@ -7,6 +7,8 @@ declare module 'axios' {
   interface AxiosRequestConfig {
     __retryCount?: number
     __cleanup?: () => void
+    skipAuthRedirect?: boolean
+    skipErrorMessage?: boolean
   }
 }
 
@@ -79,9 +81,11 @@ request.interceptors.response.use(
     const { data } = response
 
     if (data.code !== 200) {
-      ElMessage.error(data.message || '请求失败')
+      if (!response.config.skipErrorMessage) {
+        ElMessage.error(data.message || '请求失败')
+      }
 
-      if (data.code === 401 && !window.location.pathname.includes('/login')) {
+      if (data.code === 401 && !response.config.skipAuthRedirect && !window.location.pathname.includes('/login')) {
         // Cookie模式下Token由浏览器自动管理，无需手动清除
         window.location.href = '/login'
       }

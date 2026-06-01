@@ -1,11 +1,21 @@
 # Web Collector 模块 — 产品设计与开发方案
 
 > **模块名称**: 网页内容采集与智能整理（Web Collector）  
-> **文档版本**: v2.0  
+> **文档版本**: v2.1
 > **创建日期**: 2026-04-07  
-> **更新日期**: 2026-04-07  
+> **更新日期**: 2026-06-01
 > **作者**: nanmuli  
-> **状态**: 方案设计阶段
+> **状态**: MVP Beta 试用版已上线准备
+
+### v2.1 当前状态更新
+
+| 变更 | 说明 |
+|------|------|
+| 日报系统进入 MVP Beta | 管理端可手动触发，工作日定时调度已启用，公开接口可展示最新日报 |
+| 爬虫服务独立化 | `crawler-service` 已可作为独立 HTTP 服务被博客或其他内部服务调用 |
+| 自动优化系统接入 | 已支持日报质量评估、趋势记录、弱点建议和优化记录查询 |
+| AI 模型配置更新 | AI 接入为 OpenAI 兼容端点，试用环境使用 `deepseek-v4-pro` |
+| 后续重点明确 | 优先处理来源去重、技术文章源质量、优化建议强反馈和完成态进度归一 |
 
 ### v2.0 更新记录
 
@@ -26,7 +36,7 @@
 
 ### 1.1 一句话描述
 
-用户提供 **URL / 关键词 / 订阅源**，系统通过 **Crawl4AI** 自动爬取网页内容，再由 **AI（DashScope/通义千问）** 智能整理输出结构化知识摘要，并支持**每日自动生成技术日报**。
+用户提供 **URL / 关键词 / 订阅源**，系统通过 **Crawl4AI** 自动爬取网页内容，再由 **OpenAI 兼容 AI 模型** 智能整理输出结构化知识摘要，并支持**每日自动生成技术日报**。
 
 ### 1.2 解决谁的什么问题
 
@@ -171,7 +181,7 @@
 │  POST /crawl/deep      ← BFS 深度爬取，逐页回调                  │
 │  POST /crawl/search    ← 关键词搜索 → 结果列表 → 逐个爬取       │
 ├──────────────────────────────────────────────────────────────────┤
-│                  AI 服务 (Spring AI + DashScope)                  │
+│                  AI 服务 (OpenAI 兼容端点)                         │
 │  AiContentOrganizer: 单页整理 / 多页汇总 / 日报生成              │
 ├──────────────────────────────────────────────────────────────────┤
 │                        数据层                                    │
@@ -185,7 +195,7 @@
 | 层级 | 技术 | 选型理由 |
 |------|------|----------|
 | **网页爬取** | Crawl4AI (Python) | LLM-First 设计；Markdown 原生输出；Playwright 动态渲染 |
-| **AI 整理** | Spring AI + DashScope | pom.xml 已预留；国内可用；qwen-turbo 成本低 |
+| **AI 整理** | OpenAI 兼容端点 | 试用环境使用 deepseek-v4-pro；可按配置切换模型 |
 | **跨语言通信** | HTTP REST (Java → Python) | 最简跨语言方案；FastAPI 性能优秀 |
 | **异步任务** | Spring @Async + DB 状态机 | 项目已有 AsyncConfig；单用户不需要 MQ |
 | **定时调度** | Spring @Scheduled | 轻量；cron 表达式可配置化存入 sys_config |
@@ -815,7 +825,7 @@ com.nanmuli.blog
 │   │   ├── Crawl4AiCrawlerService.java             # Crawl4AI HTTP 实现
 │   │   └── CrawlResult.java                        # 爬取结果 DTO
 │   ├── ai/
-│   │   └── DashScopeContentOrganizer.java          # AiContentOrganizer 实现
+│   │   └── OpenAiCompatibleContentOrganizer.java   # AiContentOrganizer 实现
 │   ├── dedup/
 │   │   └── DeduplicationService.java               # 三级去重服务
 │   └── scheduler/
@@ -879,9 +889,9 @@ frontend/src/
 
 | Step | 任务 | 产出 |
 |------|------|------|
-| 2.1 | 取消 pom.xml 中 Spring AI DashScope 注释 | 依赖可用 |
-| 2.2 | 配置 DashScope API Key | application-dev.yml |
-| 2.3 | 实现 DashScopeContentOrganizer（Prompt + JSON 解析） | AI 整理服务 |
+| 2.1 | 配置 OpenAI 兼容 AI 端点 | 支持 DeepSeek/DashScope 等兼容服务 |
+| 2.2 | 配置 AI API Key | sys_config / 环境变量 |
+| 2.3 | 实现 AI Organizer（Prompt + JSON 解析） | AI 整理服务 |
 | 2.4 | 串联爬取→AI 整理→保存结果 | 完整管道 |
 | 2.5 | 实现"转为文章草稿"（复用 ArticleAppService.create） | 转文章接口 |
 | 2.6 | 错误处理：AI 超时/JSON 异常/token 超限 fallback | 健壮性 |
@@ -959,7 +969,7 @@ frontend/src/
 | 风险 | 概率 | 影响 | 缓解方案 |
 |------|------|------|----------|
 | 目标网站反爬 | 中 | 中 | enable_stealth + text_mode；失败提示用户 |
-| DashScope API 不稳定 | 低 | 中 | 重试 1 次；失败保留原文 |
+| AI API 不稳定 | 低 | 中 | 重试 1 次；失败保留原文 |
 | Python 服务崩溃 | 低 | 高 | Docker restart=always；Java 超时保护 |
 | 2G 服务器内存不足 | 中 | 高 | text_mode + light_mode；限并发为 1；max_pages ≤ 10 |
 | 搜索引擎封 IP | 中 | 中 | 限频 + 降级策略；关键词爬取标记为 beta 功能 |

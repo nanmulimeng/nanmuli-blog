@@ -37,6 +37,30 @@ class TestKeywordOnlySources:
         names = {s["name"] for s in sections}
         assert names == {"hot_trend", "open_source"}
 
+    def test_known_hot_trend_keyword_is_expanded_to_high_signal_queries(self):
+        sources = [{"type": "keyword", "value": "AI LLM news today", "contentCategory": "hot_trend"}]
+
+        sections = _sources_to_sections(sources)
+
+        section = sections[0]
+        values = [item["value"] for item in section["keyword_details"]]
+        assert "AI security vulnerability developer impact" in values
+        assert "LLM model release API developer update" in values
+        assert "AI LLM news today" not in values
+        assert " OR " in section["keyword"]
+
+    def test_known_tech_article_keyword_is_expanded_to_deep_engineering_queries(self):
+        sources = [{"type": "keyword", "value": "tech blog deep dive engineering", "contentCategory": "tech_article"}]
+
+        sections = _sources_to_sections(sources)
+
+        values = [item["value"] for item in sections[0]["keyword_details"]]
+        assert "site:github.blog/engineering architecture performance" in values
+        assert "site:cloudflare.com/blog reliability performance engineering" in values
+        assert "software architecture scalability performance engineering case study" in values
+        assert all("production engineering" not in value for value in values)
+        assert "tech blog deep dive engineering" not in values
+
 
 class TestUrlSources:
     def test_single_url_source(self):

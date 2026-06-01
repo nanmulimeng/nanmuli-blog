@@ -204,6 +204,8 @@ class BreadthStrategyGen:
         "site_scope": "source_diversity",
         "source_expand": "source_diversity",
         "cross_language": "language",
+        "keyword_refine": "perspective",
+        "time_adjust": "temporal",
     }
 
     def generate(
@@ -402,11 +404,8 @@ class BreadthStrategyGen:
                 candidates.append(section)
 
         if not candidates:
-            fallback = [s for s in sections
-                        if s.get("url_sources") or s.get("rss_sources")]
-            if not fallback:
-                return None
-            return random.choice(fallback)
+            # 不再 fallback 到已用 section，避免重复爬取
+            return None
 
         def _section_score(sec: dict) -> float:
             eff = sec.get("effectiveness", {})
@@ -488,6 +487,7 @@ class StrategyGenerator:
         "source_expand": "source_diversity",
         "time_adjust": "temporal",
         "cross_language": "language",
+        "keyword_refine": "perspective",
     }
 
     def generate(

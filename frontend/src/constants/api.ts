@@ -45,6 +45,7 @@ export const PAGE_SIZE = {
   COLLECTOR: 10,
   HOME_ARTICLES: 6,
   RELATED_ARTICLES: 4,
+  ARCHIVE_ARTICLES: 100,
 } as const
 
 /** 轮询间隔常量（毫秒） */

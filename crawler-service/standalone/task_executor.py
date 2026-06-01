@@ -271,7 +271,7 @@ class TaskExecutor:
                     logger.warning("[Digest] SourceAuthority preload failed (fallback to hardcoded): %s", e)
             from crawler.dedup import DedupEngine
             if is_digest:
-                dedup_engine = DedupEngine(simhash_threshold=settings.content_dedup_simhash_threshold) if settings.content_dedup_enabled else None
+                dedup_engine = None  # DigestOrchestrator 已经做过完整去重，不再重复
             else:
                 sim_threshold = settings.content_dedup_deep_threshold if task["task_type"] == "deep" else settings.content_dedup_simhash_threshold
                 dedup_engine = DedupEngine(simhash_threshold=sim_threshold) if settings.content_dedup_enabled else None
@@ -327,6 +327,7 @@ class TaskExecutor:
 
                 if not ai_success:
                     logger.warning("Task %d AI organization failed, task still marked complete with raw content.", task_id)
+                    await repo.save_ai_error(task_id, "AI 整理失败，内容为原始 Markdown")
             else:
                 logger.info("Task %d AI organization disabled, skipping.", task_id)
 
@@ -744,6 +745,46 @@ _SECTIONS_CACHE_TTL = 300
 _DIGEST_SECTION_MAX_ITEMS_CAP = 6
 _DIGEST_RSS_MAX_ENTRIES_CAP = 3
 
+_DIGEST_KEYWORD_EXPANSIONS: dict[tuple[str, str], list[str]] = {
+    ("hot_trend", "ai llm news today"): [
+        "AI security vulnerability developer impact",
+        "LLM model release API developer update",
+        "GitHub Copilot coding agent developer news",
+    ],
+    ("tech_article", "tech blog deep dive engineering"): [
+        "site:github.blog/engineering architecture performance",
+        "site:cloudflare.com/blog reliability performance engineering",
+        "site:netflixtechblog.com architecture scalability",
+        "software architecture scalability performance engineering case study",
+    ],
+}
+
+_DIGEST_CATEGORY_FALLBACK_KEYWORDS: dict[str, str] = {
+    "hot_trend": "AI OR LLM OR developer news OR technology trend",
+    "open_source": "GitHub trending OR open source release OR developer tool",
+    "tech_article": "engineering deep dive OR architecture performance OR best practice",
+    "dev_tool": "developer tool OR productivity tool OR IDE extension",
+    "creative": "creative coding OR interesting developer project OR AI experiment",
+    "paper": "AI paper OR systems paper OR machine learning research",
+}
+
+
+def _fallback_section_keyword(category: str) -> str:
+    """URL/RSS-only sections still need a keyword for planning/evaluation fallback."""
+    return _DIGEST_CATEGORY_FALLBACK_KEYWORDS.get(
+        category,
+        f"{category} technology update",
+    )
+
+
+def _expand_digest_keyword(category: str, keyword: str) -> list[str]:
+    """Expand known overly broad digest keywords into high-signal queries."""
+    normalized = re.sub(r"\s+", " ", (keyword or "").strip().lower())
+    expanded = _DIGEST_KEYWORD_EXPANSIONS.get((category or "", normalized))
+    if expanded:
+        return expanded
+    return [keyword]
+
 
 def invalidate_digest_sections_cache():
     """清空日报板块配置缓存。"""
@@ -837,12 +878,13 @@ def _sources_to_sections(sources: list[dict]) -> list[dict]:
             "dead": src_dead,
         }
         if src_type == "keyword":
-            group["keywords"].append({
-                "value": src_value,
-                "source_id": src.get("id"),
-                "source_name": src.get("name", ""),
-                "effectiveness": effectiveness,
-            })
+            for keyword_value in _expand_digest_keyword(cat, src_value):
+                group["keywords"].append({
+                    "value": keyword_value,
+                    "source_id": src.get("id"),
+                    "source_name": src.get("name", ""),
+                    "effectiveness": effectiveness,
+                })
         elif src_type == "url":
             group["url_sources"].append({
                 "url": src_value,
@@ -915,6 +957,8 @@ def _sources_to_sections(sources: list[dict]) -> list[dict]:
                 merged = " OR ".join(truncated)
                 logger.info("Keyword merge truncated for section '%s': %d -> %d chars", cat, len(" OR ".join(kw_parts)), len(merged))
             section["keyword"] = merged
+        else:
+            section["keyword"] = _fallback_section_keyword(cat)
 
         # keyword 板块的 time_range 从 keyword 源独立计算（不受 RSS/URL freshness 影响）
         if has_kw and kw_freshness.get(cat):

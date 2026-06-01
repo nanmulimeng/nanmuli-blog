@@ -252,20 +252,18 @@ async def fail_task(task_id: int, error_message: str):
 
 async def delete_task(task_id: int):
     async with get_db() as db:
-        await db.execute("BEGIN")
         try:
             await db.execute("DELETE FROM crawl_page WHERE task_id = ?", (task_id,))
             await db.execute("DELETE FROM crawl_task WHERE id = ?", (task_id,))
             await db.commit()
         except Exception:
-            await db.execute("ROLLBACK")
+            await db.rollback() if hasattr(db, 'rollback') else None
             raise
 
 
 async def reset_task_for_retry(task_id: int):
     """重置失败任务为待处理状态"""
     async with get_db() as db:
-        await db.execute("BEGIN")
         try:
             await db.execute("DELETE FROM crawl_page WHERE task_id = ?", (task_id,))
             await db.execute("DELETE FROM digest_section WHERE task_id = ?", (task_id,))
@@ -284,7 +282,7 @@ async def reset_task_for_retry(task_id: int):
             )
             await db.commit()
         except Exception:
-            await db.execute("ROLLBACK")
+            await db.rollback() if hasattr(db, 'rollback') else None
             raise
 
 
@@ -303,6 +301,7 @@ async def save_ai_results(
                ai_title = ?, ai_summary = ?, ai_key_points = ?,
                ai_tags = ?, ai_category = ?, ai_full_content = ?,
                ai_duration = ?, ai_tokens_used = ?,
+               ai_error_message = NULL, error_message = NULL,
                updated_at = datetime('now')
                WHERE id = ?""",
             (ai_title, ai_summary,
@@ -345,7 +344,6 @@ async def save_digest_results(
 ):
     """保存日报结构化结果（AI 通用字段 + sections/items）"""
     async with get_db() as db:
-        await db.execute("BEGIN")
         try:
             # 1. 更新 crawl_task 通用字段
             await db.execute(
@@ -353,6 +351,7 @@ async def save_digest_results(
                    ai_title = ?, ai_summary = ?, ai_tags = ?,
                    ai_full_content = ?, ai_duration = ?, ai_tokens_used = ?,
                    digest_date = ?, digest_highlight = ?,
+                   ai_error_message = NULL, error_message = NULL,
                    updated_at = datetime('now')
                    WHERE id = ?""",
                 (ai_title, ai_summary,
@@ -393,7 +392,7 @@ async def save_digest_results(
 
             await db.commit()
         except Exception:
-            await db.execute("ROLLBACK")
+            await db.rollback() if hasattr(db, 'rollback') else None
             raise
 
 
@@ -465,7 +464,6 @@ async def save_pages(task_id: int, results: list) -> int:
         ))
 
     async with get_db() as db:
-        await db.execute("BEGIN")
         try:
             await db.executemany(
                 """INSERT INTO crawl_page
@@ -477,7 +475,7 @@ async def save_pages(task_id: int, results: list) -> int:
             )
             await db.commit()
         except Exception:
-            await db.execute("ROLLBACK")
+            await db.rollback() if hasattr(db, 'rollback') else None
             raise
     return total_words
 

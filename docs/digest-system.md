@@ -1,13 +1,38 @@
 # 日报系统完整技术文档
 
-> 最后更新：2026-05-23
+> 最后更新：2026-06-01
 > 覆盖范围：Python 爬虫服务 + Java 后端 + Vue 前端
+> 当前状态：MVP Beta 试用版，可初步上线使用
 
 ---
 
 ## 一、系统概述
 
-日报系统是博客项目中一个自动化的技术资讯聚合模块，每日定时（或手动触发）从多种来源（搜索引擎、URL、RSS Feed）爬取技术内容，经 AI（Qwen 3.6-plus）整理为结构化技术日报，包含分类章节、条目摘要和亮点推荐。
+日报系统是博客项目中一个自动化的技术资讯聚合模块，每日定时（或手动触发）从多种来源（搜索引擎、URL、RSS Feed）爬取技术内容，经 OpenAI 兼容 AI 模型整理为结构化技术日报，包含分类章节、条目摘要和亮点推荐。当前试用环境使用 `deepseek-v4-pro`。
+
+### 1.0 MVP Beta 基线（2026-06-01）
+
+当前版本已经具备试用版上线能力：
+
+| 能力 | 状态 | 说明 |
+|------|------|------|
+| 后台手动生成日报 | ✅ 已通过 | 管理端可触发强制生成，并查看任务详情 |
+| 工作日定时生成 | ✅ 已启用 | scheduler cron: `0 8 * * 1-5` |
+| 公开日报展示 | ✅ 已通过 | `/api/digest/latest` 可返回最新日报 |
+| 多来源采集 | ✅ 已通过 | 支持 keyword/url/rss/mixed section |
+| 结构化日报保存 | ✅ 已通过 | 保存 `digest_section` 与 `digest_item` |
+| 自动优化评估 | ✅ 已接入 | 保存 `digest_final_eval`，可查询趋势 |
+| 历史质量反馈 | ✅ 初步可用 | 计划阶段读取趋势和历史弱点 |
+| 独立服务调用 | ✅ 已具备 | `crawler-service` 可被博客或其他服务通过 HTTP/API Key 调用 |
+
+最近一次真实任务：`task_id=71`，日期 `2026-06-01`，状态 `COMPLETED(3)`，采集 `21` 页，AI 耗时约 `68s`，生成 3 个 section、8 个条目。最新质量评估 `overall_score=0.896`，结构化输出评分 `0.981`。
+
+试用版仍需继续优化的问题：
+
+- `open_source` 板块仍可能出现多个条目共用 `https://github.com/trending` 的来源 URL，需要 repo 级 URL 展开。
+- `tech_article` 原始候选池可能混入泛化定义页，需要增强通用内容惩罚和站点白名单。
+- 自动优化已能评估和记录，但对下一轮采集策略的强制纠偏还不够。
+- 已完成任务的进度展示应统一归一为 `100%`，避免 `COMPLETED` 但 `progress_percent=95` 的观感问题。
 
 ### 1.1 三层架构
 
@@ -222,7 +247,7 @@ PENDING(0) → CRAWLING(1) → PROCESSING(2) → COMPLETED(3)
 [4] status → CRAWLING
     │
     ▼
-[5] execute_digest_crawl()
+[5] DigestOrchestrator.run() / execute_digest_crawl()
     │  ├─ 获取 Section 配置（Java API → 本地 JSON fallback）
     │  ├─ 深拷贝配置快照（防执行中修改）
     │  ├─ 构建历史去重引擎（Java指纹 → 本地SQLite fallback）
@@ -249,7 +274,7 @@ PENDING(0) → CRAWLING(1) → PROCESSING(2) → COMPLETED(3)
     │  ├─ 构建 DigestPageContent（分类推断+来源可信度+摘要提取）
     │  ├─ 获取最近3条highlight（AI多样性防护）
     │  ├─ 构建 Prompt（分类均分Token预算，可信度排序，超量仅发summary）
-    │  ├─ 调用 Qwen 3.6-plus（max_tokens=16K）
+    │  ├─ 调用 OpenAI 兼容 AI 模型（当前试用环境：deepseek-v4-pro，max_tokens=16K）
     │  ├─ 解析 JSON → 5层验证（必填/长度/分类/URL去重/URL合法性）
     │  ├─ 保存到 SQLite digest_section + digest_item
     │  └─ 失败重试：Truncated→1.5x tokens，RateLimit→指数退避
@@ -262,7 +287,7 @@ PENDING(0) → CRAWLING(1) → PROCESSING(2) → COMPLETED(3)
     │  └─ 指数退避重试3次，4xx不重试
     │
     ▼
-[12] Java 同步 Python 数据到 MySQL
+[12] Java 同步 Python 数据到 PostgreSQL
     │  ├─ handleCallback() → findByPythonTaskId()
     │  ├─ syncFromPythonSilent() → GET /api/v1/tasks/{id}
     │  ├─ updateTaskFromPython() → 映射所有字段
@@ -349,7 +374,7 @@ for kw in kw_list:
 
 - OR 合并的关键词拆分为独立搜索
 - `per_kw_max` 按关键词数量均分配额
-- 默认搜索引擎：sogou
+- 默认搜索引擎由 `crawler.digest.search_engine` 控制；试用任务实测使用 `bing`
 
 ### 5.2 URL 直爬（url / mixed 类型）
 
@@ -546,6 +571,17 @@ len(all_results) >= min_sections * min_results_per_section  # 最低结果数
 - 按 engine 和 strategy_type 聚合，z-score 归一化选推荐
 - 90 天自动清理
 
+### 8.6 当前试用版反馈方式
+
+自动优化系统目前已经接入日报主流程，但属于“轻反馈”阶段：
+
+1. `DigestOrchestrator` 在规划阶段读取历史质量趋势、上一轮弱点和策略提示。
+2. `OptimizationAgent` 在采集后评估各 section 覆盖度，必要时补采并合并结果。
+3. 日报成品生成后写入 `digest_final_eval`，用于趋势面板和下一轮规划参考。
+4. `get_strategy_hint()` 当前主要消费有效优化轮次记录；最终成品评估更多通过 `get_last_digest_weaknesses()` 和 `get_digest_quality_trend()` 影响下一轮。
+
+这意味着系统已经可以“知道哪里差”，但仍需要继续把评估建议转化为更强的采集约束，例如强制跨语言补采、强制来源去重、强制 tech_article 过滤泛化页面。
+
 ---
 
 ## 九、质量过滤
@@ -712,7 +748,7 @@ DIGEST_CATEGORY_COLORS = {
 |--------|--------|------|
 | `crawler.digest.enabled` | `false` | 日报总开关（Python调度用） |
 | `crawler.digest.cron` | `0 8 * * 1-5` | 定时cron（工作日早8点） |
-| `crawler.digest.search_engine` | `sogou` | 默认搜索引擎 |
+| `crawler.digest.search_engine` | `sogou`（配置中心可覆盖，试用环境实测为 `bing`） | 日报默认搜索引擎 |
 | `crawler.digest.parallel_sections` | `2` | 板块并行数 |
 | `crawler.digest.global_timeout` | `600` | 全局超时（秒） |
 | `crawler.digest.inter_section_delay` | `2.0` | 板块间延迟（秒） |
@@ -850,6 +886,9 @@ Java 端 `WebCollectTask` 和 `WebCollectSource` 使用 `@Version` 字段。并�
 | `crawler-service/standalone/routes.py` | FastAPI 端点 |
 | `crawler-service/standalone/db.py` | SQLite DDL + 连接管理 |
 | `crawler-service/standalone/models.py` | TaskStatus 枚举 |
+| `crawler-service/crawler/digest_orchestrator.py` | 日报总编排：规划、采集调度、优化、评估入库 |
+| `crawler-service/crawler/digest_gen_agent.py` | 日报结构化生成 Agent |
+| `crawler-service/crawler/optimization_agent.py` | 日报自动优化 Agent：弱板块识别、补采、合并 |
 | `crawler-service/crawler/digest.py` | 日报爬取编排 + 优化入口 |
 | `crawler-service/crawler/search.py` | 搜索引擎集成 |
 | `crawler-service/crawler/feed.py` | RSS/Atom 解析 |
@@ -918,6 +957,7 @@ Java 端 `WebCollectTask` 和 `WebCollectSource` 使用 `@Version` 字段。并�
 
 ---
 
-> 文档版本：v1.0
+> 文档版本：v1.1
 > 生成日期：2026-05-23
-> 基于代码版本：commit 2d6add3
+> 最近更新：2026-06-01
+> 当前基线：MVP Beta 试用版

@@ -9,6 +9,8 @@
 
 import datetime
 import json
+import re
+from urllib.parse import urlsplit, urlunsplit
 from ai.organizer import PageContent, DigestPageContent
 from standalone import repository as repo
 
@@ -97,6 +99,11 @@ def _extract_summary(markdown: str, max_chars: int = 200) -> str:
 def serialize_digest_sections(result, url_to_page_id: dict | None = None) -> list[dict]:
     """将 DigestContent.sections 序列化为 dict 列表，回填 page_id"""
     _url_map = url_to_page_id or {}
+    _normalized_url_map = {
+        _normalize_digest_url(url): page_id
+        for url, page_id in _url_map.items()
+        if url
+    }
     return [
         {
             "category": sec.category,
@@ -108,13 +115,32 @@ def serialize_digest_sections(result, url_to_page_id: dict | None = None) -> lis
                     "one_liner": item.one_liner,
                     "source_url": item.source_url,
                     "source_name": item.source_name,
-                    "page_id": _url_map.get(item.source_url),
+                    "page_id": (
+                        _url_map.get(item.source_url)
+                        or _normalized_url_map.get(_normalize_digest_url(item.source_url))
+                    ),
                 }
                 for item in sec.items
             ],
         }
         for sec in result.sections
     ]
+
+
+def _normalize_digest_url(url: str) -> str:
+    if not url:
+        return ""
+    try:
+        parts = urlsplit(url.strip())
+        return urlunsplit((
+            parts.scheme.lower(),
+            parts.netloc.lower(),
+            parts.path.rstrip("/"),
+            "",
+            "",
+        ))
+    except Exception:
+        return url.strip().lower().rstrip("/").split("#")[0].split("?")[0]
 
 
 def _build_task_context(task: dict, pages: list[dict] | None = None) -> str | None:
@@ -218,7 +244,7 @@ async def organize_digest_and_save(
         raise ValueError("没有成功的页面可整理")
 
     date = task.get("digest_date") or task.get("keyword") or datetime.date.today().isoformat()
-    input_urls = frozenset(p.url for p in digest_pages if p.url)
+    input_urls = frozenset(_collect_digest_allowed_urls(digest_pages))
 
     # 获取最近 highlight 用于 AI 多样性检测
     recent_highlights = await repo.get_recent_highlights(count=3)
@@ -252,17 +278,41 @@ async def organize_digest_and_save(
     return result
 
 
+def _collect_digest_allowed_urls(digest_pages: list[DigestPageContent]) -> set[str]:
+    urls: set[str] = set()
+    for page in digest_pages:
+        for raw in (getattr(page, "url", ""),):
+            cleaned = _clean_digest_source_url(raw)
+            if cleaned:
+                urls.add(cleaned)
+        for field in ("markdown", "summary"):
+            text = getattr(page, field, "") or ""
+            for raw in re.findall(r"https?://[^\s)\]}>\"']+", text):
+                cleaned = _clean_digest_source_url(raw)
+                if cleaned:
+                    urls.add(cleaned)
+    return urls
+
+
+def _clean_digest_source_url(url: str) -> str:
+    if not url:
+        return ""
+    return url.strip().rstrip(".,;:!?，。；：！？")
+
+
 def _is_highlight_duplicate(new_highlight: str, recent_highlights: list[str], threshold: float = 0.7) -> bool:
-    """检测 highlight 与最近几期是否高度重复（基于字符级 Jaccard 相似度）"""
+    """检测 highlight 与最近几期是否高度重复（基于 bigram 级 Jaccard 相似度）"""
     if not new_highlight or not recent_highlights:
         return False
-    new_set = set(new_highlight)
+    def _bigrams(s: str) -> set[str]:
+        return {s[i:i+2] for i in range(len(s) - 1)} if len(s) >= 2 else {s}
+    new_bg = _bigrams(new_highlight)
     for old in recent_highlights:
         if not old:
             continue
-        old_set = set(old)
-        intersection = len(new_set & old_set)
-        union = len(new_set | old_set)
+        old_bg = _bigrams(old)
+        intersection = len(new_bg & old_bg)
+        union = len(new_bg | old_bg)
         if union > 0 and intersection / union > threshold:
             return True
     return False

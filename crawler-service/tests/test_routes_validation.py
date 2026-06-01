@@ -434,6 +434,16 @@ class TestEnrichTask:
         result = _enrich_task(task)
         assert result["progress_percent"] == 33
 
+    def test_progress_clamped_to_100_when_completed_exceeds_total(self):
+        task = {"total_pages": 1, "completed_pages": 13, "task_type": "digest", "status": 3}
+        result = _enrich_task(task)
+        assert result["progress_percent"] == 100
+
+    def test_running_progress_clamped_to_99_when_completed_reaches_total(self):
+        task = {"total_pages": 1, "completed_pages": 13, "task_type": "digest", "status": 1}
+        result = _enrich_task(task)
+        assert result["progress_percent"] == 99
+
     def test_progress_does_not_modify_original(self):
         """_enrich_task 不应修改原始 dict"""
         original = {"total_pages": 5, "completed_pages": 2, "task_type": "single", "status": 1}

@@ -2,6 +2,9 @@
 
 基于 **Crawl4AI** 的异步网页内容采集服务，可作为独立服务被博客或其他系统调用。
 
+> 当前版本：2.1.0-beta
+> 状态：MVP Beta 试用版，已支持博客后台试用上线，也可作为独立 HTTP 服务接入其他内部服务。
+
 ## 功能特性
 
 ### 爬取引擎
@@ -18,7 +21,8 @@
 ### AI 内容整理（需配置 AI API）
 - **5 种模板** — tech_summary / tutorial / comparison / knowledge_report / daily_digest
 - **关键词优化/扩展** — AI 优化搜索关键词并生成变体
-- **日报生成** — 定时调度（默认工作日 8:00）+ 多板块 + 跨日去重
+- **日报生成** — 定时调度（默认工作日 8:00）+ 多板块 + 跨日去重 + 质量评估
+- **自动优化闭环** — 记录日报质量趋势、弱点建议和优化轮次，为下一次采集提供反馈
 
 ### 服务模式
 - SQLite 任务管理（创建/查询/重试/删除/导出）
@@ -68,7 +72,12 @@
 | GET | `/api/v1/tasks/{id}/export` | 导出为 Markdown |
 | GET | `/api/v1/digests` | 日报列表 |
 | GET | `/api/v1/digests/latest` | 最新日报 |
+| GET | `/api/v1/digests/task/{id}` | 按任务 ID 查询日报详情 |
 | POST | `/api/v1/digests/trigger` | 手动触发日报 |
+| GET | `/api/v1/digests/config/sections` | 查看当前日报 section 配置 |
+| GET | `/api/v1/optimization/config` | 查看优化配置 |
+| GET | `/api/v1/optimization/digest-trend` | 日报质量趋势 |
+| GET | `/api/v1/tasks/{id}/optimization` | 指定任务的优化记录 |
 | GET | `/api/v1/stats` | 统计信息 |
 
 ## 安装部署
@@ -112,7 +121,8 @@ uvicorn main:app --host 0.0.0.0 --port 8500 --reload
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
 | `AI_ENABLED` | false | 启用 AI 内容整理 |
-| `AI_BASE_URL` | DashScope | OpenAI 兼容 API 地址 |
+| `AI_BASE_URL` | OpenAI 兼容端点 | AI API 地址，试用环境使用 DeepSeek 兼容端点 |
+| `AI_MODEL` | 配置决定 | AI 模型，试用环境使用 `deepseek-v4-pro` |
 | `DIGEST_ENABLED` | false | 启用定时日报 |
 | `DIGEST_CRON` | `0 8 * * 1-5` | 工作日早 8 点 |
 | `PROXY_URL` | 空 | HTTP/SOCKS5 代理 |
@@ -163,5 +173,6 @@ crawler:
 
 | 版本 | 日期 | 变更 |
 |------|------|------|
+| 2.1.0-beta | 2026-06-01 | 日报 MVP Beta 基线：真实 AI 生成、质量趋势、自动优化反馈、独立服务调用能力和管理端试用链路 |
 | 2.0.0 | 2026-05-08 | 独立模式 + AI 整理 + 日报 + 质量评估 + 三级去重 + 连接池化 |
 | 1.0.0 | 2026-04-07 | 初始版本，single/deep/search 三种模式 |

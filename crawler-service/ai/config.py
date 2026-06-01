@@ -1,6 +1,10 @@
 """AI configuration — delegates to the unified Settings singleton."""
 
+import logging
+
 from config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class AiSettings:
@@ -33,13 +37,13 @@ class AiSettings:
             try:
                 from standalone.backend_config import get as _get
                 val = _get(name.replace("_", ".", 1))
-                if val:
+                if val is not None:
                     field_type = type(getattr(settings, name))
                     if field_type is bool:
                         return val.lower() in ("true", "1", "yes", "on")
                     return field_type(val)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("[AiSettings] Backend config cast failed for %s: %s", name, e)
 
         return getattr(settings, name)
 

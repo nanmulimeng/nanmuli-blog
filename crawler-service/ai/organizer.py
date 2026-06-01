@@ -124,10 +124,11 @@ SECTION_CLEANUP_SYSTEM_PROMPT = """你是网页内容清洗专家。对输入的
 - 登录提示、VIP会员横幅
 
 ## 规则
-1. 不改写、不扩写、不缩写原文——只删除噪音
+1. 只保留可用于技术日报判断的事实、影响、版本、项目名、时间、行动建议；删除噪音和重复段落
 2. 不合并不同来源——每个来源独立清洗
 3. 代码块、配置示例、命令行原样保留
 4. 输出 JSON 数组，每个元素对应一个输入来源
+5. cleanedContent 每个来源不超过 1200 个中文字符或 900 个英文词；超出时保留信息密度最高的段落
 
 ## 输出格式
 [
@@ -537,13 +538,49 @@ class ContentOrganizer:
         cleaned = self._parse_cleanup_response(response["content"])
         duration_ms = int((time.monotonic() - start) * 1000)
         tokens = response.get("total_tokens", 0)
+        if not cleaned and len(entries) > 1:
+            retry_cleaned, retry_tokens = await self._retry_cleanup_in_chunks(
+                entries, max_tokens
+            )
+            if retry_cleaned:
+                cleaned = retry_cleaned
+                tokens += retry_tokens
+                duration_ms = int((time.monotonic() - start) * 1000)
+            else:
+                logger.warning(
+                    "[AiOrganizer] Section cleanup returned empty for %d entries",
+                    len(entries),
+                )
         logger.info("[AiOrganizer] Section cleanup: %d/%d entries, duration=%dms, tokens=%d",
                      len(cleaned), len(entries), duration_ms, tokens)
         return cleaned, tokens, duration_ms
 
+    async def _retry_cleanup_in_chunks(
+        self, entries: list[dict], max_tokens: int
+    ) -> tuple[list[dict], int]:
+        """Retry section cleanup with smaller prompts when a bulk call returns empty."""
+        chunk_size = 2 if len(entries) <= 8 else 3
+        cleaned: list[dict] = []
+        tokens = 0
+        for start in range(0, len(entries), chunk_size):
+            chunk = entries[start:start + chunk_size]
+            try:
+                response = await self._call_ai(
+                    SECTION_CLEANUP_SYSTEM_PROMPT,
+                    self._build_cleanup_prompt(chunk),
+                    max_tokens=max_tokens,
+                )
+            except Exception as e:
+                logger.warning("[AiOrganizer] Section cleanup chunk retry failed: %s", e)
+                continue
+            tokens += response.get("total_tokens", 0)
+            cleaned.extend(self._parse_cleanup_response(response["content"]))
+        return cleaned, tokens
+
     def _build_cleanup_prompt(self, entries: list[dict]) -> str:
-        budget = min(getattr(self._settings, "ai_multi_page_total_budget", 60000), 60000)
-        per_max = min(getattr(self._settings, "ai_multi_page_per_max_chars", 15000), 15000)
+        budget = min(getattr(self._settings, "ai_section_cleanup_total_budget", 24000), 24000)
+        per_max = min(getattr(self._settings, "ai_section_cleanup_per_max_chars", 6000), 6000)
+        out_max = getattr(self._settings, "ai_section_cleanup_max_output_chars", 1200)
 
         parts = [f"## 待清洗内容（共 {len(entries)} 个来源）\n\n"]
         for i, entry in enumerate(entries):
@@ -559,7 +596,11 @@ class ContentOrganizer:
             parts.append("\n\n---\n\n")
             budget -= len(content)
 
-        parts.append("请对以上每个来源逐一清洗，输出 JSON 数组。")
+        parts.append(
+            f"请对以上每个来源逐一清洗，输出 JSON 数组。"
+            f"每个 cleanedContent 最多 {out_max} 个中文字符或 900 个英文词；"
+            "优先保留技术事实、影响、项目/产品名、版本、时间和开发者行动建议。"
+        )
         return "".join(parts)
 
     @staticmethod
@@ -656,9 +697,7 @@ class ContentOrganizer:
         budget = getattr(self._settings, "ai_digest_total_budget", self._settings.ai_multi_page_total_budget)
         per_max = getattr(self._settings, "ai_digest_per_max_chars", self._settings.ai_multi_page_per_max_chars)
 
-        # 预留 system prompt + 结构开销 + recent_highlights 缓冲区
-        _SYSTEM_PROMPT_RESERVE = 8000
-        budget = max(budget - _SYSTEM_PROMPT_RESERVE, budget // 2)
+        budget = int(budget * 0.9)  # 预留 10% 给系统提示
 
         # 按 _DIGEST_CATEGORY_ORDER 优先级排序，未知分类放末尾
         _order_map = {cat: i for i, cat in enumerate(_DIGEST_CATEGORY_ORDER)}
@@ -795,7 +834,13 @@ class ContentOrganizer:
         if response.status_code >= 500:
             raise RuntimeError(f"API server error {response.status_code}")
 
-        data = response.json()
+        try:
+            data = response.json()
+        except Exception as e:
+            raise RuntimeError(
+                f"AI API 返回非 JSON 响应 (status={response.status_code}): "
+                f"{response.text[:200]}"
+            ) from e
         choices = data.get("choices", [])
         if not choices:
             raise RuntimeError("No choices in AI response")
@@ -852,7 +897,13 @@ class ContentOrganizer:
         if response.status_code >= 500:
             raise RuntimeError(f"API server error {response.status_code}")
 
-        data = response.json()
+        try:
+            data = response.json()
+        except Exception as e:
+            raise RuntimeError(
+                f"AI API 返回非 JSON 响应 (status={response.status_code}): "
+                f"{response.text[:200]}"
+            ) from e
         content = _extract_message_content(data.get("content"))
         if not content:
             raise RuntimeError("Empty content in AI response")
@@ -953,8 +1004,8 @@ class ContentOrganizer:
         return content
 
     def _validate_digest(self, c: DigestContent, *, input_urls: frozenset | None = None):
-        min_s = _cfg_min_summary_length()
-        min_f = _cfg_min_full_content_length()
+        min_s = max(50, _cfg_min_summary_length())  # digest 至少 50 字符摘要
+        min_f = max(200, _cfg_min_full_content_length())  # digest 至少 200 字符正文
 
         if not c.title:
             raise InvalidOutputError("Digest missing title")
@@ -1125,12 +1176,14 @@ def _extract_message_content(content) -> str:
 def _truncate_at_paragraph_boundary(text: str, max_len: int) -> str:
     if len(text) <= max_len:
         return text
-    cut_pos = text.rfind("\n\n", 0, max_len)
-    if cut_pos < max_len * 0.8:
-        cut_pos = text.rfind("\n", 0, max_len)
-    if cut_pos < max_len * 0.5:
-        cut_pos = max_len
-    return text[:cut_pos] + "\n\n[...内容过长已截断]"
+    marker = "\n\n[...内容过长已截断]"
+    safe_max = max(max_len - len(marker), max_len // 2)
+    cut_pos = text.rfind("\n\n", 0, safe_max)
+    if cut_pos < safe_max * 0.8:
+        cut_pos = text.rfind("\n", 0, safe_max)
+    if cut_pos < safe_max * 0.5:
+        cut_pos = safe_max
+    return text[:cut_pos] + marker
 
 
 def _normalize(value) -> str:

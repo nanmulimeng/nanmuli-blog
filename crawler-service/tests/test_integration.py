@@ -288,6 +288,8 @@ class TestDigestPersistence:
         task_id = await repo.create_task(
             task_type="digest", keyword="2026-05-08", ai_template="daily_digest"
         )
+        await repo.fail_task(task_id, "previous crawl error")
+        await repo.save_ai_error(task_id, "previous ai error")
 
         # 模拟 AI 日报结果
         sections = [
@@ -332,6 +334,8 @@ class TestDigestPersistence:
         assert task["digest_date"] == "2026-05-08"
         assert task["digest_highlight"] == "React 19 正式发布，带来全新编译器"
         assert json.loads(task["ai_tags"]) == ["React", "Go", "Bun"]
+        assert task["error_message"] is None
+        assert task["ai_error_message"] is None
 
         # 验证结构化 sections
         db_sections = await repo.get_digest_sections(task_id)
