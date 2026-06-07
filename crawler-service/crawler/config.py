@@ -8,13 +8,10 @@ from typing import Optional
 import os
 import sys
 
-from crawl4ai import BrowserConfig, CrawlerRunConfig, CacheMode
-from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
-from crawl4ai.content_filter_strategy import PruningContentFilter
-
 import logging
 import time
 import httpx
+from crawler.dependencies import require_crawl4ai
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +20,22 @@ _PROXY_CHECK_TIMEOUT = 5          # HTTP 请求超时（秒）
 _PROXY_CHECK_URL = "https://www.baidu.com"  # 用于检测代理连通性的 URL
 _PROXY_CACHE_TTL = 30             # 健康检查结果缓存时间（秒），避免高频爬取时重复检测
 _proxy_cache: dict[str, tuple[float, bool]] = {}  # {proxy_url: (timestamp, is_healthy)}
+
+
+def BrowserConfig(*args, **kwargs):
+    return require_crawl4ai().BrowserConfig(*args, **kwargs)
+
+
+def CrawlerRunConfig(*args, **kwargs):
+    return require_crawl4ai().CrawlerRunConfig(*args, **kwargs)
+
+
+class _CacheModeProxy:
+    def __getattr__(self, name: str):
+        return getattr(require_crawl4ai().CacheMode, name)
+
+
+CacheMode = _CacheModeProxy()
 
 # 默认排除标签
 # 注意：不排除 <header>，因为 HTML5 文章中 <header> 常包含标题/作者/日期
@@ -191,7 +204,7 @@ class RunParams:
 
 
 async def get_browser_config(text_mode: bool = True, light_mode: bool = False,
-                        proxy: str = '') -> BrowserConfig:
+                        proxy: str = ''):
     """
     获取浏览器配置
 
@@ -258,7 +271,7 @@ def get_crawler_run_config(
     remove_consent_popups: bool = True,
     wait_for: str = None,
     wait_for_timeout: int = None,
-) -> CrawlerRunConfig:
+):
     """
     获取爬虫运行配置
 
@@ -279,6 +292,16 @@ def get_crawler_run_config(
     Returns:
         CrawlerRunConfig 实例
     """
+    crawl4ai = require_crawl4ai()
+    DefaultMarkdownGenerator = __import__(
+        "crawl4ai.markdown_generation_strategy",
+        fromlist=["DefaultMarkdownGenerator"],
+    ).DefaultMarkdownGenerator
+    PruningContentFilter = __import__(
+        "crawl4ai.content_filter_strategy",
+        fromlist=["PruningContentFilter"],
+    ).PruningContentFilter
+
     if excluded_tags is None:
         excluded_tags = DEFAULT_EXCLUDED_TAGS.copy()
 
@@ -313,7 +336,7 @@ def get_crawler_run_config(
     )
 
 
-def get_search_run_config(page_timeout: int = 15000, delay_before_return_html: float = 0.5) -> CrawlerRunConfig:
+def get_search_run_config(page_timeout: int = 15000, delay_before_return_html: float = 0.5):
     """
     获取搜索引擎结果页专用的轻量爬虫配置。
 

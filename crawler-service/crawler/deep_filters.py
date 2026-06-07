@@ -5,11 +5,15 @@
 在 BFS 发现链接时自动过滤低价值 URL（百度搜索、贴吧、电商等）。
 """
 
-from crawl4ai.deep_crawling.filters import URLFilter
 from .filters import is_excluded_domain
 
+try:
+    from crawl4ai.deep_crawling.filters import URLFilter as _Crawl4AiURLFilter
+except Exception:
+    _Crawl4AiURLFilter = object
 
-class ExcludedDomainFilter(URLFilter):
+
+class ExcludedDomainFilter(_Crawl4AiURLFilter):
     """包装 is_excluded_domain() 为 Crawl4AI URLFilter。
 
     is_excluded_domain() 返回 True = 应排除

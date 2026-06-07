@@ -3,7 +3,7 @@ import { useRouter } from 'vue-router'
 import { markRaw } from 'vue'
 import {
   Setting, HomeFilled, Odometer, Document, Notebook,
-  Collection, FolderOpened, Trophy, Link, Memo, PictureFilled, Connection
+  Collection, FolderOpened, Trophy, Link, Memo, PictureFilled, Connection, Share
 } from '@element-plus/icons-vue'
 
 defineProps<{
@@ -22,6 +22,7 @@ const menuItems = [
   { path: '/admin/source', icon: markRaw(Collection), label: '订阅源' },
   { path: '/admin/category', icon: markRaw(Collection), label: '分类管理' },
   { path: '/admin/skill', icon: markRaw(Trophy), label: '技能管理' },
+  { path: '/admin/friend-link', icon: markRaw(Share), label: '友链管理' },
   { path: '/admin/file', icon: markRaw(PictureFilled), label: '文件管理' },
   { path: '/admin/proxy', icon: markRaw(Connection), label: '代理管理' },
   { path: '/admin/config', icon: markRaw(Setting), label: '系统配置' },

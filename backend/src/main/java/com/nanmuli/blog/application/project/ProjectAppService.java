@@ -102,6 +102,14 @@ public class ProjectAppService {
         return toDTO(project);
     }
 
+    @Transactional(readOnly = true)
+    public ProjectDTO getVisibleById(Long id) {
+        Project project = projectRepository.findById(id)
+                .filter(this::isVisible)
+                .orElseThrow(() -> new BusinessException("项目不存在"));
+        return toDTO(project);
+    }
+
     @Transactional
     public void delete(Long id) {
         projectRepository.deleteById(id);
@@ -117,5 +125,9 @@ public class ProjectAppService {
         dto.setScreenshots(project.getScreenshots());
         dto.setTechStack(project.getTechStack());
         return dto;
+    }
+
+    private boolean isVisible(Project project) {
+        return project.getStatus() != null && project.getStatus() == 1;
     }
 }

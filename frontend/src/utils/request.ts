@@ -110,6 +110,10 @@ request.interceptors.response.use(
       config.__cleanup()
     }
 
+    if (error.code === 'ERR_CANCELED') {
+      return Promise.reject(error)
+    }
+
     // 初始化重试计数
     if (config && !config.__retryCount) {
       config.__retryCount = 0

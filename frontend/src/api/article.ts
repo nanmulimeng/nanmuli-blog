@@ -1,10 +1,11 @@
 import { get, post, put, del } from '@/utils/request'
 import type { Article, ArticleQuery } from '@/types/article'
 import type { PageResult } from '@/types/api'
+import type { AxiosRequestConfig } from 'axios'
 
 // 公开接口：获取已发布文章列表
-export function getArticleList(params: ArticleQuery): Promise<PageResult<Article>> {
-  return get<PageResult<Article>>('/article/list', { params })
+export function getArticleList(params: ArticleQuery, config?: AxiosRequestConfig): Promise<PageResult<Article>> {
+  return get<PageResult<Article>>('/article/list', { ...config, params })
 }
 
 // 管理后台接口：获取所有文章（包括草稿）

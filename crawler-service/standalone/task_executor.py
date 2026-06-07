@@ -170,8 +170,8 @@ class TaskExecutor:
         from crawler.deep import crawl_deep_pages
         from crawler.search import crawl_by_keyword
         from crawler.config import get_browser_config, RunParams
+        from crawler.dependencies import get_async_web_crawler
         from api.crawl import CrawlConfig
-        from crawl4ai import AsyncWebCrawler
 
         task = await repo.get_task(task_id)
         if not task:
@@ -201,6 +201,7 @@ class TaskExecutor:
 
             # ========== Phase 1: 爬取 ==========
             if task["task_type"] == "single":
+                AsyncWebCrawler = get_async_web_crawler()
                 browser_config = await get_browser_config(
                     text_mode=params.text_mode, light_mode=params.light_mode,
                     proxy=settings.proxy_url,
@@ -210,6 +211,7 @@ class TaskExecutor:
                 results = [result]
 
             elif task["task_type"] == "deep":
+                AsyncWebCrawler = get_async_web_crawler()
                 browser_config = await get_browser_config(
                     text_mode=params.text_mode, light_mode=params.light_mode,
                     proxy=settings.proxy_url,

@@ -1,17 +1,25 @@
--- V1.16: 信息源源效能追踪字段
+-- V1.16: add source effectiveness tracking fields.
+
 ALTER TABLE web_collect_source ADD COLUMN IF NOT EXISTS success_count INTEGER DEFAULT 0;
 ALTER TABLE web_collect_source ADD COLUMN IF NOT EXISTS fail_count INTEGER DEFAULT 0;
 ALTER TABLE web_collect_source ADD COLUMN IF NOT EXISTS avg_quality_score DOUBLE PRECISION DEFAULT 0;
 ALTER TABLE web_collect_source ADD COLUMN IF NOT EXISTS last_result_count INTEGER DEFAULT 0;
 ALTER TABLE web_collect_source ADD COLUMN IF NOT EXISTS last_error TEXT;
 
-COMMENT ON COLUMN web_collect_source.success_count IS '成功执行次数';
-COMMENT ON COLUMN web_collect_source.fail_count IS '失败执行次数';
-COMMENT ON COLUMN web_collect_source.avg_quality_score IS '质量分指数移动平均(0-100)';
-COMMENT ON COLUMN web_collect_source.last_result_count IS '最近一次成功运行产出的有效页面数';
-COMMENT ON COLUMN web_collect_source.last_error IS '最近一次失败错误信息';
+COMMENT ON COLUMN web_collect_source.success_count IS 'Successful run count';
+COMMENT ON COLUMN web_collect_source.fail_count IS 'Failed run count';
+COMMENT ON COLUMN web_collect_source.avg_quality_score IS 'Moving average quality score';
+COMMENT ON COLUMN web_collect_source.last_result_count IS 'Valid page count from latest successful run';
+COMMENT ON COLUMN web_collect_source.last_error IS 'Latest failure error';
 
--- 补充缺失的广度优化轮数配置项
-INSERT INTO sys_config (config_key, config_value, default_value, description, group_name, is_public, input_type, is_encrypted, is_sensitive)
-VALUES ('crawler.optimization.breadth_max_rounds', '3', '3', '广度扩展最大轮数', 'crawler', FALSE, 'text', FALSE, FALSE)
-ON CONFLICT (config_key) DO NOTHING;
+INSERT INTO sys_config (
+    config_key, config_value, default_value, description,
+    group_name, is_public, input_type, is_encrypted, is_sensitive
+)
+SELECT *
+FROM (VALUES
+    ('crawler.optimization.breadth_max_rounds', '3', '3', 'Breadth expansion maximum rounds', 'crawler', FALSE, 'text', FALSE, FALSE)
+) AS v(config_key, config_value, default_value, description, group_name, is_public, input_type, is_encrypted, is_sensitive)
+WHERE NOT EXISTS (
+    SELECT 1 FROM sys_config sc WHERE sc.config_key = v.config_key AND sc.is_deleted = FALSE
+);

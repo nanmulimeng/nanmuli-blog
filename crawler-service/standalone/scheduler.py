@@ -353,13 +353,14 @@ async def _execute_rss_source(source_id: int, source_config: dict):
     )
 
     # 3. 逐篇爬取（并发控制 + 共享浏览器实例）
-    from crawl4ai import AsyncWebCrawler
     from crawler.config import get_browser_config
+    from crawler.dependencies import get_async_web_crawler
 
     sem = asyncio.Semaphore(settings.max_concurrent_crawls)
     results: list[CrawlResult] = []
     browser_config = await get_browser_config(text_mode=True, light_mode=True, proxy=settings.proxy_url)
 
+    AsyncWebCrawler = get_async_web_crawler()
     async with AsyncWebCrawler(config=browser_config) as shared_crawler:
 
         async def _crawl_entry(entry_url: str) -> CrawlResult | None:

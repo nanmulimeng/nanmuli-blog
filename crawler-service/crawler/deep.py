@@ -6,16 +6,13 @@ BFS 遍历同域名下的多个页面
 
 import time
 import logging
-from typing import List, Optional
+from importlib import import_module
+from typing import List, Optional, Any
 from urllib.parse import urlparse
-
-from crawl4ai import AsyncWebCrawler
-from crawl4ai.deep_crawling import BFSDeepCrawlStrategy
-from crawl4ai.deep_crawling.filters import FilterChain, DomainFilter
-from .deep_filters import ExcludedDomainFilter
 
 from config import settings
 from .config import get_browser_config, get_crawler_run_config, RunParams, extract_markdown
+from .dependencies import get_async_web_crawler
 from .models import CrawlResult, JS_CHALLENGE_MIN_WORDS
 from .utils import count_words
 from .processor import extract_page_metadata, retry_js_challenge, extract_depth
@@ -27,12 +24,28 @@ _MULTI_PART_TLD = {
 }
 
 
+def AsyncWebCrawler(*args, **kwargs):
+    return get_async_web_crawler()(*args, **kwargs)
+
+
+def BFSDeepCrawlStrategy(*args, **kwargs):
+    return import_module("crawl4ai.deep_crawling").BFSDeepCrawlStrategy(*args, **kwargs)
+
+
+def FilterChain(*args, **kwargs):
+    return import_module("crawl4ai.deep_crawling.filters").FilterChain(*args, **kwargs)
+
+
+def DomainFilter(*args, **kwargs):
+    return import_module("crawl4ai.deep_crawling.filters").DomainFilter(*args, **kwargs)
+
+
 async def crawl_deep_pages(
     url: str,
     max_depth: int = 2,
     max_pages: int = 10,
     config: Optional[object] = None,
-    crawler: Optional[AsyncWebCrawler] = None
+    crawler: Optional[Any] = None
 ) -> List[CrawlResult]:
     """
     BFS 深度爬取同域名页面
@@ -76,6 +89,8 @@ async def crawl_deep_pages(
         run_config = get_crawler_run_config(**params.to_run_config_kwargs())
 
         # 配置深度爬取策略
+        from .deep_filters import ExcludedDomainFilter
+
         run_config.deep_crawl_strategy = BFSDeepCrawlStrategy(
             max_depth=max_depth,
             max_pages=max_pages,

@@ -1,8 +1,13 @@
 <script setup lang="ts">
+import { onMounted, ref } from 'vue'
+import { Document, Message, StarFilled } from '@element-plus/icons-vue'
 import { useConfigStore } from '@/stores/modules/config'
+import { getFriendLinkList } from '@/api/friendLink'
+import type { FriendLink } from '@/types/friendLink'
 
 const configStore = useConfigStore()
 const currentYear = new Date().getFullYear()
+const friendLinks = ref<FriendLink[]>([])
 
 const footerLinks = [
   { label: '首页', path: '/' },
@@ -11,6 +16,16 @@ const footerLinks = [
   { label: '项目', path: '/project' },
   { label: '关于', path: '/about' },
 ]
+
+async function fetchFriendLinks(): Promise<void> {
+  try {
+    friendLinks.value = await getFriendLinkList()
+  } catch {
+    friendLinks.value = []
+  }
+}
+
+onMounted(fetchFriendLinks)
 </script>
 
 <template>
@@ -21,7 +36,7 @@ const footerLinks = [
 
     <div class="relative mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
       <!-- Main Footer Content -->
-      <div class="grid gap-12 lg:grid-cols-4">
+      <div class="grid gap-12" :class="friendLinks.length > 0 ? 'lg:grid-cols-5' : 'lg:grid-cols-4'">
         <!-- Brand -->
         <div class="lg:col-span-2">
           <div class="flex items-center gap-3 mb-4">
@@ -73,6 +88,24 @@ const footerLinks = [
             >
               {{ link.label }}
             </router-link>
+          </nav>
+        </div>
+
+        <!-- Friend Links -->
+        <div v-if="friendLinks.length > 0">
+          <h3 class="text-sm font-semibold text-content-primary mb-4">友情链接</h3>
+          <nav class="flex flex-col gap-3">
+            <a
+              v-for="link in friendLinks"
+              :key="link.id"
+              :href="link.url"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="truncate text-content-secondary hover:text-primary transition-colors"
+              :title="link.description || link.name"
+            >
+              {{ link.name }}
+            </a>
           </nav>
         </div>
 

@@ -347,6 +347,26 @@ class TestEmptyApiKeyConfig:
         finally:
             _cleanup_app(app)
 
+    def test_main_app_auth_uses_keys_loaded_after_app_creation(self):
+        import main
+
+        original_enabled = real_settings.auth_enabled
+        original_keys = real_settings.api_keys
+        try:
+            real_settings.auth_enabled = True
+            real_settings.api_keys = ""
+            app = main.create_app()
+            client = TestClient(app)
+
+            assert client.get("/api/v1/ready").status_code == 401
+
+            real_settings.api_keys = VALID_KEY
+            resp = client.get("/api/v1/ready", headers={"X-API-Key": VALID_KEY})
+            assert resp.status_code == 200
+        finally:
+            real_settings.auth_enabled = original_enabled
+            real_settings.api_keys = original_keys
+
 
 # ============== 8. Key with Whitespace Trimming ==============
 

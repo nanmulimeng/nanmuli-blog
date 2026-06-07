@@ -51,7 +51,8 @@ function formatProjectDate(startDate?: string, endDate?: string): string {
  * 在新窗口打开截图
  */
 function openScreenshot(url: string): void {
-  window.open(url, "_blank")
+  if (!isSafeUrl(url)) return
+  window.open(url, "_blank", "noopener,noreferrer")
 }
 
 /**

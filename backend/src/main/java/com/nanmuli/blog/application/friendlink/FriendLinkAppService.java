@@ -35,6 +35,11 @@ public class FriendLinkAppService {
     }
 
     @Transactional(readOnly = true)
+    public List<FriendLinkDTO> listAll() {
+        return friendLinkRepository.findAll().stream().map(this::toDTO).toList();
+    }
+
+    @Transactional(readOnly = true)
     public List<FriendLinkDTO> listAllActive() {
         return friendLinkRepository.findAllActive().stream().map(this::toDTO).toList();
     }

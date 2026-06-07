@@ -2,8 +2,10 @@ package com.nanmuli.blog.infrastructure.config.security;
 
 import cn.dev33.satoken.interceptor.SaInterceptor;
 import cn.dev33.satoken.stp.StpUtil;
+import com.nanmuli.blog.infrastructure.config.ConfigService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.HandlerInterceptor;
@@ -14,7 +16,10 @@ import java.util.Set;
 
 @Slf4j
 @Configuration
+@RequiredArgsConstructor
 public class SaTokenConfig implements WebMvcConfigurer {
+
+    private final ConfigService configService;
 
     private static final Set<String> LOCALHOST_ADDRESSES = Set.of(
             "127.0.0.1",
@@ -32,7 +37,7 @@ public class SaTokenConfig implements WebMvcConfigurer {
             @Override
             public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
                 String remoteAddr = request.getRemoteAddr();
-                if (!LOCALHOST_ADDRESSES.contains(remoteAddr)) {
+                if (!LOCALHOST_ADDRESSES.contains(remoteAddr) && !hasValidCallbackKey(request)) {
                     log.warn("[InternalEndpoint] Blocked non-localhost access from: {}, path={}", remoteAddr, request.getRequestURI());
                     response.setStatus(403);
                     response.setContentType("application/json;charset=UTF-8");
@@ -42,5 +47,11 @@ public class SaTokenConfig implements WebMvcConfigurer {
                 return true;
             }
         }).addPathPatterns("/api/internal/**");
+    }
+
+    private boolean hasValidCallbackKey(HttpServletRequest request) {
+        String expectedKey = configService.get("crawler.callback.api-key", "");
+        String requestKey = request.getHeader("X-Callback-Key");
+        return expectedKey != null && !expectedKey.isBlank() && expectedKey.equals(requestKey);
     }
 }

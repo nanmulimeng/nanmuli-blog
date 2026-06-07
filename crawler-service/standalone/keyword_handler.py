@@ -127,7 +127,7 @@ class KeywordTaskHandler:
         from optimization.knowledge_base import KnowledgeBase
         from crawler.search import crawl_by_keyword
         from crawler.config import get_browser_config
-        from crawl4ai import AsyncWebCrawler
+        from crawler.dependencies import get_async_web_crawler
 
         evaluator = CoverageEvaluator(organizer if organizer.is_available else None)
         depth_gen = DepthStrategyGen()
@@ -138,6 +138,7 @@ class KeywordTaskHandler:
         browser_config = await get_browser_config(
             text_mode=True, light_mode=True, proxy=settings.proxy_url,
         )
+        AsyncWebCrawler = get_async_web_crawler()
         async with AsyncWebCrawler(config=browser_config) as shared_crawler:
             ctx = {"engine": engine, "time_range": time_range, "config": config, "crawler": shared_crawler}
             deadline = time.monotonic() + settings.optimization_total_budget_seconds

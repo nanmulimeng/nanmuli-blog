@@ -8,14 +8,14 @@ import os
 import random
 import re
 import time
-from typing import List, Optional
+from typing import List, Optional, Any
 from urllib.parse import parse_qs, quote_plus, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
-from crawl4ai import AsyncWebCrawler
 
 from .config import RunParams, get_browser_config, get_search_run_config, get_effective_proxy
+from .dependencies import get_async_web_crawler
 from config import settings
 from .dedup import dedup_results
 from .filters import has_excluded_keywords, is_excluded_domain
@@ -28,6 +28,10 @@ logger = logging.getLogger(__name__)
 # ============== 搜索引擎健康度监控 ==============
 
 _selector_health: dict[str, dict] = {}
+
+
+def AsyncWebCrawler(*args, **kwargs):
+    return get_async_web_crawler()(*args, **kwargs)
 
 
 def _record_selector_result(engine: str, result_count: int):
@@ -311,7 +315,7 @@ def _baidu_time_filter(time_range: str) -> str:
 async def _fetch_search_html(
     search_url: str,
     engine: str,
-    crawler: Optional[AsyncWebCrawler] = None,
+    crawler: Optional[Any] = None,
     fallback_headers: Optional[dict] = None,
 ) -> Optional[str]:
     """获取搜索页 HTML，浏览器失败时降级为 httpx 直接获取"""
@@ -724,7 +728,7 @@ async def _crawl_urls_with_shared_browser(
     config: Optional[object],
     browser_config,
     is_fallback: bool = False,
-    external_crawler: Optional[AsyncWebCrawler] = None,
+    external_crawler: Optional[Any] = None,
 ) -> List[CrawlResult]:
     sem = asyncio.Semaphore(settings.max_concurrent_crawls)
 
@@ -774,7 +778,7 @@ async def crawl_by_keyword(
     max_results: int = 10,
     time_range: str = "week",
     config: Optional[object] = None,
-    crawler: Optional[AsyncWebCrawler] = None,
+    crawler: Optional[Any] = None,
     skip_dedup: bool = False,
 ) -> List[CrawlResult]:
     valid_time_ranges = {"day", "week", "month", "year", "all"}

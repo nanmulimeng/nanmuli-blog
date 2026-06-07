@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { ArrowLeft, HomeFilled, List } from '@element-plus/icons-vue'
 
 export interface TocItem {
   id: string

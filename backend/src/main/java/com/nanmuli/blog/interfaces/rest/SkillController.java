@@ -30,7 +30,7 @@ public class SkillController {
 
     @GetMapping("/skill/{id}")
     public Result<SkillDTO> detail(@PathVariable Long id) {
-        return Result.success(skillAppService.getById(id));
+        return Result.success(skillAppService.getVisibleById(id));
     }
 
     @PostMapping("/admin/skill")

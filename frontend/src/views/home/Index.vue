@@ -3,6 +3,17 @@ import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import SrcImage from '@/components/common/SrcImage.vue'
 import CoverPlaceholder from '@/components/common/CoverPlaceholder.vue'
+import {
+  ArrowRight,
+  Calendar,
+  Coffee,
+  Collection,
+  Document,
+  Message,
+  StarFilled,
+  Timer,
+  View,
+} from '@element-plus/icons-vue'
 import { useConfigStore } from '@/stores/modules/config'
 import { getArticleList } from '@/api/article'
 import { getHomeAggregated } from '@/api/home'
@@ -582,49 +593,6 @@ watch(experience, (newVal) => {
       </div>
     </section>
 
-    <!--     <!-- Archive Preview Section --> -->
-    <!--     <section v-if="aggregated?.archive?.length" class="mx-auto max-w-7xl px-4 py-24 sm:px-6 lg:px-8"> -->
-    <!--       <div class="mb-12 flex items-end justify-between"> -->
-    <!--         <div> -->
-    <!--           <h2 class="text-3xl font-bold text-gray-900 dark:text-white sm:text-4xl"> -->
-    <!--             文章归档 -->
-    <!--           </h2> -->
-    <!--           <p class="mt-2 text-gray-600 dark:text-gray-400"> -->
-    <!--             按时间线回顾过往文章 -->
-    <!--           </p> -->
-    <!--         </div> -->
-    <!--         <router-link -->
-    <!--           to="/article/archive" -->
-    <!--           class="flex items-center gap-1 text-sm font-medium text-aurora-purple transition-colors hover:text-aurora-pink dark:text-aurora-pink dark:hover:text-aurora-cyan" -->
-    <!--         > -->
-    <!--           查看全部 -->
-    <!--           <el-icon><ArrowRight /></el-icon> -->
-    <!--         </router-link> -->
-    <!--       </div> -->
-    <!--  -->
-    <!--       <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"> -->
-    <!--         <div -->
-    <!--           v-for="item in aggregated.archive.slice(0, 8)" -->
-    <!--           :key="`${item.year}-${item.month}`" -->
-    <!--           class="glass-card group cursor-pointer p-6" -->
-    <!--           @click="router.push(`/article?year=${item.year}&month=${item.month}`)" -->
-    <!--         > -->
-    <!--           <div class="flex items-center justify-between"> -->
-    <!--             <div> -->
-    <!--               <div class="text-2xl font-bold text-gray-900 dark:text-white"> -->
-    <!--                 {{ item.year }}年{{ item.month }}月 -->
-    <!--               </div> -->
-    <!--               <div class="mt-1 text-sm text-gray-500 dark:text-gray-400"> -->
-    <!--                 {{ item.count }} 篇文章 -->
-    <!--               </div> -->
-    <!--             </div> -->
-    <!--             <div class="flex h-10 w-10 items-center justify-center rounded-full bg-aurora-purple/10 text-aurora-purple transition-all group-hover:bg-aurora-purple group-hover:text-white dark:bg-aurora-pink/10 dark:text-aurora-pink dark:group-hover:bg-aurora-pink"> -->
-    <!--               <el-icon><ArrowRight /></el-icon> -->
-    <!--             </div> -->
-    <!--           </div> -->
-    <!--         </div> -->
-    <!--       </div> -->
-    <!--     </section> -->
   </div>
 </template>
 

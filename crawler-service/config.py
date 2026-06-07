@@ -16,6 +16,11 @@ class Settings(BaseSettings):
     max_depth_limit: int = 3
     max_concurrent_crawls: int = 3
 
+    # 外部爬虫依赖兼容策略
+    # degraded: Crawl4AI 不可用时服务仍启动，健康检查标记 crawler unavailable，具体爬取任务失败但不影响其他模块。
+    # strict: 依赖不可用时启动失败，适合生产强依赖部署前置检查。
+    crawler_dependency_mode: str = "degraded"
+
     # 质量过滤阈值
     min_content_length: int = 100          # 低于此字符数的页面视为低质量
 
@@ -193,6 +198,9 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_weight_sums(self):
+        assert self.crawler_dependency_mode in ("degraded", "strict"), (
+            "crawler_dependency_mode must be degraded or strict"
+        )
         depth_sum = (
             self.optimization_depth_weight_primary
             + self.optimization_depth_weight_secondary

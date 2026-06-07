@@ -32,7 +32,7 @@ public class ProjectController {
 
     @GetMapping("/project/{id}")
     public Result<ProjectDTO> detail(@PathVariable Long id) {
-        return Result.success(projectAppService.getById(id));
+        return Result.success(projectAppService.getVisibleById(id));
     }
 
     @PostMapping("/admin/project")

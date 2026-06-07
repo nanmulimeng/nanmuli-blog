@@ -9,6 +9,9 @@ CREATE EXTENSION IF NOT EXISTS vector;
 -- 启用 zhparser 扩展(用于中文全文搜索)
 CREATE EXTENSION IF NOT EXISTS zhparser;
 
+-- 启用 pg_trgm 扩展(用于模糊搜索)
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
 -- 创建中文文本搜索配置
 DO $$
 BEGIN
@@ -1068,7 +1071,7 @@ VALUES
     ('crawler.service.read-timeout', '30000', '30000', '读取超时(毫秒)', 'crawler', FALSE, 'text', FALSE, FALSE),
     -- AES 加密密钥 (1)
     ('blog.security.encryption-key', 'nanmuli-blog-key', 'nanmuli-blog-key', 'AES-128加密密钥（16字节）', 'blog', FALSE, 'password', TRUE, TRUE)
-ON CONFLICT (config_key) DO NOTHING;
+ON CONFLICT DO NOTHING;
 
 -- 插入示例技能
 INSERT INTO skill (id, name, category, proficiency, color, description, sort)

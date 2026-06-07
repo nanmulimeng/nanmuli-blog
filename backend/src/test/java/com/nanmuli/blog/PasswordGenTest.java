@@ -3,16 +3,14 @@ package com.nanmuli.blog;
 import cn.hutool.crypto.digest.BCrypt;
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 public class PasswordGenTest {
     @Test
-    public void generatePassword() {
+    public void generatedPasswordHashCanBeVerified() {
         String password = "admin123";
         String hash = BCrypt.hashpw(password, BCrypt.gensalt());
-        System.out.println("Password: " + password);
-        System.out.println("Hash: " + hash);
 
-        // Verify
-        boolean check = BCrypt.checkpw(password, hash);
-        System.out.println("Verify: " + check);
+        assertTrue(BCrypt.checkpw(password, hash));
     }
 }

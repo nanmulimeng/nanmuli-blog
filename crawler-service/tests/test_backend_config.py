@@ -71,3 +71,50 @@ def test_backend_config_applies_runtime_digest_ai_and_optimization_settings():
     finally:
         for key, value in original.items():
             setattr(settings, key, value)
+
+
+def test_blank_backend_auth_keys_do_not_clear_env_api_keys(monkeypatch):
+    from config import settings
+    from standalone import backend_config
+
+    original_keys = settings.api_keys
+    try:
+        settings.api_keys = "env-key"
+        monkeypatch.setattr(backend_config, "_ENV_API_KEYS", "env-key")
+
+        backend_config._apply_all_settings({
+            "auth.enabled": "true",
+            "auth.api_keys": "",
+        })
+
+        assert settings.api_keys == "env-key"
+    finally:
+        settings.api_keys = original_keys
+
+
+def test_backend_localhost_urls_do_not_override_env_container_urls(monkeypatch):
+    from config import settings
+    from standalone import backend_config
+
+    original_callback_url = settings.callback_url
+    original_java_api_url = settings.java_api_url
+    try:
+        settings.callback_url = "http://backend:8081/api/internal/collector/callback"
+        settings.java_api_url = "http://backend:8081"
+        monkeypatch.setattr(
+            backend_config,
+            "_ENV_CALLBACK_URL",
+            "http://backend:8081/api/internal/collector/callback",
+        )
+        monkeypatch.setattr(backend_config, "_ENV_JAVA_API_URL", "http://backend:8081")
+
+        backend_config._apply_all_settings({
+            "callback.url": "http://localhost:8081/api/internal/collector/callback",
+            "service.java-api-url": "http://localhost:8081",
+        })
+
+        assert settings.callback_url == "http://backend:8081/api/internal/collector/callback"
+        assert settings.java_api_url == "http://backend:8081"
+    finally:
+        settings.callback_url = original_callback_url
+        settings.java_api_url = original_java_api_url

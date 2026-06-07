@@ -52,12 +52,20 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     logger.info("Web Collector Crawler Service starting...")
 
-    try:
-        from crawl4ai import AsyncWebCrawler
-        logger.info("Crawl4AI imported successfully")
-    except ImportError as e:
-        logger.error(f"Failed to import Crawl4AI: {e}")
-        raise
+    from crawler.dependencies import crawl4ai_status
+
+    crawler_status = crawl4ai_status()
+    if crawler_status.available:
+        logger.info("Crawl4AI available: %s", crawler_status.version or "unknown")
+    elif settings.crawler_dependency_mode == "strict":
+        logger.error("Crawl4AI unavailable in strict mode: %s", crawler_status.error)
+        raise RuntimeError(f"Crawl4AI unavailable: {crawler_status.error}")
+    else:
+        logger.warning(
+            "Crawl4AI unavailable; starting in degraded mode. Crawl tasks will fail "
+            "fast but health/API/config endpoints remain available. detail=%s",
+            crawler_status.error,
+        )
 
     # 数据库初始化
     from standalone.db import init_db
@@ -124,8 +132,7 @@ def create_app() -> "FastAPI":
     from standalone.auth import ApiKeyMiddleware
     from standalone.routes import router as standalone_router
 
-    if settings.auth_enabled and settings.api_keys:
-        app.add_middleware(ApiKeyMiddleware)
+    app.add_middleware(ApiKeyMiddleware)
 
     app.include_router(standalone_router, prefix="/api/v1")
     logger.info("Full mode enabled: /api/v1/* endpoints registered")

@@ -190,8 +190,8 @@ async def test_source(request: SourceTestRequest):
 
     try:
         if source_type == "rss":
-            from crawl4ai import AsyncWebCrawler
             from crawler.config import get_browser_config
+            from crawler.dependencies import get_async_web_crawler
             from crawler.source_crawler import crawl_rss_sources
 
             section["rss_sources"] = [{
@@ -203,11 +203,12 @@ async def test_source(request: SourceTestRequest):
                 "effectiveness": {"dead": False},
             }]
             browser_config = await get_browser_config(text_mode=True, light_mode=True, proxy=settings.proxy_url)
+            AsyncWebCrawler = get_async_web_crawler()
             async with AsyncWebCrawler(config=browser_config) as crawler:
                 results = await crawl_rss_sources(section, config=None, crawler=crawler)
         elif source_type == "url":
-            from crawl4ai import AsyncWebCrawler
             from crawler.config import get_browser_config
+            from crawler.dependencies import get_async_web_crawler
             from crawler.source_crawler import crawl_url_sources
 
             section["url_sources"] = [{
@@ -220,6 +221,7 @@ async def test_source(request: SourceTestRequest):
                 "effectiveness": {"dead": False},
             }]
             browser_config = await get_browser_config(text_mode=True, light_mode=True, proxy=settings.proxy_url)
+            AsyncWebCrawler = get_async_web_crawler()
             async with AsyncWebCrawler(config=browser_config) as crawler:
                 results = await crawl_url_sources(section, config=None, crawler=crawler)
         else:

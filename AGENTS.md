@@ -1,921 +1,169 @@
-# Nanmuli Blog - 项目开发规范
+# Nanmuli Blog - Agent 协作规范
 
-> 个人技术博客系统 - 开发规范文档
-> 基于 Spring Boot 3.3 + Java 21 + DDD 架构
+> 当前版本：MVP Beta 试用版
+> 更新时间：2026-06-03
+> 技术栈：Spring Boot 3.3、Java 21、Vue 3、FastAPI、PostgreSQL、Redis、Crawl4AI
 
 ---
 
-## 当前项目状态（2026-06-01）
+## Global Bootstrap
 
-当前版本作为 **MVP Beta 试用版** 初步上线使用。文档中较早的 Phase 规划保留历史背景，但以本节和 `docs/trial-release-roadmap.md` 为当前开发基线。
+完整路由规则已迁移到本地 skill：`rule-router`。非闲聊任务先使用 `rule-router`，再按任务类型加载对应规则。
 
-### 试用版已具备能力
+## Core Rules
 
-| 系统 | 状态 | 说明 |
+- 中文回复，技术术语保留 English。
+- 不确定即查；涉及文件、API、路径、参数时，先读代码或官方文档。
+- 修改前先读相关文件；改函数、类型、字段、配置前先搜所有引用。
+- 只做用户目标相关的最小变更，不做无关重构或格式整理。
+- 修改后必须验证：测试、构建、类型检查、grep、curl 或读回确认。
+- 失败后先定位根因，最多两轮修复；仍失败则报告卡点和已排除项。
+- 不可逆操作必须确认：删库、生产数据删除、远程资源删除、force push main/master。
+
+## Rule Routing
+
+- 开发、bug、重构、测试、构建：加载 `core-dev`，按语言/框架追加规则。
+- Java、Spring Boot、MyBatis、DDD、本项目后端：追加 `java-spring-ddd`。
+- Vue、前端、UI、样式、交互：追加 `frontend-ui`。
+- 安全、审计、漏洞、权限、SQL 注入、XSS：追加 `security-audit`。
+- Git、commit、push、PR、release：追加 `git-github`。
+- 部署、CI/CD、上线、回滚、Docker：追加 `deployment`。
+- Prompt、Agent、RAG、评测：追加 `prompt-agent-rag`。
+- 飞书、Lark、lark-cli：优先使用对应 `lark-*` skill。
+- 若路由不确定，读取 `C:\Users\nanmu\.claude\skills\rule-router\SKILL.md`。
+
+---
+
+## 当前项目状态
+
+当前版本可作为 **MVP Beta 试用版** 初步上线试用。开发基线以以下文档为准：
+
+- `README.md`
+- `docs/trial-release-roadmap.md`
+- `docs/digest-system.md`
+- `docs/web-collector-module-design.md`
+- `docs/future-development-plan.md`
+- `crawler-service/README.md`
+
+### 已达到试用标准的能力
+
+| 模块 | 状态 | 说明 |
 |------|------|------|
-| 日报生成系统 | ✅ MVP 可试用 | 管理端手动触发、工作日定时生成、公开接口展示、结构化章节保存 |
-| 自动优化系统 | ✅ 初步闭环 | 支持质量评分、趋势记录、弱点建议、优化记录查询 |
-| 爬虫独立服务 | ✅ 可复用 | `crawler-service` 可作为独立 HTTP 服务供博客和少量内部服务调用 |
-| 系统配置联动 | ✅ 可用 | Java `sys_config` 下发 crawler/AI/digest/optimization 配置，Python 可刷新读取 |
+| 文章管理 | 可试用 | Markdown 编辑、发布、分类、摘要/HTML、置顶、公开展示 |
+| 技术日志 | 可试用 | 管理端维护、公开展示 |
+| 分类管理 | 可试用 | 树形分类、叶子分类关联文章 |
+| 个人展示 | 可试用 | 技能、项目展示 |
+| 文件管理 | 可试用 | 上传、静态访问、基础限制 |
+| 认证授权 | 可试用 | Sa-Token 管理端保护 |
+| 系统配置 | 可试用 | 管理端配置、后端配置读取、crawler 配置同步 |
+| Web 采集器 | MVP Beta | 独立 FastAPI 服务、搜索/单页/深度采集、质量过滤、API Key 接入 |
+| 日报生成系统 | MVP Beta | 手动触发、工作日定时、结构化保存、公开展示 |
+| 自动优化系统 | MVP Beta | 质量评分、趋势记录、弱点建议、优化记录查询 |
+| 友链管理 | 可试用 | 管理端 CRUD、公开展示 |
+| 标签系统 | 未上线 | 当前仅有数据库表，暂不作为 MVP 试用承诺 |
 
 ### 最近验证基线
 
-- Crawler `/health`：healthy，AI 可用，试用模型 `deepseek-v4-pro`。
-- Backend `/actuator/health`：UP。
+- Backend：`mvn test`，75 tests passed。
+- Crawler：`python -m pytest -q --tb=short`，1266 passed，1 warning。
 - Frontend：`npm run build` 通过。
-- Backend：`mvn -q -DskipTests compile` 通过。
-- Crawler：日报/优化关键测试 `77 passed`。
-- 真实日报任务：`task_id=71` 已完成，生成 `2026-06-01` 技术日报。
-
-### 后续优先级
-
-1. 修复重复 `source_url`，尤其是 GitHub Trending 条目需要展开到 repo 级 URL。
-2. 提升 `tech_article` 信息源质量，过滤泛化定义页、下载页、营销页。
-3. 将最终质量评估中的弱点建议转成下一轮采集的强策略约束。
-4. 已完成任务的进度统一显示为 `100%`。
-5. 补充多 client 接入文档，保证 crawler-service 不只服务博客系统。
-
-## 一、项目概述
-
-### 1.1 项目定位
-个人技术博客系统，记录技术学习、分享技术文章，展示个人技能与项目经历。
-
-### 1.2 用户角色
-- **管理员（仅1人）**：内容管理、系统配置
-- **访客**：只读访问，浏览文章、项目、技能展示
-
-### 1.3 核心模块
-| 模块 | 功能 |
-|------|------|
-| 文章管理 | Markdown编辑、发布、分类、自动生成摘要/HTML、置顶 |
-| 技术日志 | 快速记录每日技术学习、时间线展示 |
-| 个人展示 | 技能云展示、项目展示 |
-| 分类管理 | 树形分类结构，仅叶子分类可关联文章 |
-| 系统配置 | 动态配置项管理 |
-| AI辅助 | 智能标签、文章摘要（预留，当前禁用） |
-| Web采集器 | 网页采集、深度爬取、关键词搜索、AI内容整理、转为文章/日志 |
+- Frontend prod audit：0 vulnerabilities。
+- Docker Compose：`docker compose --env-file .env.example config` 通过。
+- Frontend Docker build：`docker compose --env-file .env.example build frontend` 通过。
 
 ---
 
-## 二、技术栈
+## 架构概览
 
-### 2.1 后端
-| 层级 | 技术 | 版本 |
-|------|------|------|
-| 框架 | Spring Boot | 3.3.5 |
-| JDK | Java | 21 LTS |
-| ORM | MyBatis Plus | 3.5.9 |
-| 数据库 | PostgreSQL | 15+ |
-| 缓存 | Redis | 7+ |
-| 认证 | Sa-Token | 1.44.0 |
-| API文档 | Knife4j | 4.4.0 |
-| 工具库 | Hutool | 5.8.36 |
-| Markdown | Flexmark | 0.64.8 |
-| 向量扩展 | pgvector | 0.1.4 |
-| AI内容整理 | OpenAI兼容端点（试用环境：deepseek-v4-pro） | 内容整理、技术日报生成、优化评估 |
+```mermaid
+flowchart LR
+  Visitor["访客"] --> Frontend["Vue Frontend"]
+  Admin["管理员"] --> Frontend
+  Frontend --> Backend["Spring Boot Backend"]
+  Backend --> DB["PostgreSQL"]
+  Backend --> Redis["Redis"]
+  Backend --> Crawler["crawler-service FastAPI"]
+  Crawler --> Search["Search Engines"]
+  Crawler --> Web["Web Pages"]
+  Backend --> AI["OpenAI-compatible AI"]
+  Crawler --> AI
+```
 
-### 2.2 爬虫服务（Python）
-| 技术 | 版本 | 说明 |
-|------|------|------|
-| FastAPI | 0.100+ | Python Web框架 |
-| Crawl4AI | 0.8.x | 无头Chromium爬虫 |
+### 后端分层
 
-### 2.3 前端
-| 技术 | 版本 |
-|------|------|
-| 框架 | Vue 3 | 3.4.15 |
-| 构建工具 | Vite | 5.0.11 |
-| UI组件库 | Element Plus | 2.5.1 |
-| 状态管理 | Pinia | 2.1.7 |
-| 路由 | Vue Router | 4.2.5 |
-| CSS框架 | Tailwind CSS | 3.4.1 |
-| Markdown编辑器 | md-editor-v3 | 4.11.0 |
-| 代码高亮 | highlight.js | 11.9.0 |
+- `domain`：领域实体、值对象、仓储接口、领域规则。
+- `application`：应用服务、Command、DTO、Query、事务编排。
+- `interfaces`：REST Controller、异常处理、过滤器。
+- `infrastructure`：Mapper、RepositoryImpl、配置、外部服务客户端。
+- `shared`：统一响应、异常、工具类。
+
+### Crawler Service
+
+`crawler-service` 需要作为可复用服务设计，不只服务博客系统。当前最多考虑博客系统和另一个内部服务两个调用方，因此优先保持：
+
+- HTTP API 清晰。
+- API Key 认证可开关。
+- 调用方通过 `X-Client-Id` 区分。
+- 配置可由环境变量、配置文件、博客后端同步共同驱动。
+- 不引入复杂多租户，避免 MVP 复杂度失控。
 
 ---
 
-## 三、架构设计（DDD分层）
+## 开发规范
 
-### 3.1 分层架构
+### 后端
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                      Interfaces 接口层                           │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
-│  │ Controller  │  │  Exception  │  │      DTO/Command        │  │
-│  │   REST API  │  │   Handler   │  │     (入参/出参)          │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────────┘  │
-├─────────────────────────────────────────────────────────────────┤
-│                    Application 应用层                           │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │              AppService (应用服务)                       │   │
-│  │     - 编排领域对象完成用例                                │   │
-│  │     - 事务控制                                           │   │
-│  │     - 跨聚合协调                                         │   │
-│  │     - 发布领域事件                                       │   │
-│  └─────────────────────────────────────────────────────────┘   │
-├─────────────────────────────────────────────────────────────────┤
-│                     Domain 领域层                               │
-│  ┌────────────┐  ┌────────────┐  ┌────────────┐                │
-│  │  Entity    │  │ ValueObject│  │ Repository │                │
-│  │  (聚合根)   │  │   (值对象)  │  │  (接口)     │                │
-│  ├────────────┤  ├────────────┤  ├────────────┤                │
-│  │ DomainEvent│  │  Enum      │  │ DomainSvc  │                │
-│  └────────────┘  └────────────┘  └────────────┘                │
-├─────────────────────────────────────────────────────────────────┤
-│                  Infrastructure 基础设施层                       │
-│  ┌────────────┐  ┌────────────┐  ┌────────────┐                │
-│  │  Mapper    │  │RepositoryImpl│  │   Config   │                │
-│  │ (数据访问)  │  │  (仓储实现)  │  │   (配置类)  │                │
-│  └────────────┘  └────────────┘  └────────────┘                │
-└─────────────────────────────────────────────────────────────────┘
-```
+- Controller 只做入参接收、校验激活和结果返回，禁止写业务逻辑。
+- AppService 一个方法对应一个用例，负责事务和跨聚合编排。
+- Repository 接口放领域层，实现放基础设施层。
+- 写操作使用 `@Transactional`，查询默认 `@Transactional(readOnly = true)`。
+- 管理接口统一走 `/api/admin/**`，公开接口走 `/api/**`。
+- 入参使用 Bean Validation；统一返回 `Result<T>`。
+- 外部服务调用使用独立超时配置，不复用不合适的全局客户端。
+- 事务提交后异步任务使用 `TransactionSynchronization.afterCommit()` 触发。
 
-### 3.2 包结构规范
+### 前端
 
-```
-com.nanmuli.blog
-├── domain                          # 领域层 - 核心业务逻辑
-│   ├── article                     # 文章聚合
-│   │   ├── Article.java            # 聚合根实体
-│   │   ├── ArticleId.java          # 值对象（ID包装）
-│   │   ├── ArticleStatus.java      # 枚举（1=发布, 2=草稿, 3=回收）
-│   │   ├── ArticleRepository.java  # 仓储接口
-│   │   └── event/                  # 领域事件
-│   │       ├── ArticleCreatedEvent.java
-│   │       └── ArticlePublishedEvent.java
-│   ├── category                    # 分类聚合
-│   ├── tag                         # 标签聚合
-│   ├── dailylog                    # 技术日志聚合
-│   ├── skill                       # 技能展示聚合
-│   ├── project                     # 项目展示聚合
-│   ├── friendlink                  # 友链聚合
-│   ├── config                      # 系统配置聚合
-│   ├── file                        # 文件聚合
-│   ├── user                        # 用户聚合
-│   └── ai                          # AI生成聚合
-│
-├── application                     # 应用层 - 用例编排
-│   ├── article
-│   │   ├── ArticleAppService.java           # 应用服务
-│   │   ├── command/CreateArticleCommand.java # 命令对象（写）
-│   │   ├── dto/ArticleDTO.java               # 数据传输对象（读）
-│   │   └── query/ArticlePageQuery.java       # 查询对象
-│   └── ...
-│
-├── interfaces                      # 接口层 - 外部交互
-│   ├── rest                        # REST控制器
-│   ├── handler                     # 异常处理器
-│   └── filter                      # 过滤器
-│
-├── infrastructure                  # 基础设施层
-│   ├── config                      # 配置类
-│   │   ├── db/MyBatisPlusConfig.java
-│   │   ├── cache/CacheConfig.java
-│   │   ├── cache/RedisConfig.java
-│   │   ├── security/SaTokenConfig.java
-│   │   └── web/Knife4jConfig.java
-│   └── persistence                 # 持久化实现
-│       └── article
-│           ├── ArticleMapper.java
-│           └── ArticleRepositoryImpl.java
-│
-└── shared                          # 共享内核
-    ├── domain                      # 共享领域基类
-    │   └── BaseAggregateRoot.java
-    ├── result                      # 统一响应
-    │   ├── Result.java
-    │   └── PageResult.java
-    ├── exception                   # 异常定义
-    │   └── BusinessException.java
-    └── util                        # 工具类
-        └── MarkdownUtil.java
-```
+- Vue 3 Composition API 优先。
+- API 调用统一放在 `frontend/src/api/`。
+- 管理页面保持 Element Plus 风格一致。
+- 管理端新增页面要覆盖 loading、empty、error、disabled 状态。
+- 不新增无关 UI 框架。
 
-### 3.3 分层调用规则
+### Python Crawler
 
-| 规则 | 说明 |
-|------|------|
-| ✅ 允许 | `Controller` → `AppService` → `Repository` |
-| ✅ 允许 | `AppService` 调用多个聚合的 `Repository` |
-| ✅ 允许 | `RepositoryImpl` 实现 `Repository` 接口 |
-| ❌ 禁止 | `Controller` 直接调用 `Repository` |
-| ❌ 禁止 | `AppService` 之间互相调用 |
-| ❌ 禁止 | 领域层依赖应用层/接口层 |
-| ❌ 禁止 | 跨聚合直接操作实体（必须通过聚合根） |
+- FastAPI endpoint 入参要有 Pydantic model。
+- 外部网页抓取必须有超时、重试或降级策略。
+- 搜索源变化不能导致整体不可用，至少要保留 fallback。
+- 日报质量相关逻辑需要有单元测试或集成测试保护。
+- 新增信息源要能被配置关闭。
+
+### 数据库
+
+- Schema 变化使用 Flyway migration。
+- 可变聚合根优先考虑乐观锁。
+- JSON/JSONB 字段读写需明确序列化方式。
+- 禁止无条件全表 UPDATE/DELETE。
 
 ---
 
-## 四、编码规范
+## 当前优先级
 
-### 4.1 命名规范
-
-| 类型 | 规范 | 示例 |
-|------|------|------|
-| 包名 | 全小写，点分隔 | `com.nanmuli.blog.domain.article` |
-| 类名 | 大驼峰，名词 | `ArticleService`, `CreateArticleCommand` |
-| 接口名 | 大驼峰，形容词/名词 | `ArticleRepository`, `Identifiable` |
-| 方法名 | 小驼峰，动词开头 | `create()`, `findById()`, `publish()` |
-| 常量 | 全大写，下划线分隔 | `MAX_TITLE_LENGTH`, `STATUS_PUBLISHED` |
-| 变量 | 小驼峰 | `articleId`, `createTime` |
-| 布尔 | is/has/can 开头 | `isPublished`, `hasTags` |
-
-### 4.2 实体基类（BaseAggregateRoot）
-
-```java
-@Getter
-public abstract class BaseAggregateRoot<ID extends Serializable> implements Serializable {
-    @TableId(type = IdType.ASSIGN_ID)
-    protected ID id;
-
-    @TableField(fill = FieldFill.INSERT)
-    protected LocalDateTime createdAt;
-
-    @TableField(fill = FieldFill.INSERT_UPDATE)
-    protected LocalDateTime updatedAt;
-
-    @TableLogic
-    @TableField(fill = FieldFill.INSERT)
-    protected Boolean isDeleted;
-
-    public boolean isNew() {
-        return id == null;
-    }
-}
-```
-
-### 4.3 文章实体（Article）
-
-```java
-@Getter
-@Setter
-@EqualsAndHashCode(callSuper = false)
-public class Article extends BaseAggregateRoot<Long> {
-    private String title;           // 标题
-    private String slug;            // 别名（URL友好）
-    private String content;         // Markdown内容
-    private String contentHtml;     // 渲染后的HTML
-    private String summary;         // 摘要
-    private String cover;           // 封面图URL
-    private Long categoryId;        // 分类ID
-    private Long userId;            // 作者ID
-    private Integer viewCount;      // 浏览量
-    private Integer likeCount;      // 点赞数
-    private Integer wordCount;      // 字数
-    private Integer readingTime;    // 阅读时间（分钟）
-    private Integer status;         // 状态（1=发布, 2=草稿, 3=回收）
-    private Boolean isTop;          // 是否置顶
-    private Boolean isOriginal;     // 是否原创
-    private String originalUrl;     // 原文链接（非原创时）
-    private LocalDateTime publishTime; // 发布时间
-
-    // 领域方法
-    public void publish() { this.status = 1; this.publishTime = LocalDateTime.now(); }
-    public void draft() { this.status = 2; }
-    public void recycle() { this.status = 3; }
-    public boolean isPublished() { return status != null && status == 1; }
-
-    public void calculateWordCount() {
-        if (this.content != null) {
-            this.wordCount = this.content.replaceAll("\\s+", "").length();
-            this.readingTime = Math.max(1, this.wordCount / 300);
-        }
-    }
-}
-```
-
-### 4.4 应用服务（Application）
-
-```java
-@Slf4j
-@Service
-@RequiredArgsConstructor
-@CacheConfig(cacheNames = "article")
-@Transactional(readOnly = true)
-public class ArticleAppService {
-
-    private final ArticleRepository articleRepository;
-    private final CategoryRepository categoryRepository;
-    private final ApplicationEventPublisher eventPublisher;
-    private final MarkdownUtil markdownUtil;
-
-    @Transactional
-    @CacheEvict(cacheNames = "article:list", allEntries = true)
-    public Long create(CreateArticleCommand command) {
-        // 1. 验证（slug唯一性、叶子分类）
-        // 2. 创建领域对象
-        // 3. 生成HTML、摘要
-        // 4. 持久化
-        // 5. 发布事件
-        // 6. 返回ID
-    }
-
-    @Cacheable(key = "#slug")
-    public ArticleDTO getBySlug(String slug) { }
-}
-```
-
-**要求：**
-- 必须标注 `@Service` 和 `@Transactional`
-- 使用构造器注入（`@RequiredArgsConstructor`）
-- 一个方法对应一个用例
-- 查询方法使用 `@Cacheable`，写操作使用 `@CacheEvict`
-- 禁止在应用服务中写业务规则（应下沉到领域层）
-
-### 4.5 控制器（Interface）
-
-```java
-@Tag(name = "文章管理")
-@RestController
-@RequestMapping("/api")
-@RequiredArgsConstructor
-public class ArticleController {
-
-    private final ArticleAppService articleAppService;
-
-    // 公开接口
-    @GetMapping("/article/list")
-    public Result<PageResult<ArticleDTO>> list(ArticlePageQuery query) { }
-
-    @GetMapping("/article/{slug}")
-    public Result<ArticleDTO> detail(@PathVariable String slug) { }
-
-    // 管理接口（需登录）
-    @PostMapping("/admin/article")
-    public Result<Long> create(@Valid @RequestBody CreateArticleCommand command) { }
-
-    @PutMapping("/admin/article/{id}")
-    public Result<Void> update(@PathVariable Long id, @Valid @RequestBody UpdateArticleCommand command) { }
-
-    @DeleteMapping("/admin/article/{id}")
-    public Result<Void> delete(@PathVariable Long id) { }
-}
-```
-
-**要求：**
-- 路径前缀：公开接口 `/api/**`，管理接口 `/api/admin/**`
-- 入参校验：`@Valid` 激活 Bean Validation
-- 统一返回：`Result<T>` 包装
-- 禁止在 Controller 中写业务逻辑
-
-### 4.6 数据传输对象
-
-```java
-// Command：写操作入参
-@Data
-public class CreateArticleCommand {
-    @NotBlank(message = "标题不能为空")
-    @Size(max = 200, message = "标题长度不能超过200字符")
-    private String title;
-
-    @NotBlank(message = "内容不能为空")
-    private String content;
-
-    private String slug;            // 可选，自动生成
-    private String summary;         // 可选，自动提取
-    private String cover;
-    private Long categoryId;
-    private Integer status;         // 1=发布, 2=草稿
-    private Boolean isTop;
-    private Boolean isOriginal;
-    private String originalUrl;
-}
-
-// DTO：读操作出参
-@Data
-public class ArticleDTO {
-    private Long id;
-    private String title;
-    private String slug;
-    private String content;
-    private String contentHtml;
-    private String summary;
-    private String cover;
-    private Integer viewCount;
-    private Integer wordCount;
-    private Integer readingTime;
-    private Boolean isTop;
-    private LocalDateTime publishTime;
-    private LocalDateTime createTime;
-    private CategoryDTO category;
-    private List<CategoryDTO> categoryPath;  // 分类路径
-}
-
-// Query：分页查询参数
-@Data
-public class ArticlePageQuery {
-    private Long current = 1L;
-    private Long size = 10L;
-    private Long categoryId;
-    private String keyword;
-    private String sort;  // "newest" | "oldest" | "popular"
-}
-```
-
-### 4.7 WebCollector 编码模式
-
-| 模式 | 说明 |
-|------|------|
-| `@ConditionalOnExpression("!'${prop:}'.isEmpty()")` | 空字符串感知的条件注册，优于 `@ConditionalOnProperty` |
-| `@Version private Integer version` | 所有可变聚合根必须加乐观锁字段 + Flyway 迁移 |
-| 独立 RestTemplate | 不同超时需求的外部服务用独立 RestTemplate，不复用全局实例 |
-| JSONB 手动序列化 | 无 TypeHandler 时用 ObjectMapper 手动读写字符串列 |
-| 事务后异步 | `TransactionSynchronization.afterCommit()` 触发异步任务，避免读未提交数据 |
-| 5态任务机 | PENDING(0) → CRAWLING(1) → PROCESSING(2) → COMPLETED(3) / FAILED(4) |
+1. 试用期稳定性：保证启动、登录、文章、配置、日报、采集、公开展示链路稳定。
+2. 日报质量：继续减少重复来源，提升 `tech_article` 与 GitHub Trending 的有效性。
+3. 自动优化闭环：将质量评估弱点转成下一轮采集强约束。
+4. Crawler 独立服务：完善少量内部服务接入文档、鉴权、限流和失败隔离。
+5. 运维观测：补充任务日志、失败原因、质量趋势和健康检查展示。
 
 ---
 
-## 五、数据访问规范
+## Output
 
-### 5.1 Repository 模式
+完成后简洁报告：
 
-```java
-// 领域层定义接口
-public interface ArticleRepository {
-    Article save(Article article);
-    Optional<Article> findById(ArticleId id);
-    Optional<Article> findBySlug(String slug);
-    boolean existsBySlug(String slug);
-    boolean existsBySlugAndIdNot(String slug, Long id);
-    IPage<Article> findPublishedPage(IPage<Article> page, String sort);
-    IPage<Article> findByCategoryId(Long categoryId, IPage<Article> page);
-    List<Article> findTopArticles(int limit);
-    void deleteById(ArticleId id);
-    void increaseViewCount(ArticleId id);
-    Long countPublished();
-    List<Map<String, Object>> findArchiveByYearMonth();
-}
+- 完成内容。
+- 关键文件。
+- 验证方式。
+- 剩余风险。
 
-// 基础设施层实现
-@Repository
-@RequiredArgsConstructor
-public class ArticleRepositoryImpl implements ArticleRepository {
-    private final ArticleMapper articleMapper;
-
-    @Override
-    public Article save(Article article) {
-        if (article.isNew()) {
-            articleMapper.insert(article);
-        } else {
-            articleMapper.updateById(article);
-        }
-        return article;
-    }
-}
-```
-
-### 5.2 MyBatis Plus 使用规范
-
-**全局配置（application.yml）：**
-
-```yaml
-mybatis-plus:
-  configuration:
-    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
-    map-underscore-to-camel-case: true
-  global-config:
-    db-config:
-      logic-delete-field: isDeleted      # 逻辑删除字段
-      logic-delete-value: true           # 删除标记值
-      logic-not-delete-value: false      # 未删除标记值
-      id-type: assign_id                 # 雪花算法ID
-```
-
-**Mapper接口：**
-
-```java
-@Mapper
-public interface ArticleMapper extends BaseMapper<Article> {
-
-    @Update("UPDATE article SET view_count = view_count + 1 WHERE id = #{id}")
-    void increaseViewCount(Long id);
-
-    // 复杂查询使用XML或@Select
-    @Select("""
-        SELECT DATE_PART('year', publish_time) as year,
-               DATE_PART('month', publish_time) as month,
-               COUNT(*) as count
-        FROM article
-        WHERE status = 1 AND is_deleted = false
-        GROUP BY DATE_PART('year', publish_time), DATE_PART('month', publish_time)
-        ORDER BY year DESC, month DESC
-        """)
-    List<Map<String, Object>> selectArchiveByYearMonth();
-
-    IPage<Article> selectByTagId(IPage<Article> page, @Param("tagId") Long tagId);
-}
-```
-
-**查询优化清单：**
-- ✅ 分页查询必须加索引条件过滤
-- ✅ 关联查询用 JOIN，禁止循环查询
-- ✅ 使用 LambdaQueryWrapper 保证类型安全
-- ❌ 禁止在循环中执行SQL（N+1问题）
-- ❌ 禁止无条件的全表 UPDATE/DELETE
-
----
-
-## 六、安全规范
-
-### 6.1 认证授权
-
-```yaml
-# Sa-Token 配置
-sa-token:
-  token-name: Authorization
-  timeout: 2592000          # Token有效期30天
-  active-timeout: -1
-  is-concurrent: true
-  is-share: false
-  token-style: uuid
-```
-
-- 管理接口统一使用 Sa-Token 拦截：`/api/admin/**`
-- 未登录访问管理接口返回 401
-- 权限不足返回 403
-
-### 6.2 输入安全
-
-| 威胁 | 防护措施 |
-|------|----------|
-| SQL注入 | MyBatis参数绑定（#{}），禁止字符串拼接 |
-| XSS攻击 | Markdown内容服务端渲染为HTML，前端使用v-html需谨慎 |
-| 文件上传 | 限制类型（白名单），限制大小（10MB），重命名存储 |
-| 路径遍历 | 文件名MD5重命名，禁止保留原始路径 |
-
-### 6.3 异常处理
-
-```java
-@Slf4j
-@RestControllerAdvice
-public class GlobalExceptionHandler {
-
-    @ExceptionHandler(BusinessException.class)
-    public Result<Void> handleBusinessException(BusinessException e) {
-        return Result.error(e.getCode(), e.getMessage());
-    }
-
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public Result<Void> handleValidationException(MethodArgumentNotValidException e) {
-        String message = e.getBindingResult().getFieldErrors().stream()
-                .findFirst()
-                .map(error -> error.getDefaultMessage())
-                .orElse("请求参数错误");
-        return Result.error(400, message);
-    }
-
-    @ExceptionHandler(NotLoginException.class)
-    public Result<Void> handleNotLoginException(NotLoginException e) {
-        return Result.error(401, "请先登录");
-    }
-
-    @ExceptionHandler(Exception.class)
-    public Result<Void> handleException(Exception e, HttpServletRequest request) {
-        String traceId = MDC.get("traceId");
-        log.error("[traceId={}] 系统异常, uri={}", traceId, request.getRequestURI(), e);
-        return Result.error(500, "系统繁忙，请稍后再试");
-    }
-}
-```
-
-**HTTP状态码规范：**
-
-| 场景 | 状态码 | 说明 |
-|------|--------|------|
-| 成功 | 200 | 标准成功 |
-| 参数错误 | 400 | 客户端输入验证失败 |
-| 未认证 | 401 | 需要登录（Sa-Token拦截） |
-| 无权限 | 403 | 权限不足 |
-| 资源不存在 | 404 | URL错误或资源已删除 |
-| 业务错误 | 422 | 业务规则校验失败 |
-| 系统错误 | 500 | 服务器内部错误 |
-
----
-
-## 七、性能规范
-
-### 7.1 缓存策略
-
-```java
-// Spring Cache 注解
-@Cacheable(value = "article", key = "#slug")           // 详情缓存
-@Cacheable(value = "article:list", key = "#query.current + '-' + #query.size")
-@CacheEvict(value = "article", allEntries = true)       // 清空所有文章缓存
-```
-
-**缓存命名规范：**
-- `article` - 文章详情（按slug）
-- `article:list` - 文章列表
-- `article:top-{limit}` - 置顶文章
-- `category:list` - 分类列表
-- `config:{key}` - 系统配置
-
-### 7.2 慢查询防范
-
-**分页上限：**
-- 默认页大小：10
-- 最大页大小：100
-
-**索引检查清单：**
-- `article.slug` - 唯一索引
-- `article.status + publish_time` - 联合索引（列表查询）
-- `article.category_id + status` - 联合索引（分类查询）
-- `category.parent_id` - 普通索引（树查询）
-
-### 7.3 异步处理
-
-```java
-// 非核心操作异步执行（如统计、AI生成）
-@Async("taskExecutor")
-@Transactional
-public void incrementViewCount(String slug) {
-    articleRepository.findBySlug(slug).ifPresent(article -> {
-        articleRepository.increaseViewCount(new ArticleId(article.getId()));
-    });
-}
-```
-
----
-
-## 八、API设计规范
-
-### 8.1 RESTful 路径规范
-
-| 操作 | 公开接口 | 管理接口 | 说明 |
-|------|----------|----------|------|
-| 列表查询 | GET /api/article/list | GET /api/admin/article/list | 分页 |
-| 详情查询 | GET /api/article/{slug} | GET /api/admin/article/{id} | |
-| 归档查询 | GET /api/article/archive | - | 按年月归档 |
-| 置顶文章 | GET /api/article/top | - | |
-| 创建 | - | POST /api/admin/article | |
-| 更新 | - | PUT /api/admin/article/{id} | |
-| 删除 | - | DELETE /api/admin/article/{id} | 逻辑删除 |
-| 增加浏览 | POST /api/article/{slug}/view | - | 异步 |
-
-### 8.2 统一响应格式
-
-```json
-// 成功响应
-{
-  "code": 200,
-  "message": "success",
-  "data": { },
-  "timestamp": 1712345678901
-}
-
-// 分页响应
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "total": 100,
-    "pages": 10,
-    "current": 1,
-    "size": 10,
-    "records": []
-  }
-}
-
-// 错误响应
-{
-  "code": 400,
-  "message": "标题不能为空",
-  "data": null,
-  "timestamp": 1712345678901
-}
-```
-
----
-
-## 九、开发流程
-
-### 9.1 新增功能开发流程
-
-1. **领域层**（domain/xxx/）
-   - 定义实体（Entity），继承 BaseAggregateRoot
-   - 定义值对象（Value Object）
-   - 定义仓储接口（Repository）
-   - 定义领域事件（DomainEvent）
-
-2. **应用层**（application/xxx/）
-   - 定义 Command/DTO/Query
-   - 实现 AppService
-
-3. **接口层**（interfaces/rest/）
-   - 实现 Controller
-
-4. **基础设施层**（infrastructure/persistence/）
-   - 实现 Mapper
-   - 实现 RepositoryImpl
-
-5. **测试验证**
-   - 单元测试（领域逻辑）
-   - 集成测试（API接口）
-
-### 9.2 代码提交规范
-
-```bash
-# 格式：<type>(<scope>): <subject>
-git commit -m "feat(article): 新增文章置顶功能"
-git commit -m "fix(auth): 修复Token过期未刷新问题"
-git commit -m "refactor(domain): 优化文章状态机实现"
-git commit -m "docs(api): 更新文章接口文档"
-git commit -m "chore(deps): 升级MyBatis Plus至3.5.9"
-```
-
-| Type | 说明 |
-|------|------|
-| feat | 新功能 |
-| fix | Bug修复 |
-| refactor | 重构（不改变行为） |
-| docs | 文档更新 |
-| test | 测试相关 |
-| chore | 构建/依赖/工具 |
-
----
-
-### 9.3 模块开发状态（2026-06-01）
-
-| 模块 | 后端 | 前端 | 测试 | 说明 |
-|------|------|------|------|------|
-| 文章管理 | ✅ 100% | ✅ 100% | ⬜ 5% | 核心功能完整 |
-| 技术日志 | ✅ 100% | ✅ 100% | ⬜ 5% | 核心功能完整 |
-| 分类管理 | ✅ 100% | ✅ 100% | ⬜ 5% | 树形结构完整 |
-| 个人展示 | ✅ 100% | ✅ 100% | ⬜ 5% | 技能+项目 |
-| 系统配置 | ✅ 100% | ✅ 100% | ⬜ 5% | 动态配置 |
-| 文件管理 | ✅ 100% | ✅ 90% | ⬜ 5% | 上传/预览 |
-| 认证授权 | ✅ 100% | ✅ 100% | ⬜ 5% | Sa-Token |
-| Web采集器 | ✅ 92% | ✅ 95% | ✅ 关键链路已测 | 独立服务 + 采集任务 + 日报 MVP Beta + 自动优化轻闭环 |
-| 技术日报 | ✅ 85% | ✅ 90% | ✅ 关键链路已测 | 手动/定时生成、公开展示、结构化保存、质量趋势 |
-| 自动优化系统 | ✅ 75% | ✅ 70% | ✅ 关键链路已测 | 质量评估、趋势记录、弱点建议已接入；强策略反馈待增强 |
-| 标签系统 | ⬜ 0% | ⬜ 0% | ⬜ 0% | 仅有数据库表，无Java代码 |
-| 友链管理 | ✅ 100% | ✅ 100% | ⬜ 5% | 完整CRUD |
-
----
-
-## 十、部署配置
-
-### 10.1 环境配置
-
-| 环境 | 配置文件 | 数据库 |
-|------|----------|--------|
-| 开发 | application-dev.yml | PostgreSQL (本地) |
-| 生产 | application-prod.yml | PostgreSQL (生产) |
-
-### 10.2 JVM参数（2核2G服务器）
-
-```bash
-java -Xms256m -Xmx512m \
-     -XX:MetaspaceSize=128m \
-     -XX:MaxMetaspaceSize=256m \
-     -XX:+UseG1GC \
-     -XX:MaxGCPauseMillis=200 \
-     -jar blog-backend.jar
-```
-
-### 10.3 目录规范
-
-```
-/opt/nanmuli-blog/
-├── blog-backend.jar      # 后端jar包
-├── uploads/              # 文件上传目录
-├── logs/                 # 日志目录
-└── backup/               # 数据备份目录
-```
-
----
-
-## 十一、核心实体字段说明
-
-### 11.1 Article（文章）
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| title | String | 标题，必填 |
-| slug | String | URL别名，唯一，自动生成 |
-| content | String | Markdown内容 |
-| contentHtml | String | 渲染后的HTML |
-| summary | String | 摘要，自动提取前200字 |
-| cover | String | 封面图URL |
-| categoryId | Long | 分类ID（必须关联叶子分类）|
-| status | Integer | 1=发布, 2=草稿, 3=回收 |
-| isTop | Boolean | 是否置顶 |
-| viewCount | Integer | 浏览量 |
-| wordCount | Integer | 字数统计 |
-| readingTime | Integer | 预估阅读时间（分钟）|
-
-### 11.2 Category（分类）
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| name | String | 分类名称 |
-| slug | String | URL别名 |
-| parentId | Long | 父分类ID（null=根分类）|
-| isLeaf | Boolean | 是否叶子节点（可关联文章）|
-| articleCount | Integer | 关联文章数 |
-| sort | Integer | 排序权重 |
-
-### 11.3 DailyLog（技术日志）
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| content | String | Markdown内容 |
-| contentHtml | String | 渲染后的HTML |
-| logDate | LocalDate | 日志日期 |
-| mood | String | 心情 |
-| weather | String | 天气 |
-| tags | String | 标签（逗号分隔）|
-
----
-
-## 十二、检查清单（Checklist）
-
-### 12.1 代码审查清单
-
-- [ ] 代码符合分层架构规范（无跨层调用）
-- [ ] 实体继承 BaseAggregateRoot，使用 createdAt/updatedAt/isDeleted
-- [ ] 领域方法封装了业务规则
-- [ ] 入参有校验注解（@NotBlank, @Size等）
-- [ ] 事务注解使用正确（@Transactional）
-- [ ] 缓存注解使用正确（@Cacheable/@CacheEvict）
-- [ ] 异常处理完善（无静默捕获）
-- [ ] 无SQL注入风险（参数绑定）
-- [ ] Repository返回实体，AppService转换为DTO
-
-### 12.2 接口测试清单
-
-- [ ] 正常流程返回200
-- [ ] 参数缺失返回400
-- [ ] 未登录访问管理接口返回401
-- [ ] 资源不存在返回404
-- [ ] 业务错误返回422
-- [ ] 分页参数边界测试
-
----
-
-## 附录：快速参考
-
-### A. 依赖注入
-
-```java
-// 推荐：构造器注入（Lombok简化）
-@Service
-@RequiredArgsConstructor
-public class XxxService {
-    private final XxxRepository xxxRepository;
-}
-```
-
-### B. 常用校验注解
-
-```java
-@NotBlank        // 字符串非空（trim后）
-@NotNull         // 对象非null
-@Size(max=200)   // 长度限制
-@Min(1) @Max(100)// 数值范围
-@Pattern(regexp="...") // 正则匹配
-```
-
-### C. 常用MyBatis Plus方法
-
-```java
-// 插入（ID自动填充）
-mapper.insert(entity);
-
-// 根据ID查询（自动过滤逻辑删除）
-mapper.selectById(id);
-
-// 条件查询
-mapper.selectList(Wrappers.<Article>lambdaQuery()
-    .eq(Article::getStatus, 1)
-    .orderByDesc(Article::getPublishTime));
-
-// 分页查询
-mapper.selectPage(page, wrapper);
-
-// 更新（乐观锁自动处理）
-mapper.updateById(entity);
-
-// 删除（逻辑删除）
-mapper.deleteById(id);
-```
-
-### D. 缓存使用
-
-```java
-@CacheConfig(cacheNames = "article")
-public class ArticleAppService {
-
-    @Cacheable(key = "#slug")
-    public ArticleDTO getBySlug(String slug) { }
-
-    @CacheEvict(allEntries = true)
-    public void update(UpdateArticleCommand command) { }
-}
-```
-
----
-
-> 本文档版本：v1.1
-> 最后更新：2026-04-05
-> 维护者：nanmuli
+不要复述完整思考链，不粘贴大段日志。

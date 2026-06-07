@@ -26,6 +26,9 @@ class ApiKeyMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
 
+        if not settings.auth_enabled:
+            return await call_next(request)
+
         # 不需要认证的路径
         if (path == "/health" or
             path.startswith("/docs") or

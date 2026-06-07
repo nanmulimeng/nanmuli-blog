@@ -1,6 +1,5 @@
 import { createApp } from 'vue'
 import piniaPluginPersistedstate from 'pinia-plugin-persistedstate'
-import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 import 'highlight.js/styles/github-dark.css'
 
 // unplugin-vue-components 仅自动导入模板中组件的样式
@@ -27,10 +26,5 @@ const app = createApp(App)
 
 app.use(pinia)
 app.use(router)
-
-// 注册所有 Element Plus 图标（图标不支持自动按需导入，需手动注册）
-for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
-  app.component(key, component)
-}
 
 app.mount('#app')

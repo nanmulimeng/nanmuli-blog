@@ -32,6 +32,14 @@ public class FriendLinkRepositoryImpl implements FriendLinkRepository {
     }
 
     @Override
+    public List<FriendLink> findAll() {
+        LambdaQueryWrapper<FriendLink> wrapper = Wrappers.lambdaQuery();
+        wrapper.orderByAsc(FriendLink::getSort)
+                .orderByDesc(FriendLink::getCreatedAt);
+        return friendLinkMapper.selectList(wrapper);
+    }
+
+    @Override
     public List<FriendLink> findAllActive() {
         LambdaQueryWrapper<FriendLink> wrapper = Wrappers.lambdaQuery();
         wrapper.eq(FriendLink::getStatus, 1).orderByAsc(FriendLink::getSort);

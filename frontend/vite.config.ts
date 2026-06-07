@@ -29,6 +29,7 @@ export default defineConfig({
     viteCompression({
       algorithm: 'gzip',
       threshold: 10240, // 10KB 以上的文件才压缩
+      verbose: false,
     }),
   ],
   resolve: {
@@ -61,6 +62,7 @@ export default defineConfig({
     target: 'esnext',
     outDir: 'dist',
     assetsDir: 'assets',
+    chunkSizeWarningLimit: 1000,
     rollupOptions: {
       output: {
         manualChunks(id) {

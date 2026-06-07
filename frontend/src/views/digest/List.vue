@@ -11,15 +11,19 @@ const digests = ref<DigestListItem[]>([])
 const total = ref(0)
 const currentPage = ref(1)
 const pageSize = ref(PAGE_SIZE.DIGEST)
+const errorMessage = ref('')
 
 async function fetchData(): Promise<void> {
   loading.value = true
+  errorMessage.value = ''
   try {
     const res = await getPublicDigestList(currentPage.value, pageSize.value)
     digests.value = res.records
     total.value = res.total
-  } catch {
-    // 日报服务不可用时静默处理
+  } catch (error) {
+    digests.value = []
+    total.value = 0
+    errorMessage.value = error instanceof Error ? error.message : '日报服务暂不可用'
   } finally {
     loading.value = false
   }
@@ -53,6 +57,14 @@ onMounted(fetchData)
     </div>
 
     <div v-loading="loading">
+      <el-alert
+        v-if="!loading && errorMessage"
+        class="mb-6"
+        type="warning"
+        :title="errorMessage"
+        :closable="false"
+      />
+
       <div v-if="digests.length" class="space-y-4">
         <div
           v-for="item in digests"
@@ -85,7 +97,7 @@ onMounted(fetchData)
         </div>
       </div>
 
-      <div v-if="!loading && digests.length === 0" class="py-20 text-center">
+      <div v-if="!loading && !errorMessage && digests.length === 0" class="py-20 text-center">
         <el-empty description="暂无日报数据" />
       </div>
     </div>

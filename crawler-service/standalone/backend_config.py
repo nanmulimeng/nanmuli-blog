@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import logging
+from urllib.parse import urlparse
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -16,6 +17,9 @@ _config_cache: dict[str, str] = {}
 
 # 保存 env 原始值，以便禁用代理后恢复
 _ENV_PROXY_URL: str = settings.proxy_url or ""
+_ENV_API_KEYS: str = settings.api_keys or ""
+_ENV_CALLBACK_URL: str = settings.callback_url or ""
+_ENV_JAVA_API_URL: str = settings.java_api_url or ""
 
 
 # ============================================================
@@ -49,6 +53,14 @@ def _java_api_url() -> str:
     if url:
         return url.rstrip("/")
     return "http://host.docker.internal:8080"
+
+
+def _is_localhost_url(url: str) -> bool:
+    try:
+        host = urlparse(url).hostname or ""
+        return host in {"localhost", "127.0.0.1", "::1"}
+    except Exception:
+        return False
 
 
 # ============================================================
@@ -116,13 +128,21 @@ def _apply_digest_settings(config: dict[str, str]) -> None:
 def _apply_callback_settings(config: dict[str, str]) -> None:
     """回调配置: url, timeout, api-key + java-api-url"""
     if "callback.url" in config:
-        settings.callback_url = config["callback.url"]
+        backend_url = config["callback.url"]
+        if _ENV_CALLBACK_URL and _is_localhost_url(backend_url):
+            settings.callback_url = _ENV_CALLBACK_URL
+        else:
+            settings.callback_url = backend_url
     if config.get("callback.timeout", ""):
         settings.callback_timeout = _to_float(config["callback.timeout"])
     if "callback.api-key" in config:
         settings.callback_api_key = config["callback.api-key"]
     if "service.java-api-url" in config:
-        settings.java_api_url = config["service.java-api-url"]
+        backend_url = config["service.java-api-url"]
+        if _ENV_JAVA_API_URL and _is_localhost_url(backend_url):
+            settings.java_api_url = _ENV_JAVA_API_URL
+        else:
+            settings.java_api_url = backend_url
 
 
 def _apply_optimization_settings(config: dict[str, str]) -> None:
@@ -163,8 +183,10 @@ def _apply_auth_settings(config: dict[str, str]) -> None:
         settings.auth_enabled = _to_bool(config["auth.enabled"])
     if config.get("auth.protected_prefixes", ""):
         settings.auth_protected_prefixes = config["auth.protected_prefixes"]
-    if "auth.api_keys" in config:
+    if config.get("auth.api_keys", "").strip():
         settings.api_keys = config["auth.api_keys"]
+    elif _ENV_API_KEYS:
+        settings.api_keys = _ENV_API_KEYS
 
 
 def _apply_limit_settings(config: dict[str, str]) -> None:
@@ -175,6 +197,21 @@ def _apply_limit_settings(config: dict[str, str]) -> None:
         settings.max_depth_limit = _to_int(config["limit.max_depth"])
     if config.get("limit.max_pages", ""):
         settings.max_pages_limit = _to_int(config["limit.max_pages"])
+
+
+def _apply_dependency_settings(config: dict[str, str]) -> None:
+    """外部爬虫依赖策略: degraded / strict"""
+    mode = config.get("dependency_mode", "").strip().lower()
+    if mode in ("degraded", "strict"):
+        if settings.crawler_dependency_mode != mode:
+            settings.crawler_dependency_mode = mode
+            try:
+                from crawler.dependencies import crawl4ai_status
+                crawl4ai_status.cache_clear()
+            except Exception:
+                logger.debug("[BackendConfig] Failed to clear Crawl4AI status cache", exc_info=True)
+    elif mode:
+        logger.warning("[BackendConfig] Ignoring invalid dependency_mode=%s", mode)
 
 
 def _apply_pipeline_settings(config: dict[str, str]) -> None:
@@ -220,6 +257,7 @@ def _apply_all_settings(config: dict[str, str]) -> None:
     _apply_bubble_settings(config)
     _apply_auth_settings(config)
     _apply_limit_settings(config)
+    _apply_dependency_settings(config)
     _apply_pipeline_settings(config)
 
     # log_level（唯一保留的顶级配置）

@@ -74,6 +74,10 @@ def _mock_crawler():
     return mock_crawler
 
 
+def _mock_crawler_factory():
+    return lambda config=None: _mock_crawler()
+
+
 # ============== Fixtures ==============
 
 @pytest.fixture
@@ -198,7 +202,7 @@ class TestSingleTask:
              patch("standalone.organizer_helper.repo", mock_db), \
              patch("crawler.single.crawl_single_page", new_callable=AsyncMock, return_value=make_crawl_result()), \
              patch("crawler.config.get_browser_config", new_callable=AsyncMock, return_value=MagicMock()), \
-             patch("crawl4ai.AsyncWebCrawler", return_value=_mock_crawler()), \
+             patch("crawler.dependencies.get_async_web_crawler", return_value=_mock_crawler_factory()), \
              patch("ai.content_organizer._settings", MagicMock(is_configured=True)), \
              patch("ai.content_organizer.organize", new_callable=AsyncMock, return_value=make_organizer_result()), \
              patch.object(TaskExecutor, "_filter_low_quality", lambda self, results, task_type=None, dedup_engine=None: results):
@@ -214,7 +218,7 @@ class TestSingleTask:
         with patch("standalone.task_executor.repo", mock_db), \
              patch("crawler.single.crawl_single_page", new_callable=AsyncMock, return_value=make_crawl_result(success=False, error_message="Connection refused")), \
              patch("crawler.config.get_browser_config", new_callable=AsyncMock, return_value=MagicMock()), \
-             patch("crawl4ai.AsyncWebCrawler", return_value=_mock_crawler()):
+             patch("crawler.dependencies.get_async_web_crawler", return_value=_mock_crawler_factory()):
 
             await tx._execute(tid)
 
@@ -228,7 +232,7 @@ class TestSingleTask:
              patch("standalone.organizer_helper.repo", mock_db), \
              patch("crawler.single.crawl_single_page", new_callable=AsyncMock, return_value=make_crawl_result()), \
              patch("crawler.config.get_browser_config", new_callable=AsyncMock, return_value=MagicMock()), \
-             patch("crawl4ai.AsyncWebCrawler", return_value=_mock_crawler()), \
+             patch("crawler.dependencies.get_async_web_crawler", return_value=_mock_crawler_factory()), \
              patch("ai.content_organizer._settings", MagicMock(is_configured=True)), \
              patch("ai.content_organizer.organize", new_callable=AsyncMock, side_effect=Exception("AI timeout")), \
              patch.object(TaskExecutor, "_filter_low_quality", lambda self, results, task_type=None, dedup_engine=None: results):
@@ -245,7 +249,7 @@ class TestSingleTask:
         with patch("standalone.task_executor.repo", mock_db), \
              patch("crawler.single.crawl_single_page", new_callable=AsyncMock, return_value=make_crawl_result()), \
              patch("crawler.config.get_browser_config", new_callable=AsyncMock, return_value=MagicMock()), \
-             patch("crawl4ai.AsyncWebCrawler", return_value=_mock_crawler()), \
+             patch("crawler.dependencies.get_async_web_crawler", return_value=_mock_crawler_factory()), \
              patch("ai.content_organizer._settings", MagicMock(is_configured=False)), \
              patch.object(TaskExecutor, "_filter_low_quality", lambda self, results, task_type=None, dedup_engine=None: results):
 
@@ -274,7 +278,7 @@ class TestStateTransitions:
              patch("standalone.organizer_helper.repo", mock_db), \
              patch("crawler.single.crawl_single_page", new_callable=AsyncMock, return_value=make_crawl_result()), \
              patch("crawler.config.get_browser_config", new_callable=AsyncMock, return_value=MagicMock()), \
-             patch("crawl4ai.AsyncWebCrawler", return_value=_mock_crawler()), \
+             patch("crawler.dependencies.get_async_web_crawler", return_value=_mock_crawler_factory()), \
              patch("ai.content_organizer._settings", MagicMock(is_configured=True)), \
              patch("ai.content_organizer.organize", new_callable=AsyncMock, return_value=make_organizer_result()), \
              patch.object(TaskExecutor, "_filter_low_quality", lambda self, results, task_type=None, dedup_engine=None: results):
@@ -332,7 +336,7 @@ class TestErrorHandling:
         with patch("standalone.task_executor.repo", mock_db), \
              patch("crawler.single.crawl_single_page", new_callable=AsyncMock, side_effect=RuntimeError("Browser crash")), \
              patch("crawler.config.get_browser_config", new_callable=AsyncMock, return_value=MagicMock()), \
-             patch("crawl4ai.AsyncWebCrawler", return_value=_mock_crawler()):
+             patch("crawler.dependencies.get_async_web_crawler", return_value=_mock_crawler_factory()):
 
             await tx._execute(tid)
 
@@ -364,7 +368,7 @@ class TestConcurrency:
              patch("standalone.task_executor.task_scoped_db", _noop_scoped_db), \
              patch("crawler.single.crawl_single_page", new_callable=AsyncMock, side_effect=slow_crawl), \
              patch("crawler.config.get_browser_config", new_callable=AsyncMock, return_value=MagicMock()), \
-             patch("crawl4ai.AsyncWebCrawler", return_value=_mock_crawler()), \
+             patch("crawler.dependencies.get_async_web_crawler", return_value=_mock_crawler_factory()), \
              patch("ai.content_organizer._settings", MagicMock(is_configured=False)), \
              patch.object(TaskExecutor, "_filter_low_quality", lambda self, results, task_type=None, dedup_engine=None: results):
 

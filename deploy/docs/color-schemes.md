@@ -1,185 +1,104 @@
-# 主题配色方案说明
+# Color Schemes
 
-## 已配置的配色方案
+> 更新时间：2026-06-03
+> 用途：前端视觉配色参考。MVP Beta 阶段优先保障可读性和管理效率。
 
-### 1. 🌌 赛博朋克 (Cyberpunk)
-**风格**: 高对比霓虹色
-- **主色**: 霓虹粉 `#ff00ff`
-- **副色**: 霓虹青 `#00ffff`
-- **强调**: 霓虹黄 `#ffff00`
-- **Light背景**: 深色模式专用
-- **Dark背景**: 纯黑 `#0a0a0f`
-- **适用场景**: 科技感展示、极客风格
+---
+
+## 推荐默认方案：Clean Tech
+
+适合当前博客公开站点和管理后台。
 
 ```css
---theme-gradient: linear-gradient(135deg, #ff00ff 0%, #00ffff 100%);
-```
+:root {
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-accent: #0891b2;
+  --color-success: #16a34a;
+  --color-warning: #d97706;
+  --color-danger: #dc2626;
 
----
+  --bg-page: #f8fafc;
+  --bg-surface: #ffffff;
+  --bg-muted: #f1f5f9;
 
-### 2. 🌊 沉稳深蓝 (Deep)
-**风格**: 商务专业，沉稳大气
-- **主色**: 深海蓝 `#1e3a5f`
-- **副色**: 明亮蓝 `#2563eb`
-- **强调**: 天蓝 `#3b82f6`
-- **Light背景**: 浅灰蓝 `#f8fafc`
-- **Dark背景**: 深 slate `#0f172a`
-- **适用场景**: 企业官网、技术文档
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
 
-```css
---theme-gradient: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
-```
-
----
-
-### 3. 🌙 极致暗夜 (Midnight)
-**风格**: 纯黑背景配暗紫强调
-- **主色**: 紫色 `#7c3aed`
-- **副色**: 亮紫 `#a855f7`
-- **强调**: 粉紫 `#c084fc`
-- **Light背景**: 近白 `#fafafa`
-- **Dark背景**: 纯黑 `#000000`
-- **适用场景**: 沉浸式阅读、夜间模式
-
-```css
---theme-gradient: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%);
-```
-
----
-
-### 4. 🐋 海洋蓝 (Ocean)
-**风格**: 清新自然
-- **主色**: 青蓝 `#0891b2`
-- **副色**: 湖蓝 `#06b6d4`
-- **强调**: 浅青 `#22d3ee`
-- **Light背景**: 极浅青 `#f0fdff`
-- **Dark背景**: 深青 `#083344`
-- **适用场景**: 清新风格、环保主题
-
-```css
---theme-gradient: linear-gradient(135deg, #0891b2 0%, #06b6d4 100%);
-```
-
----
-
-### 5. 🌲 森林绿 (Forest)
-**风格**: 自然生机
-- **主色**: 墨绿 `#059669`
-- **副色**: 翠绿 `#10b981`
-- **强调**: 浅绿 `#34d399`
-- **Light背景**: 极浅绿 `#f0fdf4`
-- **Dark背景**: 深绿 `#022c22`
-- **适用场景**: 自然主题、健康应用
-
-```css
---theme-gradient: linear-gradient(135deg, #059669 0%, #10b981 100%);
-```
-
----
-
-### 6. 🌅 日落橙 (Sunset)
-**风格**: 温暖活力
-- **主色**: 深橙 `#ea580c`
-- **副色**: 亮橙 `#f97316`
-- **强调**: 浅橙 `#fb923c`
-- **Light背景**: 极浅橙 `#fff7ed`
-- **Dark背景**: 深棕 `#431407`
-- **适用场景**: 活力展示、创意作品
-
-```css
---theme-gradient: linear-gradient(135deg, #ea580c 0%, #f97316 100%);
-```
-
----
-
-### 7. 💜 极光紫 (Aurora) - 默认
-**风格**: 梦幻极光渐变
-- **主色**: 紫色 `#a855f7`
-- **副色**: 粉色 `#ec4899`
-- **强调**: 青色 `#00d4ff`
-- **Light背景**: 浅灰 `#fafafa`
-- **Dark背景**: 深黑 `#0a0a0f`
-- **适用场景**: 默认风格、通用场景
-
-```css
---theme-gradient: linear-gradient(135deg, #a855f7 0%, #ec4899 100%);
-```
-
----
-
-### 8. ⬛ 极简黑白 (Minimal)
-**风格**: 纯粹极简
-- **主色**: 近黑 `#171717`
-- **副色**: 中灰 `#404040`
-- **强调**: 浅灰 `#525252`
-- **Light背景**: 纯白 `#ffffff`
-- **Dark背景**: 纯黑 `#000000`
-- **适用场景**: 极简主义、设计作品集
-
-```css
---theme-gradient: linear-gradient(135deg, #171717 0%, #404040 100%);
-```
-
----
-
-## 显示模式
-
-| 模式 | 说明 |
-|------|------|
-| 🌞 浅色 | 强制使用 Light 主题配色 |
-| 🌓 自动 | 跟随系统偏好自动切换 |
-| 🌙 深色 | 强制使用 Dark 主题配色 |
-
----
-
-## 使用方法
-
-### 1. 在导航栏切换主题
-点击顶部导航栏的调色盘图标，即可打开主题面板进行切换。
-
-### 2. 在代码中切换主题
-
-```typescript
-import { setTheme, setThemeMode } from '@/styles/themes'
-
-// 切换配色方案
-setTheme('cyberpunk')  // 赛博朋克
-setTheme('deep')       // 沉稳深蓝
-setTheme('midnight')   // 极致暗夜
-
-// 切换显示模式
-setThemeMode('light')  // 浅色
-setThemeMode('dark')   // 深色
-setThemeMode('auto')   // 自动
-```
-
-### 3. 在组件中使用主题变量
-
-```vue
-<template>
-  <div class="text-theme-primary bg-theme-bg-primary">
-    <!-- 使用 Tailwind 类 -->
-  </div>
-</template>
-
-<style scoped>
-.custom-element {
-  color: var(--theme-primary);
-  background: var(--theme-bg-primary);
-  border: 1px solid var(--theme-glass-border);
+  --border-subtle: #e2e8f0;
 }
-</style>
 ```
 
----
+适用场景：
 
-## 推荐搭配
+- 管理后台。
+- 文章列表。
+- 日报列表和详情。
+- 系统配置。
 
-| 场景 | 推荐配色 | 推荐模式 |
-|------|----------|----------|
-| 技术博客 | Deep / Aurora | Dark |
-| 设计作品 | Sunset / Aurora | Light |
-| 极客风格 | Cyberpunk | Dark |
-| 商务官网 | Deep / Minimal | Light |
-| 夜间阅读 | Midnight | Dark |
-| 自然主题 | Forest / Ocean | Light |
+## Dark Reader
+
+适合作为后续暗色模式基础。
+
+```css
+:root[data-theme="dark"] {
+  --color-primary: #60a5fa;
+  --color-primary-hover: #93c5fd;
+  --color-accent: #22d3ee;
+  --color-success: #4ade80;
+  --color-warning: #fbbf24;
+  --color-danger: #f87171;
+
+  --bg-page: #020617;
+  --bg-surface: #0f172a;
+  --bg-muted: #1e293b;
+
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #64748b;
+
+  --border-subtle: #334155;
+}
+```
+
+适用场景：
+
+- 夜间阅读。
+- 技术日报长文阅读。
+- 管理端可选主题。
+
+## Status Colors
+
+日报和采集任务状态建议统一颜色：
+
+| 状态 | 颜色 | 用途 |
+|------|------|------|
+| pending | `#64748b` | 等待执行 |
+| running | `#2563eb` | 正在执行 |
+| completed | `#16a34a` | 已完成 |
+| failed | `#dc2626` | 失败 |
+| warning | `#d97706` | 需要关注 |
+
+## Quality Colors
+
+日报质量评分建议：
+
+| 分数 | 颜色 | 说明 |
+|------|------|------|
+| 85-100 | `#16a34a` | 质量较高 |
+| 70-84 | `#65a30d` | 可接受 |
+| 60-69 | `#d97706` | 需要优化 |
+| 0-59 | `#dc2626` | 不建议自动发布 |
+
+## 不建议的方向
+
+MVP Beta 阶段暂不建议：
+
+- 大面积霓虹渐变背景。
+- 大面积 glassmorphism。
+- 过重动画和视差效果。
+- 管理端使用高饱和暗色主题作为默认。
+- 为了视觉效果牺牲日报和配置页面的信息密度。
+
+后续如果要升级公开站点视觉，可以先做文章页和项目页，不要影响管理端稳定使用。

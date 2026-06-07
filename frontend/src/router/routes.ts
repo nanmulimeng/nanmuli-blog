@@ -148,6 +148,12 @@ const adminRoutes: RouteRecordRaw[] = [
     meta: { layout: AdminLayout, title: '技能管理', requiresAuth: true },
   },
   {
+    path: '/admin/friend-link',
+    name: 'AdminFriendLink',
+    component: () => import('@/views/admin/friendLink/Index.vue'),
+    meta: { layout: AdminLayout, title: '友链管理', requiresAuth: true },
+  },
+  {
     path: '/admin/collector',
     name: 'AdminCollector',
     component: () => import('@/views/admin/collector/TaskList.vue'),

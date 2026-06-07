@@ -35,7 +35,7 @@ public class FileAppService {
     private static final Map<String, String> EXTENSION_TO_MIME = Map.ofEntries(
             Map.entry("jpg", "image/jpeg"), Map.entry("jpeg", "image/jpeg"),
             Map.entry("png", "image/png"), Map.entry("gif", "image/gif"),
-            Map.entry("webp", "image/webp"), Map.entry("svg", "image/svg+xml"),
+            Map.entry("webp", "image/webp"),
             Map.entry("txt", "text/plain"), Map.entry("md", "text/markdown"),
             Map.entry("pdf", "application/pdf"),
             Map.entry("zip", "application/zip"), Map.entry("rar", "application/x-rar-compressed"),
@@ -54,7 +54,7 @@ public class FileAppService {
     @Value("${blog.file.max-size:10485760}")
     private long maxFileSize;
 
-    @Value("${blog.file.allowed-extensions:jpg,jpeg,png,gif,webp,svg,txt,md,pdf,zip,rar,7z}")
+    @Value("${blog.file.allowed-extensions:jpg,jpeg,png,gif,webp,txt,md,pdf,zip,rar,7z}")
     private String allowedExtensionsConfig;
 
     @Value("${blog.file.storage-type:local}")

@@ -16,13 +16,20 @@ async def health_check():
 
     # Crawl4AI
     try:
-        import crawl4ai
+        from crawler.dependencies import crawl4ai_status
+        status = crawl4ai_status()
         components["crawler"] = {
-            "available": True,
-            "engine": f"Crawl4AI {crawl4ai.__version__}",
+            "available": status.available,
+            "engine": f"Crawl4AI {status.version}" if status.available else None,
+            "mode": status.mode,
+            "error": status.error,
         }
-    except ImportError:
-        components["crawler"] = {"available": False}
+    except Exception as exc:
+        components["crawler"] = {
+            "available": False,
+            "mode": settings.crawler_dependency_mode,
+            "error": str(exc),
+        }
 
     # AI
     try:

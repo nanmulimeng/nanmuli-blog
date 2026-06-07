@@ -12,6 +12,7 @@ const router = useRouter()
 
 const loading = ref(false)
 const digest = ref<DigestDetail | null>(null)
+const errorMessage = ref('')
 let pollTimer: ReturnType<typeof setTimeout> | null = null
 
 const isLatest = computed(() => route.name === 'PublicDigestLatest')
@@ -38,14 +39,16 @@ function schedulePoll(): void {
 
 async function fetchDigest(options?: { silent?: boolean }): Promise<void> {
   if (!options?.silent) loading.value = true
+  if (!options?.silent) errorMessage.value = ''
   try {
     if (isLatest.value) {
       digest.value = await getPublicLatestDigest()
     } else {
       digest.value = await getPublicDigestByDate(dateParam.value)
     }
-  } catch {
+  } catch (error) {
     digest.value = null
+    errorMessage.value = error instanceof Error ? error.message : '日报服务暂不可用'
   } finally {
     loading.value = false
   }
@@ -68,6 +71,14 @@ watch(dateParam, () => {
 <template>
   <div class="mx-auto max-w-4xl px-4 py-8">
     <div v-loading="loading">
+      <el-alert
+        v-if="!loading && errorMessage"
+        class="mb-6"
+        type="warning"
+        :title="errorMessage"
+        :closable="false"
+      />
+
       <template v-if="digest">
         <!-- In-progress banner -->
         <div v-if="isInProgress" class="mb-6 rounded-lg bg-primary/10 border border-primary/20 p-4 text-center text-sm text-primary">
@@ -159,7 +170,7 @@ watch(dateParam, () => {
         </div>
       </template>
 
-      <div v-if="!loading && !digest" class="py-20 text-center">
+      <div v-if="!loading && !errorMessage && !digest" class="py-20 text-center">
         <el-empty description="日报不存在" />
         <button class="mt-4 text-primary hover:underline" @click="goToList">返回日报列表</button>
       </div>

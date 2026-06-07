@@ -7,12 +7,11 @@
 import re
 import time
 import logging
-from typing import Optional
-
-from crawl4ai import AsyncWebCrawler
+from typing import Optional, Any
 
 from config import settings
 from .config import get_browser_config, get_crawler_run_config, RunParams, extract_markdown
+from .dependencies import get_async_web_crawler
 from .utils import count_words
 from .models import CrawlResult, JS_CHALLENGE_MIN_WORDS
 from .processor import extract_page_metadata, retry_js_challenge
@@ -20,10 +19,14 @@ from .processor import extract_page_metadata, retry_js_challenge
 logger = logging.getLogger(__name__)
 
 
+def AsyncWebCrawler(*args, **kwargs):
+    return get_async_web_crawler()(*args, **kwargs)
+
+
 async def crawl_single_page(
     url: str,
     config: Optional[object] = None,
-    crawler: Optional[AsyncWebCrawler] = None
+    crawler: Optional[Any] = None
 ) -> CrawlResult:
     """
     爬取单个页面
@@ -107,4 +110,3 @@ async def _run_crawl(crawler, url: str, run_config, start_time: float,
             error_message=error_msg,
             crawl_time_ms=int((time.time() - start_time) * 1000)
         )
-

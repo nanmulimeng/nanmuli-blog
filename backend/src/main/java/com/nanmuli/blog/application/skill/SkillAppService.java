@@ -51,6 +51,14 @@ public class SkillAppService {
         return toDTO(skill);
     }
 
+    @Transactional(readOnly = true)
+    public SkillDTO getVisibleById(Long id) {
+        Skill skill = skillRepository.findById(id)
+                .filter(this::isVisible)
+                .orElseThrow(() -> new BusinessException("技能不存在"));
+        return toDTO(skill);
+    }
+
     @Transactional
     public void delete(Long id) {
         skillRepository.deleteById(id);
@@ -64,5 +72,9 @@ public class SkillAppService {
         dto.setCreateTime(skill.getCreatedAt());
         dto.setUpdateTime(skill.getUpdatedAt());
         return dto;
+    }
+
+    private boolean isVisible(Skill skill) {
+        return skill.getStatus() != null && skill.getStatus() == 1;
     }
 }

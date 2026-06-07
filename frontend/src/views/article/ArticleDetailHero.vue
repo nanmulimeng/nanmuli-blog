@@ -1,4 +1,15 @@
 <script setup lang="ts">
+import {
+  ArrowRight,
+  Calendar,
+  Clock,
+  Document,
+  DocumentChecked,
+  Link,
+  TrendCharts,
+  User,
+  View,
+} from '@element-plus/icons-vue'
 import type { Article } from '@/types/article'
 import type { ArticleStats } from '@/api/article'
 import { formatDateCN } from '@/utils/format'

@@ -137,7 +137,7 @@ class DigestOrchestrator:
         """总入口：替代原有 execute_digest_crawl()"""
         from crawler.dedup import DedupEngine
         from crawler.config import get_browser_config, RunParams
-        from crawl4ai import AsyncWebCrawler
+        from crawler.dependencies import get_async_web_crawler
 
         task_id = task.get("id", "?")
         self._global_timeout_reached = False
@@ -170,6 +170,7 @@ class DigestOrchestrator:
             proxy=snap.get("proxy_url", ""),
         )
 
+        AsyncWebCrawler = get_async_web_crawler()
         async with AsyncWebCrawler(config=browser_config) as shared_crawler:
 
             # Phase 1: 派出信息源 Agent

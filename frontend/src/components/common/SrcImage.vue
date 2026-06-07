@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, useAttrs, type StyleValue } from 'vue'
+
+defineOptions({
+  inheritAttrs: false,
+})
 
 const props = withDefaults(defineProps<{
   src: string
@@ -23,6 +27,7 @@ const imgRef = ref<HTMLImageElement>()
 const resolved = ref(false)
 const error = ref(false)
 const lightboxVisible = ref(false)
+const attrs = useAttrs()
 
 const aspectStyle = computed(() => {
   if (props.aspectRatio) {
@@ -33,6 +38,25 @@ const aspectStyle = computed(() => {
   }
   return {}
 })
+
+const containerAttrs = computed(() => {
+  const { class: _class, style: _style, ...rest } = attrs
+  return rest
+})
+
+const containerClass = computed(() => [
+  'src-image-container',
+  attrs.class,
+  {
+    'src-image-loaded': resolved.value,
+    'src-image-lightbox-enabled': props.lightbox,
+  },
+])
+
+const containerStyle = computed<StyleValue>(() => [
+  attrs.style as StyleValue,
+  aspectStyle.value,
+])
 
 function onLoad() {
   resolved.value = true
@@ -60,9 +84,9 @@ defineExpose({ imgRef })
 
 <template>
   <div
-    class="src-image-container"
-    :class="{ 'src-image-loaded': resolved, 'src-image-lightbox-enabled': lightbox }"
-    :style="aspectStyle"
+    v-bind="containerAttrs"
+    :class="containerClass"
+    :style="containerStyle"
   >
     <!-- 骨架屏 -->
     <div v-if="!resolved" class="src-image-skeleton skeleton-loading" />

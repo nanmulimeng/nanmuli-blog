@@ -209,9 +209,10 @@ public class ArticleAppService {
     }
 
     @Transactional(readOnly = true)
-    @Cacheable(key = "#slug", unless = "#result == null")
+    @Cacheable(key = "'published-slug-' + #slug", unless = "#result == null")
     public ArticleDTO getBySlug(String slug) {
         return articleRepository.findBySlug(slug)
+                .filter(Article::isPublished)
                 .map(this::toDTO)
                 .orElse(null);
     }
@@ -281,7 +282,31 @@ public class ArticleAppService {
     @Transactional(readOnly = true)
     @Cacheable(cacheNames = "article", key = "'top-' + #limit")
     public List<ArticleDTO> listTop(int limit) {
-        return batchConvertToDTO(articleRepository.findTopArticles(limit));
+        int safeLimit = normalizePublicArticleLimit(limit);
+        if (safeLimit == 0) {
+            return List.of();
+        }
+        return batchConvertToDTO(articleRepository.findTopArticles(safeLimit));
+    }
+
+    @Transactional(readOnly = true)
+    @Cacheable(cacheNames = "article", key = "'latest-' + #limit")
+    public List<ArticleDTO> listLatest(int limit) {
+        int safeLimit = normalizePublicArticleLimit(limit);
+        if (safeLimit == 0) {
+            return List.of();
+        }
+        return batchConvertToDTO(articleRepository.findLatestArticles(safeLimit));
+    }
+
+    @Transactional(readOnly = true)
+    @Cacheable(cacheNames = "article", key = "'hot-' + #limit")
+    public List<ArticleDTO> listHot(int limit) {
+        int safeLimit = normalizePublicArticleLimit(limit);
+        if (safeLimit == 0) {
+            return List.of();
+        }
+        return batchConvertToDTO(articleRepository.findHotArticles(safeLimit));
     }
 
     @Transactional
@@ -320,6 +345,7 @@ public class ArticleAppService {
     public void recordView(RecordArticleViewCommand command, String ipAddress, String userAgent) {
         Long articleId = command.getArticleId();
         String visitorId = command.getVisitorId();
+        loadPublishedArticleForPublic(articleId);
 
         // 1. 记录访问日志（PV统计 - 每次访问都记录）
         ArticleVisitLog visitLog = new ArticleVisitLog();
@@ -369,10 +395,9 @@ public class ArticleAppService {
      * 获取文章完整访问统计（PV/UV/今日）
      */
     @Transactional(readOnly = true)
-    @Cacheable(cacheNames = "article:stats", key = "#articleId")
+    @Cacheable(cacheNames = "article:stats", key = "'public-' + #articleId")
     public ArticleStatsDTO getArticleStats(Long articleId) {
-        Article article = articleRepository.findById(new ArticleId(articleId))
-                .orElseThrow(() -> new BusinessException("文章不存在"));
+        Article article = loadPublishedArticleForPublic(articleId);
 
         ArticleStatsDTO stats = new ArticleStatsDTO();
         stats.setArticleId(articleId);
@@ -405,6 +430,19 @@ public class ArticleAppService {
     @Transactional(readOnly = true)
     public Long countPublished() {
         return articleRepository.countPublished();
+    }
+
+    private Article loadPublishedArticleForPublic(Long articleId) {
+        Article article = articleRepository.findById(new ArticleId(articleId))
+                .orElseThrow(() -> new BusinessException("文章不存在"));
+        if (!article.isPublished()) {
+            throw new BusinessException("文章不存在");
+        }
+        return article;
+    }
+
+    private int normalizePublicArticleLimit(int limit) {
+        return Math.max(0, Math.min(limit, 20));
     }
 
     /**

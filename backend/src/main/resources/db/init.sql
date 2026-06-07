@@ -1047,6 +1047,7 @@ VALUES
     ('crawler.limit.max_concurrent', '3', '3', '最大并发爬取数', 'crawler', FALSE, 'text', FALSE, FALSE),
     ('crawler.limit.max_depth', '3', '3', '最大爬取深度', 'crawler', FALSE, 'text', FALSE, FALSE),
     ('crawler.limit.max_pages', '20', '20', '最大爬取页数', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.dependency_mode', 'degraded', 'degraded', '爬虫外部依赖策略：degraded=依赖不可用时服务仍启动；strict=依赖不可用时启动失败', 'crawler', FALSE, 'text', FALSE, FALSE),
     -- 搜索优化 (5)
     ('crawler.optimization.enabled', 'false', 'false', '自动优化引擎开关', 'crawler', FALSE, 'switch', FALSE, FALSE),
     ('crawler.optimization.max_rounds', '3', '3', '最大优化轮数', 'crawler', FALSE, 'text', FALSE, FALSE),
@@ -1116,7 +1117,7 @@ VALUES
     ('crawler.service.read-timeout', '30000', '30000', '读取超时(毫秒)', 'crawler', FALSE, 'text', FALSE, FALSE),
     -- AES 加密密钥 (1)
     ('blog.security.encryption-key', 'nanmuli-blog-key', 'nanmuli-blog-key', 'AES-128加密密钥（16字节）', 'blog', FALSE, 'password', TRUE, TRUE)
-ON CONFLICT (config_key) DO NOTHING;
+ON CONFLICT DO NOTHING;
 
 -- 插入示例技能
 INSERT INTO skill (id, name, category, proficiency, color, description, sort)

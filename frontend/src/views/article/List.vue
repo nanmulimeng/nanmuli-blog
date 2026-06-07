@@ -6,6 +6,7 @@ import { getCategoryList, getLeafCategoryList } from '@/api/category'
 import { formatDateCN } from '@/utils/format'
 import SrcImage from '@/components/common/SrcImage.vue'
 import CoverPlaceholder from '@/components/common/CoverPlaceholder.vue'
+import { ArrowLeft, ArrowRight, Calendar, Close, Document, StarFilled, User, View } from '@element-plus/icons-vue'
 import type { Article } from '@/types/article'
 import type { Category } from '@/types/category'
 import { PAGE_SIZE, DELAY } from '@/constants/api'
@@ -69,6 +70,7 @@ async function fetchArticles(): Promise<void> {
     abortController.abort()
   }
   abortController = new AbortController()
+  const currentController = abortController
 
   // 清除之前的loading延迟定时器
   if (loadingDelayTimer.value) {
@@ -88,9 +90,15 @@ async function fetchArticles(): Promise<void> {
       categoryId: selectedCategory.value,
       sort: sortBy.value,
       keyword: searchKeyword.value || undefined
+    }, {
+      signal: currentController.signal
     })
     articles.value = res.records
     total.value = res.total
+  } catch (error) {
+    if ((error as { code?: string }).code !== 'ERR_CANCELED') {
+      throw error
+    }
   } finally {
     // 清除loading延迟定时器
     if (loadingDelayTimer.value) {
@@ -98,7 +106,9 @@ async function fetchArticles(): Promise<void> {
       loadingDelayTimer.value = null
     }
     loading.value = false
-    abortController = null
+    if (abortController === currentController) {
+      abortController = null
+    }
   }
 }
 
@@ -129,7 +139,6 @@ function handleCategoryChange(categoryId: string | undefined): void {
       categoryId: categoryId || undefined
     }
   })
-  debouncedFetchArticles()
 }
 
 function handleSortChange(sort: string): void {
@@ -151,7 +160,6 @@ function handleSearch(): void {
       keyword: searchKeyword.value || undefined
     }
   })
-  debouncedFetchArticles()
 }
 
 function clearSearch(): void {
@@ -160,7 +168,6 @@ function clearSearch(): void {
     path: '/article',
     query: { ...route.query, keyword: undefined }
   })
-  debouncedFetchArticles()
 }
 
 onMounted(() => {

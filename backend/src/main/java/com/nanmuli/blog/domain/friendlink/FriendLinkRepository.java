@@ -8,6 +8,8 @@ public interface FriendLinkRepository {
 
     Optional<FriendLink> findById(Long id);
 
+    List<FriendLink> findAll();
+
     List<FriendLink> findAllActive();
 
     void deleteById(Long id);

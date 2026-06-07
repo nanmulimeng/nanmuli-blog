@@ -23,6 +23,16 @@ public class FriendLinkController {
         return Result.success(friendLinkAppService.listAllActive());
     }
 
+    @GetMapping("/admin/friend-link/list")
+    public Result<List<FriendLinkDTO>> adminList() {
+        return Result.success(friendLinkAppService.listAll());
+    }
+
+    @GetMapping("/admin/friend-link/{id}")
+    public Result<FriendLinkDTO> detail(@PathVariable Long id) {
+        return Result.success(friendLinkAppService.getById(id));
+    }
+
     @PostMapping("/admin/friend-link")
     public Result<Long> create(@Valid @RequestBody FriendLinkDTO dto) {
         return Result.success(friendLinkAppService.create(dto));

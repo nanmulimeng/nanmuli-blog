@@ -1,470 +1,208 @@
 # Nanmuli Blog
 
-> 个人技术博客系统 - 基于 DDD 架构的现代化博客平台
+> 个人技术博客系统，基于 Spring Boot 3.3 + Java 21 + Vue 3 + Python FastAPI/Crawl4AI。
+> 当前版本定位：**MVP Beta 试用版**，已具备初步上线试用条件。
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Spring%20Boot-3.3.5-6DB33F?logo=springboot" alt="Spring Boot">
-  <img src="https://img.shields.io/badge/Java-21-007396?logo=openjdk" alt="Java">
-  <img src="https://img.shields.io/badge/Vue-3.4-4FC08D?logo=vue.js" alt="Vue">
-  <img src="https://img.shields.io/badge/TypeScript-5.3-3178C6?logo=typescript" alt="TypeScript">
-  <img src="https://img.shields.io/badge/PostgreSQL-15+-336791?logo=postgresql" alt="PostgreSQL">
-  <img src="https://img.shields.io/badge/Redis-7+-DC382D?logo=redis" alt="Redis">
-  <img src="https://img.shields.io/badge/Digest%20System-MVP%20Beta-blue" alt="Digest MVP Beta">
-</p>
+## 当前状态
 
----
+最后复核日期：2026-06-03
 
-## 当前版本状态（2026-06-01）
+当前版本可以作为个人博客后台和技术日报系统的 MVP Beta 上线试用。它不是最终正式版，但主链路已经通过验证：
 
-当前项目已进入 **MVP Beta 试用版**，可用于个人博客后台的初步上线试用。
+| 链路 | 结论 | 最近验证 |
+| --- | --- | --- |
+| Backend | 可用 | `mvn test`：75 passed |
+| Crawler Service | 可用 | `python -m pytest -q --tb=short`：1266 passed，1 warning |
+| Frontend | 可用 | `npm run build` passed |
+| Frontend prod audit | 可用 | `npm audit --omit=dev`：0 vulnerabilities |
+| Docker Compose | 可用 | `docker compose --env-file .env.example config` passed |
+| Frontend Docker build | 可用 | `docker compose --env-file .env.example build frontend` passed |
 
-本轮试用版重点包含：
+剩余非阻断风险：
 
-- **技术日报系统**：支持后台手动触发、工作日定时生成、公开列表/详情展示、结构化章节和条目保存。
-- **自动优化系统**：支持日报质量评分、趋势记录、弱点建议、信息源策略反馈和优化记录查询。
-- **独立爬虫服务**：`crawler-service` 已可作为独立 HTTP 服务被博客或其他服务调用，博客系统只是其中一个 client。
-- **系统配置联动**：Java 后端 `sys_config` 作为配置中心，Python 爬虫服务可刷新并读取爬虫、AI、日报、优化相关配置。
+- 前端 dev/build 工具链仍有 5 个中危 audit 项，修复需要 `vite@8`、`vue-tsc@3` 大版本升级；不进入 Nginx 运行时镜像。
+- Crawler 测试在 Windows + Python 3.13 下有 1 个 event loop 资源释放 warning，不影响测试通过。
+- 试用期仍需要观察日报质量、信息源稳定性、自动优化反馈是否持续改善。
 
-最近一次全链路验证结论：
+## 核心能力
 
-- `crawler-service /health` 正常，AI 模型为 `deepseek-v4-pro`，scheduler 已启用。
-- Java 后端 `/actuator/health` 返回 `UP`。
-- 前端 `npm run build` 通过。
-- 后端 `mvn -q -DskipTests compile` 通过。
-- 爬虫日报/优化关键测试 `77 passed`。
-- 管理端真实触发任务 `71` 成功生成 `2026-06-01` 技术日报，并可在后台详情页查看。
+| 模块 | MVP 状态 | 说明 |
+| --- | --- | --- |
+| 文章管理 | 可用 | Markdown 编辑、发布/草稿/回收、分类、置顶、摘要、阅读时间 |
+| 技术日志 | 可用 | 日常技术记录、时间线展示、标签/心情/天气字段 |
+| 分类管理 | 可用 | 树形分类，仅叶子分类关联文章 |
+| 项目/技能展示 | 可用 | 个人项目和技能展示 |
+| 文件管理 | 可用 | 上传、预览、静态资源访问 |
+| 认证授权 | 可用 | Sa-Token 管理端认证 |
+| 友链管理 | 可用 | 友链 CRUD 和前台展示 |
+| 系统配置 | 可用 | `sys_config` 动态配置，支持 crawler/AI/digest/optimization 配置联动 |
+| Web 采集器 | 可用 | 单页、深度、关键词、RSS/mixed 采集 |
+| 技术日报 | MVP 可用 | 手动触发、工作日定时、结构化保存、公开/管理展示 |
+| 自动优化 | MVP 可用 | 质量评分、趋势记录、弱点建议、优化记录查询 |
+| Crawler 独立服务 | MVP 可用 | 可作为独立 HTTP 服务被博客和少量内部服务调用 |
+| 标签系统 | 未纳入本版 | 仅保留数据库基础，不作为 MVP 上线能力 |
 
-试用版后续优化方向见：[试用版上线与后续优化路线](./docs/trial-release-roadmap.md)。
+## 架构概览
 
-## 项目简介
+```mermaid
+flowchart LR
+  Visitor["公开访客"] --> Frontend["Vue Frontend / Nginx"]
+  Admin["管理员"] --> Frontend
+  Frontend --> Backend["Spring Boot Backend"]
+  Backend --> PostgreSQL["PostgreSQL"]
+  Backend --> Redis["Redis"]
+  Backend --> Crawler["FastAPI Crawler Service"]
+  Crawler --> SQLite["SQLite task/page/digest data"]
+  Crawler --> Sources["URL / RSS / Search Sources"]
+  Crawler --> AI["OpenAI-compatible AI"]
+  Crawler --> BackendInternal["Backend internal config/source/fingerprint APIs"]
+```
 
-Nanmuli Blog 是一个基于 **DDD（领域驱动设计）** 架构的个人技术博客系统，采用前后端分离设计，专注于技术文章分享、技术日志记录和个人技能展示。
+分层说明：
 
-### 核心特性
-
-- **DDD 架构**：清晰的领域层、应用层、接口层、基础设施层分离
-- **Markdown 编辑器**：支持代码高亮、实时预览
-- **文章管理**：发布/草稿/回收站状态，置顶功能
-- **技术日志**：快速记录每日技术学习
-- **Web采集器 / 技术日报**：网页采集、深度爬取、关键词搜索、AI内容整理、定时技术日报、自动优化反馈
-- **数据统计**：独立访客(UV)、页面浏览(PV)统计
-- **主题切换**：支持明暗主题
-- **响应式设计**：适配桌面端和移动端
-- **Docker部署**：一键容器化部署，含Python爬虫微服务
-
----
+- `backend/`：Java 后端，负责业务 API、认证、配置中心、来源管理、回调、任务同步。
+- `frontend/`：Vue 管理端和公开页面，负责文章、日志、日报、采集器、友链等交互。
+- `crawler-service/`：Python 独立爬虫服务，负责采集、AI 整理、日报生成、自动优化。
+- `deploy/`：Docker Compose、Nginx、PostgreSQL 初始化和上线配置。
+- `docs/`：模块设计、日报系统、试用版路线图和未来开发计划。
 
 ## 技术栈
 
-### 后端
+### Backend
 
-| 技术 | 版本 | 说明 |
-|------|------|------|
-| Spring Boot | 3.3.5 | 核心框架 |
-| Java | 21 LTS | 编程语言 |
-| MyBatis Plus | 3.5.9 | ORM框架 |
-| PostgreSQL | 15+ | 主数据库 |
-| Redis | 7+ | 缓存/会话 |
-| Sa-Token | 1.44.0 | 认证授权 |
-| Knife4j | 4.4.0 | API文档 |
-| Hutool | 5.8.36 | 工具库 |
-| OpenAI兼容AI | deepseek-v4-pro（试用环境） | AI内容整理与技术日报生成 |
+| 技术 | 版本 |
+| --- | --- |
+| Spring Boot | 3.3.5 |
+| Java | 21 |
+| MyBatis Plus | 3.5.9 |
+| PostgreSQL | 15+ |
+| Redis | 7+ |
+| Sa-Token | 1.44.0 |
+| Knife4j | 4.4.0 |
 
-### 爬虫服务
+### Crawler Service
 
-| 技术 | 版本 | 说明 |
-|------|------|------|
-| Python FastAPI | 0.100+ | 爬虫Web框架 |
-| Crawl4AI | 0.8.x | 无头Chromium爬虫 |
+| 技术 | 版本 |
+| --- | --- |
+| Python | 3.10+ |
+| FastAPI | 0.100+ |
+| Crawl4AI | 0.8.x |
+| SQLite | 本地任务/日报存储 |
+| OpenAI-compatible AI | 试用环境使用 `deepseek-v4-pro` |
 
-### 前端
+### Frontend
 
-| 技术 | 版本 | 说明 |
-|------|------|------|
-| Vue | 3.4.15 | 前端框架 |
-| Vite | 5.0.11 | 构建工具 |
-| TypeScript | 5.3.3 | 类型系统 |
-| Element Plus | 2.5.1 | UI组件库 |
-| Pinia | 2.1.7 | 状态管理 |
-| Tailwind CSS | 3.4.1 | CSS框架 |
-| md-editor-v3 | 4.11.0 | Markdown编辑器 |
+| 技术 | 版本 |
+| --- | --- |
+| Vue | 3.4 |
+| Vite | 5.4 |
+| TypeScript | 5.3 |
+| Element Plus | 2.5 |
+| Pinia | 2 |
+| Tailwind CSS | 3.4 |
+| md-editor-v3 | 4.11 |
 
----
+## 快速启动
 
-## 快速开始
-
-### 环境要求
-
-- JDK 21+
-- Node.js 18+
-- Python 3.10+
-- PostgreSQL 15+
-- Redis 7+
-- Maven 3.8+
-
-### 1. 克隆项目
+### Docker Compose 试用启动
 
 ```bash
-git clone https://github.com/nanmuli/nanmuli-blog.git
-cd nanmuli-blog
+cd deploy
+cp .env.example .env
+# 编辑 .env，替换数据库密码、crawler key、callback key、AI key、CORS 域名等
+docker compose --env-file .env up -d --build
 ```
 
-### 2. 数据库初始化
+服务默认端口：
 
-```bash
-# 创建数据库
-createdb nanmuli_blog
+| 服务 | 地址 |
+| --- | --- |
+| Frontend | `http://localhost` |
+| Backend | `http://localhost:8081` |
+| Crawler | `http://localhost:8500` |
+| PostgreSQL | `localhost:5433` |
+| Redis | `localhost:6380` |
 
-# 执行初始化脚本（位于 backend/src/main/resources/db/）
-psql -d nanmuli_blog -f backend/src/main/resources/db/init.sql
-```
+### 本地开发启动
 
-### 3. 启动后端
+Backend：
 
 ```bash
 cd backend
-
-# 修改配置文件
-# 复制 application-dev.yml 并修改数据库连接信息
-
-# 运行
 mvn spring-boot:run
 ```
 
-后端服务默认运行在 `http://localhost:8081`
-
-API文档：`http://localhost:8081/doc.html`
-
-### 4. 启动前端
-
-```bash
-cd frontend
-
-# 安装依赖
-npm install
-
-# 开发模式
-npm run dev
-```
-
-前端服务默认运行在 `http://localhost:5173`
-
-### 5. 登录
-
-默认管理员账号：
-- 用户名：`admin`
-- 密码：`admin123`
-
----
-
-## 项目结构
-
-```
-nanmuli-blog/
-├── backend/                     # 后端项目
-│   ├── src/main/java/com/nanmuli/blog/
-│   │   ├── domain/             # 领域层 - 实体、值对象、仓储接口
-│   │   ├── application/        # 应用层 - 应用服务、DTO、Command
-│   │   ├── interfaces/         # 接口层 - Controller、Filter
-│   │   ├── infrastructure/     # 基础设施层 - Mapper、配置
-│   │   └── shared/             # 共享内核 - 工具类、异常
-│   └── pom.xml
-│
-├── frontend/                    # 前端项目
-│   ├── src/
-│   │   ├── api/                # API接口
-│   │   ├── components/         # 组件
-│   │   ├── views/              # 页面
-│   │   ├── stores/             # 状态管理
-│   │   └── utils/              # 工具函数
-│   └── package.json
-│
-├── crawler-service/             # Python爬虫服务
-│   ├── crawler/                # Crawl4AI爬虫模块
-│   │   ├── api.py             # FastAPI路由
-│   │   ├── single.py          # 单页爬取
-│   │   ├── deep.py            # 深度爬取
-│   │   └── search.py          # 关键词搜索
-│   ├── requirements.txt
-│   └── Dockerfile
-│
-├── docs/                        # 项目文档
-│   ├── digest-system.md         # 日报系统技术文档
-│   ├── trial-release-roadmap.md # 试用版上线与后续优化路线
-│   └── web-collector-module-design.md
-│
-└── deploy/                      # 部署配置
-```
-
----
-
-## 主要功能
-
-### 文章管理
-- Markdown 编辑器，支持代码高亮
-- 文章状态：发布/草稿/回收站
-- 置顶功能
-- 自动生成摘要和阅读时间
-- 分类关联（仅叶子分类）
-
-### 技术日志
-- 快速记录每日技术笔记
-- 时间线展示
-- 心情/天气标记
-
-### 个人展示
-- 技能云展示
-- 项目展示
-- 关于页面
-
-### 数据统计
-- 文章浏览量（PV）
-- 独立访客统计（UV）
-- 仪表盘数据可视化
-
-### Web采集器
-- 单页采集：输入URL自动抓取并整理
-- 深度爬取：BFS多页爬取，可配置深度和页数上限
-- 关键词搜索：多搜索引擎支持，自动爬取搜索结果
-- AI内容整理：OpenAI 兼容模型智能整理为结构化文章、知识报告或技术日报
-- 技术日报：工作日定时或后台手动触发，按热点动态/开源项目/技术文章等板块生成
-- 自动优化：记录日报质量趋势、弱点建议和优化轮次，为下一次生成提供反馈
-- 一键转换：采集结果转为文章草稿或技术日志
-- 去重机制：30天URL去重 + 内容哈希去重
-
-### 系统功能
-- 用户认证（Sa-Token）
-- 文件上传
-- 系统配置
-- 主题切换
-
----
-
-## 部署
-
-### 生产环境配置
-
-1. **修改配置文件**
-   - `backend/src/main/resources/application-prod.yml`
-
-2. **构建后端**
-   ```bash
-   cd backend
-   mvn clean package -DskipTests
-   ```
-
-3. **构建前端**
-   ```bash
-   cd frontend
-   npm run build
-   ```
-
-4. **部署目录结构**
-   ```
-   /opt/nanmuli-blog/
-   ├── blog-backend.jar      # 后端jar包
-   ├── uploads/              # 文件上传目录
-   ├── logs/                 # 日志目录
-   └── dist/                 # 前端构建产物
-   ```
-
-   **创建目录并设置权限**：
-   ```bash
-   sudo mkdir -p /opt/nanmuli-blog/{uploads,logs}
-   sudo chown -R nanmuli:nanmuli /opt/nanmuli-blog
-   ```
-
-5. **Nginx 配置示例**
-   ```nginx
-   server {
-       listen 80;
-       server_name your-domain.com;
-       
-       # 前端静态资源
-       location / {
-           root /opt/nanmuli-blog/dist;
-           try_files $uri $uri/ /index.html;
-       }
-       
-       # 后端API代理
-       location /api/ {
-           proxy_pass http://localhost:8081/api/;
-           proxy_set_header Host $host;
-           proxy_set_header X-Real-IP $remote_addr;
-       }
-   }
-   ```
-
-6. **Systemd 服务配置**
-   ```bash
-   # /etc/systemd/system/nanmuli-blog.service
-   [Unit]
-   Description=Nanmuli Blog Backend
-   After=network.target
-   
-   [Service]
-   Type=simple
-   User=nanmuli
-   WorkingDirectory=/opt/nanmuli-blog
-   ExecStart=/usr/bin/java -Xms256m -Xmx512m -jar blog-backend.jar
-   Restart=always
-   
-   [Install]
-   WantedBy=multi-user.target
-   ```
-
----
-
-## 开发规范
-
-### 后端规范
-- 遵循 DDD 分层架构
-- 领域层定义业务规则
-- 应用层编排用例
-- 接口层处理 HTTP 请求
-- 使用构造器注入依赖
-
-### 前端规范
-- 使用 Composition API
-- 组件名大驼峰
-- 组合式函数使用 `use` 前缀
-- API 接口统一管理
-
----
-
-## 文档
-
-- [试用版上线与后续优化路线](./docs/trial-release-roadmap.md) - 当前 MVP Beta 基线、上线检查和后续开发路线
-- [日报系统完整技术文档](./docs/digest-system.md) - 日报生成、自动优化、前后端集成和部署检查
-- [Web采集器设计](./docs/web-collector-module-design.md) - WebCollector 产品设计与当前状态
-- [Crawler Service README](./crawler-service/README.md) - 独立爬虫服务 API、部署和版本说明
-
----
-
-## 常见问题排查
-
-### 后端启动失败
-
-**问题**：`Connection refused` 数据库连接错误
-- **解决**：检查PostgreSQL是否启动，数据库`nanmuli_blog`是否已创建
-
-**问题**：`Redis connection failed`
-- **解决**：检查Redis服务是否启动，或修改`application-dev.yml`中的Redis配置
-
-**问题**：端口8081被占用
-- **解决**：修改`application.yml`中的`server.port`配置
-
-### 前端构建失败
-
-**问题**：`Cannot find module`
-- **解决**：删除`node_modules`目录，重新执行`npm install`
-
-**问题**：`vite: not found`
-- **解决**：确保Node.js版本>=18，重新安装依赖
-
-### 生产部署问题
-
-**问题**：文件上传失败
-- **解决**：确保`/opt/nanmuli-blog/uploads`目录存在且有写入权限
-
-**问题**：API请求404
-- **解决**：检查Nginx配置中的`proxy_pass`端口是否与后端服务一致（默认8081）
-
-**问题**：静态资源加载失败
-- **解决**：检查Nginx的`root`路径是否指向正确的`dist`目录
-
-## Docker 部署（推荐）
-
-项目已全面支持 Docker 容器化部署，包含所有服务的一键启动。
-
-### 系统要求
-
-- Docker 20.10+
-- Docker Compose 2.0+
-- 内存：最低 2GB（推荐 4GB）
-
-### 快速启动
-
-```bash
-# 1. 克隆项目
-git clone <repository-url>
-cd nanmuli-blog
-
-# 2. 执行部署脚本
-bash deploy/deploy.sh
-
-# 3. 或直接使用 Docker Compose
-docker-compose up -d
-```
-
-### 服务架构
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    Docker Network                        │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐  │
-│  │   Nginx     │  │   Backend   │  │    Crawler      │  │
-│  │  (前端)      │  │  (Java)     │  │ (Python/Crawl4AI)│  │
-│  │   :80       │  │   :8081     │  │    :8500        │  │
-│  └──────┬──────┘  └──────┬──────┘  └─────────────────┘  │
-│         │                │                                │
-│         └────────────────┼────────────────┐               │
-│                          ▼                ▼               │
-│                   ┌─────────────┐  ┌─────────────┐       │
-│                   │  PostgreSQL │  │    Redis    │       │
-│                   │    :5432    │  │    :6379    │       │
-│                   └─────────────┘  └─────────────┘       │
-└─────────────────────────────────────────────────────────┘
-```
-
-### 服务说明
-
-| 服务 | 容器名 | 端口 | 说明 |
-|------|--------|------|------|
-| Nginx | nanmuli-frontend | 80 | 前端静态资源 + 反向代理 |
-| Backend | nanmuli-backend | 8081 | Spring Boot 后端服务 |
-| Crawler | nanmuli-crawler | 8500 | Python 爬虫服务 (Crawl4AI) |
-| PostgreSQL | nanmuli-postgres | 5433 | 主数据库（映射到宿主机5433）|
-| Redis | nanmuli-redis | 6380 | 缓存/会话（映射到宿主机6380）|
-
-### 常用命令
-
-```bash
-# 查看所有服务状态
-docker-compose ps
-
-# 查看日志
-docker-compose logs -f [service_name]
-
-# 停止所有服务
-docker-compose down
-
-# 重启单个服务
-docker-compose restart backend
-
-# 进入容器调试
-docker exec -it nanmuli-backend bash
-docker exec -it nanmuli-crawler sh
-```
-
-### 爬虫服务单独部署
-
-如果只需部署爬虫服务：
+Crawler：
 
 ```bash
 cd crawler-service
-docker build -t nanmuli-crawler .
-docker run -d -p 8500:8500 --name nanmuli-crawler nanmuli-crawler
+pip install -r requirements.txt
+python -m uvicorn main:app --host 0.0.0.0 --port 8500 --reload
 ```
 
----
+Frontend：
 
-## 许可证
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-[MIT License](./LICENSE)
+## 上线前必填配置
 
----
+生产或试用环境必须准备 `deploy/.env`，不要把真实 `.env` 提交到仓库。
 
-<p align="center">
-  Made with by <a href="https://github.com/nanmuli">nanmuli</a>
-</p>
+关键配置：
+
+| 配置 | 说明 |
+| --- | --- |
+| `DB_PASSWORD` | PostgreSQL 密码 |
+| `CRAWLER_API_KEY` | Backend 调用 crawler 的 API key |
+| `CRAWLER_CALLBACK_API_KEY` | Crawler 回调 Backend 的 key |
+| `BLOG_SECURITY_ENCRYPTION_KEY` | 后端敏感配置加密 key |
+| `AI_ENABLED` / `AI_API_KEY` / `AI_BASE_URL` / `AI_MODEL` | AI 能力配置 |
+| `DIGEST_ENABLED` | 是否启用定时日报 |
+| `CORS_ALLOWED_ORIGINS` | 前端域名 |
+| `COOKIE_SECURE` | HTTPS 环境建议设为 `true` |
+
+## 常用验证命令
+
+```bash
+# Backend
+cd backend
+mvn test
+
+# Crawler
+cd crawler-service
+python -m pytest -q --tb=short
+
+# Frontend
+cd frontend
+npm run build
+npm audit --omit=dev --registry=https://registry.npmjs.org
+
+# Compose 配置
+cd deploy
+docker compose --env-file .env.example config
+docker compose --env-file .env.example build frontend
+```
+
+## 文档入口
+
+- [试用版上线与后续优化路线](./docs/trial-release-roadmap.md)
+- [未来开发计划](./docs/future-development-plan.md)
+- [日报系统与自动优化系统](./docs/digest-system.md)
+- [Web Collector 模块设计](./docs/web-collector-module-design.md)
+- [Crawler Service 说明](./crawler-service/README.md)
+- [部署说明](./deploy/README.md)
+- [前端说明](./frontend/README.md)
+
+## MVP 上线结论
+
+当前版本可以作为 **MVP Beta / 试用版** 初步上线。建议先小范围真实使用，重点观察：
+
+- 每个工作日是否能稳定生成日报。
+- 日报是否有足够有效条目和可访问来源。
+- 自动优化是否能持续记录弱点，并影响后续采集策略。
+- 信息源是否稳定，是否需要替换失效或低质量来源。
+- AI 调用成本、失败率和平均耗时是否可接受。
