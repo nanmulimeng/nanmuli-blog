@@ -126,6 +126,11 @@ def _calculate_digest_output_quality(digest_content) -> dict:
             "section_count": 0,
             "duplicate_source_count": 0,
             "duplicate_title_count": 0,
+            "duplicate_event_count": 0,
+            "event_count": 0,
+            "multi_source_event_count": 0,
+            "max_sources_per_event": 0,
+            "event_source_diversity": 0.0,
             "generic_source_count": 0,
             "low_relevance_item_count": 0,
             "dominant_section_ratio": 0.0,
@@ -155,6 +160,47 @@ def _calculate_digest_output_quality(digest_content) -> dict:
         if key
     ]
     duplicate_title_count = max(0, len(title_keys) - len(set(title_keys)))
+    duplicate_event_count = 0
+    event_count = 0
+    multi_source_event_count = 0
+    max_sources_per_event = 0
+    event_source_diversity = 0.0
+    try:
+        from crawler.dedup import summarize_event_groups
+
+        event_summaries = []
+        for sec in sections:
+            sec_items = getattr(sec, "items", []) or []
+            if sec_items:
+                event_summaries.append(summarize_event_groups(
+                    sec_items,
+                    section_name=getattr(sec, "category", "") or "__digest_output__",
+                ))
+        duplicate_event_count = sum(
+            summary.get("duplicate_event_count", 0)
+            for summary in event_summaries
+        )
+        event_count = sum(summary.get("event_count", 0) for summary in event_summaries)
+        multi_source_event_count = sum(
+            summary.get("multi_source_event_count", 0)
+            for summary in event_summaries
+        )
+        max_sources_per_event = max(
+            [summary.get("max_sources_per_event", 0) for summary in event_summaries] or [0]
+        )
+        if event_summaries:
+            weighted_diversity = sum(
+                summary.get("source_diversity", 0.0)
+                * max(1, summary.get("event_count", 0))
+                for summary in event_summaries
+            )
+            event_source_diversity = round(weighted_diversity / max(1, event_count), 4)
+    except Exception:
+        duplicate_event_count = 0
+        event_count = 0
+        multi_source_event_count = 0
+        max_sources_per_event = 0
+        event_source_diversity = 0.0
     generic_source_count = sum(1 for url in urls if _is_generic_digest_source_url(url))
     sourced_item_ratio = round(len(urls) / item_count, 3) if item_count else 0.0
     one_liners = [getattr(item, "one_liner", "") or "" for item in items]
@@ -194,6 +240,7 @@ def _calculate_digest_output_quality(digest_content) -> dict:
         - min(0.15, duplicate_source_count * 0.04)
         - min(0.15, duplicate_title_count * 0.05),
     )
+    score = max(0.0, score - min(0.20, duplicate_event_count * 0.06))
     if item_count:
         score = max(0.0, score - min(0.35, low_relevance_item_count * 0.06))
         if dominant_section_ratio > 0.65 and section_count >= 3:
@@ -208,6 +255,8 @@ def _calculate_digest_output_quality(digest_content) -> dict:
         suggestions.append("日报存在重复 sourceUrl，建议加强事件合并和来源去重")
     if duplicate_title_count:
         suggestions.append("日报存在重复标题，建议合并同一事件并保留信息量最高的来源")
+    if duplicate_event_count:
+        suggestions.append("digest contains duplicate events; merge same-event items and keep the richest multi-source evidence")
     if generic_source_count:
         suggestions.append("部分 sourceUrl 指向首页/列表页，建议优先提取原文链接或限制同一列表页产出多条")
     if sourced_item_ratio < 1.0:
@@ -230,6 +279,11 @@ def _calculate_digest_output_quality(digest_content) -> dict:
         "section_count": section_count,
         "duplicate_source_count": duplicate_source_count,
         "duplicate_title_count": duplicate_title_count,
+        "duplicate_event_count": duplicate_event_count,
+        "event_count": event_count,
+        "multi_source_event_count": multi_source_event_count,
+        "max_sources_per_event": max_sources_per_event,
+        "event_source_diversity": event_source_diversity,
         "generic_source_count": generic_source_count,
         "low_relevance_item_count": low_relevance_item_count,
         "dominant_section_ratio": dominant_section_ratio,

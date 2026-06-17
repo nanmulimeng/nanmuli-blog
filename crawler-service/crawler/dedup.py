@@ -37,20 +37,31 @@ def _event_tokens(text: str) -> set[str]:
     }
 
 
-def _event_group_key(item) -> str:
-    text = " ".join([
+def _event_text(item) -> str:
+    return " ".join([
         _candidate_field(item, "title"),
         _candidate_field(item, "markdown")[:400],
         _candidate_field(item, "snippet")[:400],
+        _candidate_field(item, "one_liner")[:400],
     ])
-    tokens = sorted(_event_tokens(text))
+
+
+def _event_token_set(item) -> set[str]:
+    return _event_tokens(_event_text(item))
+
+
+def _event_group_key(item) -> str:
+    tokens = sorted(_event_token_set(item))
     if not tokens:
         return ""
     return " ".join(tokens[:4])
 
 
 def _event_url(item) -> str:
-    return _candidate_field(item, "url").strip()
+    return (
+        _candidate_field(item, "url").strip()
+        or _candidate_field(item, "source_url").strip()
+    )
 
 
 def _event_domain(url: str) -> str:
@@ -69,11 +80,11 @@ def group_event_candidates(results: list, *, section_name: str) -> list[dict]:
     groups: list[dict] = []
     for item in results:
         key = _event_group_key(item)
-        tokens = set(key.split()) if key else set()
+        tokens = _event_token_set(item)
         url = _event_url(item)
         matched = None
         for group in groups:
-            group_tokens = set(str(group["event_group_key"]).split())
+            group_tokens = set(group.get("event_tokens") or str(group["event_group_key"]).split())
             if tokens and group_tokens and len(tokens & group_tokens) >= min(2, len(tokens), len(group_tokens)):
                 matched = group
                 break
@@ -84,8 +95,11 @@ def group_event_candidates(results: list, *, section_name: str) -> list[dict]:
                 "items": [],
                 "source_urls": [],
                 "source_domains": [],
+                "event_tokens": sorted(tokens),
             }
             groups.append(matched)
+        else:
+            matched["event_tokens"] = sorted(set(matched.get("event_tokens") or []) | tokens)
         matched["items"].append(item)
         if url and url not in matched["source_urls"]:
             matched["source_urls"].append(url)
@@ -93,6 +107,53 @@ def group_event_candidates(results: list, *, section_name: str) -> list[dict]:
         if domain and domain not in matched["source_domains"]:
             matched["source_domains"].append(domain)
     return groups
+
+
+def summarize_event_groups(results: list, *, section_name: str) -> dict:
+    """Summarize event-level duplication and source diversity for diagnostics."""
+    groups = group_event_candidates(results, section_name=section_name)
+    if not groups:
+        return {
+            "event_count": 0,
+            "duplicate_event_count": 0,
+            "multi_source_event_count": 0,
+            "max_sources_per_event": 0,
+            "source_diversity": 0.0,
+            "events": [],
+        }
+
+    item_count = sum(len(group.get("items") or []) for group in groups)
+    duplicate_event_count = sum(
+        max(0, len(group.get("items") or []) - 1)
+        for group in groups
+    )
+    multi_source_event_count = sum(
+        1 for group in groups
+        if len(group.get("source_domains") or []) >= 2
+    )
+    max_sources = max(len(group.get("source_urls") or []) for group in groups)
+    domains = {
+        domain
+        for group in groups
+        for domain in (group.get("source_domains") or [])
+    }
+    source_diversity = round(len(domains) / item_count, 4) if item_count else 0.0
+    return {
+        "event_count": len(groups),
+        "duplicate_event_count": duplicate_event_count,
+        "multi_source_event_count": multi_source_event_count,
+        "max_sources_per_event": max_sources,
+        "source_diversity": source_diversity,
+        "events": [
+            {
+                "event_group_key": group.get("event_group_key"),
+                "item_count": len(group.get("items") or []),
+                "source_urls": group.get("source_urls") or [],
+                "source_domains": group.get("source_domains") or [],
+            }
+            for group in groups
+        ],
+    }
 
 
 class ContentFingerprint:

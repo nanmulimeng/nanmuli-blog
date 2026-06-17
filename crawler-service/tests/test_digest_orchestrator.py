@@ -10,7 +10,7 @@ from crawler.digest_orchestrator import (
     DigestOrchestrator, DigestCrawlPlan, PlannedSection,
     _calculate_digest_output_quality,
 )
-from crawler.dedup import group_event_candidates
+from crawler.dedup import group_event_candidates, summarize_event_groups
 
 # 预加载 crawler.config 避免 execute() 内延迟 import 触发 crawl4ai
 import crawler.config as _crawler_config  # noqa: F401
@@ -78,6 +78,34 @@ def test_group_event_candidates_merges_same_release_from_multiple_sources():
 
     assert len(groups) == 1
     assert len(groups[0]["source_urls"]) == 2
+
+
+def test_summarize_event_groups_reports_duplicate_events_and_source_diversity():
+    results = [
+        {
+            "title": "OpenAI releases Responses API developer tools",
+            "url": "https://openai.com/blog/responses-api-tools",
+            "markdown": "Responses API developer tools improve agent workflows",
+        },
+        {
+            "title": "Responses API gets new developer tooling",
+            "url": "https://github.blog/changelog/responses-api-tools",
+            "markdown": "OpenAI Responses API developer tooling improves agent workflows",
+        },
+        {
+            "title": "PostgreSQL ships planner improvements",
+            "url": "https://postgresql.org/about/news/planner-improvements",
+            "markdown": "PostgreSQL planner improvements help database performance",
+        },
+    ]
+
+    summary = summarize_event_groups(results, section_name="hot_trend")
+
+    assert summary["event_count"] == 2
+    assert summary["duplicate_event_count"] == 1
+    assert summary["multi_source_event_count"] == 1
+    assert summary["max_sources_per_event"] == 2
+    assert summary["source_diversity"] > 0.6
 
 
 # ============== TestBuildPlan ==============
@@ -957,6 +985,73 @@ class TestPhase4Evaluation:
         assert quality["duplicate_title_count"] == 1
         assert quality["score"] < 1.0
         assert any("重复标题" in s for s in quality["suggestions"])
+
+    def test_calculate_digest_output_quality_penalizes_duplicate_events(self):
+        from ai.organizer import DigestContent, DigestSection, DigestItem
+
+        digest = DigestContent(
+            title="Daily Digest",
+            summary="summary",
+            highlight="highlight",
+            tags=["ai"],
+            full_content="# Daily Digest\n\n## Trends\n\nStructured markdown content",
+            sections=[
+                DigestSection(
+                    category="hot_trend",
+                    items=[
+                        DigestItem(
+                            title="OpenAI releases Responses API developer tools",
+                            one_liner="Responses API developer tools improve agent workflows for app builders.",
+                            source_url="https://openai.com/blog/responses-api-tools",
+                            source_name="OpenAI",
+                        ),
+                        DigestItem(
+                            title="Responses API gets new developer tooling",
+                            one_liner="OpenAI Responses API developer tooling improves agent workflows.",
+                            source_url="https://github.blog/changelog/responses-api-tools",
+                            source_name="GitHub Blog",
+                        ),
+                        DigestItem(
+                            title="PostgreSQL ships planner improvements",
+                            one_liner="Database planner changes improve query performance for operators.",
+                            source_url="https://postgresql.org/about/news/planner-improvements",
+                            source_name="PostgreSQL",
+                        ),
+                        DigestItem(
+                            title="Kubernetes improves scheduling diagnostics",
+                            one_liner="Scheduling diagnostics help platform teams debug workloads.",
+                            source_url="https://kubernetes.io/blog/scheduling-diagnostics",
+                            source_name="Kubernetes",
+                        ),
+                    ],
+                ),
+                DigestSection(
+                    category="open_source",
+                    items=[
+                        DigestItem(
+                            title="Vector database project release",
+                            one_liner="The release improves ingestion latency for retrieval systems.",
+                            source_url="https://github.com/example/vector-db/releases/tag/v1.2",
+                            source_name="GitHub",
+                        ),
+                        DigestItem(
+                            title="Agent framework adds tracing",
+                            one_liner="Tracing support improves debugging for agent workflows.",
+                            source_url="https://github.com/example/agent-framework/releases/tag/v0.9",
+                            source_name="GitHub",
+                        ),
+                    ],
+                ),
+            ],
+        )
+
+        quality = _calculate_digest_output_quality(digest)
+
+        assert quality["duplicate_event_count"] == 1
+        assert quality["event_count"] == 5
+        assert quality["event_source_diversity"] >= 0.8
+        assert quality["score"] < 0.95
+        assert any("duplicate events" in s for s in quality["suggestions"])
 
     def test_calculate_digest_output_quality_penalizes_low_relevance_items(self):
         from ai.organizer import DigestContent, DigestSection, DigestItem
