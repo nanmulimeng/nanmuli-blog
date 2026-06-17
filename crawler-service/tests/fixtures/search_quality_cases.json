@@ -1,0 +1,35 @@
+[
+  {
+    "section": "open_source",
+    "keyword": "AI developer tools open source",
+    "engine": "bing",
+    "raw": {
+      "title": "microsoft/playwright: Fast and reliable end-to-end testing",
+      "url": "https://github.com/microsoft/playwright",
+      "snippet": "Open source automation for modern web apps."
+    },
+    "expected_keep": true
+  },
+  {
+    "section": "tech_article",
+    "keyword": "AI agent architecture engineering",
+    "engine": "bing",
+    "raw": {
+      "title": "What is software? Definition and examples",
+      "url": "https://www.geeksforgeeks.org/computer-science-fundamentals/software-and-its-types/",
+      "snippet": "Introductory explanation."
+    },
+    "expected_keep": false
+  },
+  {
+    "section": "paper",
+    "keyword": "LLM agent benchmark paper",
+    "engine": "google",
+    "raw": {
+      "title": "SWE-bench: Can Language Models Resolve Real-World GitHub Issues?",
+      "url": "https://arxiv.org/abs/2310.06770",
+      "snippet": "Benchmark for language model agents."
+    },
+    "expected_keep": true
+  }
+]

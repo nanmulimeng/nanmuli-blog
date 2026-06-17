@@ -362,8 +362,11 @@ class TaskExecutor:
                 # 保存规划日志 + 板块清洗文档到 task metadata
                 plan = _digest_orchestrator.get_plan()
                 metadata_update = {}
-                if plan and plan.plan_log:
-                    metadata_update["orchestrator_plan"] = plan.plan_log
+                if plan and (plan.plan_log or plan.search_diagnostics):
+                    metadata_update["orchestrator_plan"] = {
+                        "plan_log": plan.plan_log,
+                        "search_diagnostics": plan.search_diagnostics,
+                    }
                 section_docs = _digest_orchestrator.get_section_documents()
                 if section_docs:
                     metadata_update["section_documents"] = [

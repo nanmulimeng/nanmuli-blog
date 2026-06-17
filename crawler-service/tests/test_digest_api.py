@@ -587,6 +587,44 @@ class TestGetDigestByTaskId:
         assert data["quality_evaluation"]["suggestions"] == ["补充权威来源"]
         assert data["quality_evaluation"]["next_run_actions"] is None
 
+    @pytest.mark.asyncio
+    async def test_digest_task_returns_search_diagnostics_from_orchestrator_plan(self, app, patched_repo):
+        repo = patched_repo
+
+        task_id = await repo.create_task(
+            task_type="digest",
+            keyword="2026-06-20",
+            ai_template="daily_digest",
+            digest_date="2026-06-20",
+        )
+        await repo.save_ai_search_metadata(task_id, {
+            "orchestrator_plan": {
+                "search_diagnostics": [
+                    {
+                        "section": "hot_trend",
+                        "query": "AI coding agent",
+                        "engine": "bing",
+                        "requested": 5,
+                        "returned": 6,
+                        "kept": 3,
+                        "filtered": 1,
+                        "top_domains": ["github.blog"],
+                    }
+                ]
+            }
+        })
+        await repo.fail_task(task_id, "quality below threshold")
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            resp = await ac.get(f"/digests/task/{task_id}")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        diagnostic = data["orchestrator_plan"]["search_diagnostics"][0]
+        assert diagnostic["section"] == "hot_trend"
+        assert diagnostic["query"] == "AI coding agent"
+        assert diagnostic["kept"] == 3
+
 
 # ============== GET /digests/config/sections ==============
 

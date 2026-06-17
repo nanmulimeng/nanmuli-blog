@@ -12,6 +12,87 @@ import re
 from typing import List, Optional
 import difflib
 from collections import Counter
+from urllib.parse import urlparse
+
+
+EVENT_STOPWORDS = {
+    "the", "and", "for", "with", "from", "into", "gets", "get", "new",
+    "adds", "add", "release", "releases", "released", "feature", "features",
+    "update", "updates", "developer", "developers", "api", "tool", "tools",
+}
+
+
+def _candidate_field(item, name: str) -> str:
+    if isinstance(item, dict):
+        return str(item.get(name) or "")
+    return str(getattr(item, name, "") or "")
+
+
+def _event_tokens(text: str) -> set[str]:
+    tokens = re.findall(r"[a-z0-9][a-z0-9._-]*", (text or "").lower())
+    return {
+        token
+        for token in tokens
+        if len(token) >= 3 and token not in EVENT_STOPWORDS
+    }
+
+
+def _event_group_key(item) -> str:
+    text = " ".join([
+        _candidate_field(item, "title"),
+        _candidate_field(item, "markdown")[:400],
+        _candidate_field(item, "snippet")[:400],
+    ])
+    tokens = sorted(_event_tokens(text))
+    if not tokens:
+        return ""
+    return " ".join(tokens[:4])
+
+
+def _event_url(item) -> str:
+    return _candidate_field(item, "url").strip()
+
+
+def _event_domain(url: str) -> str:
+    try:
+        return urlparse(url).netloc.lower().removeprefix("www.")
+    except Exception:
+        return ""
+
+
+def group_event_candidates(results: list, *, section_name: str) -> list[dict]:
+    """Group candidates that appear to describe the same event.
+
+    This is intentionally softer than dedup_results(): it returns grouping
+    metadata for downstream ranking/generation instead of dropping candidates.
+    """
+    groups: list[dict] = []
+    for item in results:
+        key = _event_group_key(item)
+        tokens = set(key.split()) if key else set()
+        url = _event_url(item)
+        matched = None
+        for group in groups:
+            group_tokens = set(str(group["event_group_key"]).split())
+            if tokens and group_tokens and len(tokens & group_tokens) >= min(2, len(tokens), len(group_tokens)):
+                matched = group
+                break
+        if matched is None:
+            matched = {
+                "section": section_name,
+                "event_group_key": key or _event_domain(url) or url,
+                "items": [],
+                "source_urls": [],
+                "source_domains": [],
+            }
+            groups.append(matched)
+        matched["items"].append(item)
+        if url and url not in matched["source_urls"]:
+            matched["source_urls"].append(url)
+        domain = _event_domain(url)
+        if domain and domain not in matched["source_domains"]:
+            matched["source_domains"].append(domain)
+    return groups
 
 
 class ContentFingerprint:

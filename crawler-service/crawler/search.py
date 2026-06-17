@@ -34,6 +34,22 @@ def AsyncWebCrawler(*args, **kwargs):
     return get_async_web_crawler()(*args, **kwargs)
 
 
+def normalize_search_result(raw: dict, *, keyword: str, engine: str, rank: int) -> dict:
+    title = (raw.get("title") or "").strip()
+    url = (raw.get("url") or "").strip()
+    snippet = (raw.get("snippet") or "").strip()
+    return {
+        "title": title,
+        "url": url,
+        "snippet": snippet,
+        "metadata": {
+            "search_keyword": keyword,
+            "search_engine": engine,
+            "search_rank": rank,
+        },
+    }
+
+
 def _record_selector_result(engine: str, result_count: int):
     """记录搜索引擎选择器结果数量，用于健康度监控"""
     if engine not in _selector_health:

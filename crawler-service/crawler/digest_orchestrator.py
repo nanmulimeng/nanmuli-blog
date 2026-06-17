@@ -113,6 +113,7 @@ class DigestCrawlPlan:
     kb_hint: dict = field(default_factory=dict)
     # 规划日志（供前端展示）
     plan_log: list[str] = field(default_factory=list)
+    search_diagnostics: list[dict] = field(default_factory=list)
 
 
 def _calculate_digest_output_quality(digest_content) -> dict:
@@ -249,6 +250,7 @@ class DigestOrchestrator:
         self._section_documents: list = []
         self._digest_result = None
         self._global_timeout_reached = False
+        self._merge_section_name = ""
 
     async def execute(self, task: dict, config, task_executor) -> list:
         """总入口：替代原有 execute_digest_crawl()"""
@@ -573,12 +575,17 @@ class DigestOrchestrator:
                 result = await crawler_agent.execute(crawler, history_engine)
 
                 async with lock:
-                    added = self._merge_results(
-                        result.results, seen_urls, all_results, content_dedup
-                    )
+                    self._merge_section_name = section.name
+                    try:
+                        added = self._merge_results(
+                            result.results, seen_urls, all_results, content_dedup
+                        )
+                    finally:
+                        self._merge_section_name = ""
                     await repo.update_task_progress(task["id"], len(all_results))
                     if result.section_document:
                         self._section_documents.append(result.section_document)
+                    self._record_search_diagnostics(getattr(result, "search_diagnostics", []))
 
                 section.result_count = added
                 if result.success:
@@ -620,7 +627,42 @@ class DigestOrchestrator:
     def _merge_results(self, results, seen_urls, all_results, content_dedup) -> int:
         """合并板块结果到全局列表（委托公共函数）"""
         from crawler.dedup import merge_results_into
+        section_name = getattr(self, "_merge_section_name", "")
+        self._attach_event_group_metadata(results, section_name)
         return merge_results_into(results, seen_urls, all_results, content_dedup)
+
+    @staticmethod
+    def _attach_event_group_metadata(results: list, section_name: str) -> None:
+        if not results:
+            return
+        from crawler.dedup import group_event_candidates
+
+        for group in group_event_candidates(results, section_name=section_name):
+            source_urls = group.get("source_urls") or []
+            if len(source_urls) < 2:
+                continue
+            for item in group.get("items") or []:
+                metadata = item.get("metadata") if isinstance(item, dict) else getattr(item, "metadata", None)
+                if metadata is None:
+                    metadata = {}
+                    if isinstance(item, dict):
+                        item["metadata"] = metadata
+                    else:
+                        item.metadata = metadata
+                metadata["event_group_key"] = group.get("event_group_key")
+                metadata["related_source_urls"] = source_urls
+
+    def _record_search_diagnostics(self, diagnostics: list[dict]) -> None:
+        if not diagnostics or not self._crawl_plan:
+            return
+        self._crawl_plan.search_diagnostics.extend(diagnostics)
+        for item in diagnostics:
+            self._crawl_plan.plan_log.append(
+                "Search diagnostic: "
+                f"{item.get('section')} {item.get('engine')} "
+                f"returned={item.get('returned')} kept={item.get('kept')} "
+                f"query={item.get('query')}"
+            )
 
     def _core_section_status(self, min_per_section: int | None = None) -> dict:
         """统计核心板块覆盖与饥饿状态。"""
@@ -795,12 +837,17 @@ class DigestOrchestrator:
                 continue
 
             async with lock:
-                added = self._merge_results(
-                    result.results, seen_urls, all_results, content_dedup
-                )
+                self._merge_section_name = section.name
+                try:
+                    added = self._merge_results(
+                        result.results, seen_urls, all_results, content_dedup
+                    )
+                finally:
+                    self._merge_section_name = ""
                 await repo.update_task_progress(task["id"], len(all_results))
                 if result.section_document:
                     self._section_documents.append(result.section_document)
+                self._record_search_diagnostics(getattr(result, "search_diagnostics", []))
 
             section.result_count += added
             if added > 0:

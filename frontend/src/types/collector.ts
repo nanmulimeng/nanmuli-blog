@@ -122,10 +122,27 @@ export interface DigestDetail {
   ai_tokens_used: number | null
   error_message: string | null
   sections: DigestSection[]
-  orchestrator_plan: string[] | null
+  orchestrator_plan: string[] | DigestOrchestratorPlan | null
   diagnostics?: CollectTaskDiagnostics | null
   quality_evaluation?: DigestQualityEvaluation | null
   created_at: string
+}
+
+export interface DigestOrchestratorPlan {
+  plan_log?: string[]
+  search_diagnostics?: DigestSearchDiagnostic[]
+}
+
+export interface DigestSearchDiagnostic {
+  section: string
+  query: string
+  engine: string
+  intent?: string
+  requested?: number
+  returned: number
+  kept: number
+  filtered?: number
+  top_domains?: string[]
 }
 
 export interface DigestQualityEvaluation {

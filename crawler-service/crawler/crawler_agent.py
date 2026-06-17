@@ -7,6 +7,7 @@
 import asyncio
 import logging
 from dataclasses import dataclass, field
+from urllib.parse import urlparse
 
 from config import settings
 from crawler.digest_orchestrator import PlannedSection
@@ -24,6 +25,7 @@ class CrawlerAgentResult:
     error: str | None = None
     fallback_used: bool = False
     section_document: "SectionDocument | None" = None
+    search_diagnostics: list[dict] = field(default_factory=list)
 
 
 class CrawlerAgent:
@@ -68,6 +70,7 @@ class CrawlerAgent:
                 results=results,
                 fallback_used=fallback_used,
                 section_document=doc,
+                search_diagnostics=getattr(self, "_search_diagnostics", []),
             )
 
         except asyncio.CancelledError:
@@ -81,6 +84,7 @@ class CrawlerAgent:
                 success=False,
                 results=[],
                 error=str(e),
+                search_diagnostics=getattr(self, "_search_diagnostics", []),
             )
 
     async def _crawl(self, crawler, history_engine) -> list:
@@ -88,31 +92,43 @@ class CrawlerAgent:
         from crawler.search import crawl_by_keyword
         from crawler.source_crawler import crawl_url_sources, crawl_rss_sources
         from crawler.dedup import dedup_results
+        from crawler.search_planner import build_search_query_plan
+        from crawler.search_ranker import rank_search_candidates
 
         plan = self.crawl_plan
         results = []
+        self._search_diagnostics = []
 
-        # keyword 搜索：逐个活跃关键词独立搜索
+        # keyword 搜索：按板块语义生成查询变体，再逐个执行
         if plan.active_keywords:
-            total_budget = plan.adjusted_max_items * settings.digest_section_result_multiplier
-            kw_count = len(plan.active_keywords)
-            base_per_kw = max(3, total_budget // kw_count)
-            remainder = total_budget - base_per_kw * kw_count
-            for i, kw in enumerate(plan.active_keywords):
-                per_kw_max = base_per_kw + (1 if i < remainder else 0)
+            query_plan = build_search_query_plan(
+                self.section,
+                plan,
+                config_snapshot=self.config_snapshot,
+            )
+            for query in query_plan.queries:
                 try:
                     kw_results = await crawl_by_keyword(
-                        keyword=kw,
-                        engine=plan.recommended_engine,
-                        max_results=per_kw_max,
-                        time_range=self.section.time_range,
+                        keyword=query.query,
+                        engine=query.engine,
+                        max_results=query.max_results,
+                        time_range=query.time_range,
                         config=self._config,
                         crawler=crawler,
                         skip_dedup=True,
                     )
-                    results.extend(self._apply_url_feedback(kw_results))
+                    kw_results = rank_search_candidates(
+                        self.section.name,
+                        query.query,
+                        kw_results,
+                    )
+                    filtered_results = self._apply_url_feedback(kw_results)
+                    self._search_diagnostics.append(
+                        self._build_search_diagnostic(query, kw_results, filtered_results)
+                    )
+                    results.extend(filtered_results)
                 except Exception as e:
-                    logger.warning("[CrawlerAgent] Keyword '%s' search failed: %s", kw, e)
+                    logger.warning("[CrawlerAgent] Keyword '%s' search failed: %s", query.query, e)
                 await asyncio.sleep(1)
 
         # URL 直爬（仅活跃源）
@@ -128,6 +144,33 @@ class CrawlerAgent:
             results.extend(self._apply_url_feedback(rss_results))
 
         return dedup_results(results, history_engine=history_engine)
+
+    def _build_search_diagnostic(self, query, returned_results: list, kept_results: list) -> dict:
+        returned = len(returned_results or [])
+        kept = len(kept_results or [])
+        domains: dict[str, int] = {}
+        for item in kept_results or []:
+            url = self._result_url(item)
+            try:
+                domain = urlparse(url).netloc.lower().removeprefix("www.")
+            except Exception:
+                domain = ""
+            if domain:
+                domains[domain] = domains.get(domain, 0) + 1
+        top_domains = [
+            domain for domain, _ in sorted(domains.items(), key=lambda pair: (-pair[1], pair[0]))[:5]
+        ]
+        return {
+            "section": self.section.name,
+            "query": query.query,
+            "engine": query.engine,
+            "intent": query.intent,
+            "requested": query.max_results,
+            "returned": returned,
+            "kept": kept,
+            "filtered": max(0, returned - kept),
+            "top_domains": top_domains,
+        }
 
     async def _fallback(self, crawler, history_engine) -> list:
         """零结果降级：换引擎 + 放宽时间范围"""

@@ -10,6 +10,7 @@ from crawler.digest_orchestrator import (
     DigestOrchestrator, DigestCrawlPlan, PlannedSection,
     _calculate_digest_output_quality,
 )
+from crawler.dedup import group_event_candidates
 
 # 预加载 crawler.config 避免 execute() 内延迟 import 触发 crawl4ai
 import crawler.config as _crawler_config  # noqa: F401
@@ -57,6 +58,26 @@ def _mock_dedup():
     d.is_duplicate.return_value = {"is_duplicate": False}
     d.add.return_value = None
     return d
+
+
+def test_group_event_candidates_merges_same_release_from_multiple_sources():
+    results = [
+        {
+            "title": "OpenAI releases new Responses API features",
+            "url": "https://openai.com/index/a",
+            "markdown": "Responses API features for developers",
+        },
+        {
+            "title": "Responses API gets new developer features",
+            "url": "https://github.blog/index/b",
+            "markdown": "OpenAI Responses API developer update",
+        },
+    ]
+
+    groups = group_event_candidates(results, section_name="hot_trend")
+
+    assert len(groups) == 1
+    assert len(groups[0]["source_urls"]) == 2
 
 
 # ============== TestBuildPlan ==============

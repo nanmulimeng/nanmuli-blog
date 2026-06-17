@@ -45,6 +45,16 @@ const sourceDiagnostics = computed(() => (qualityEvaluation.value?.source_diagno
 const nextRunActions = computed(() => qualityEvaluation.value?.next_run_actions ?? null)
 const nextRunActionSources = computed(() => Object.values(nextRunActions.value?.sources ?? {}).slice(0, 6))
 const taskDiagnostics = computed(() => digest.value?.diagnostics ?? null)
+const orchestratorPlanLogs = computed(() => {
+  const plan = digest.value?.orchestrator_plan
+  if (Array.isArray(plan)) return plan
+  return plan?.plan_log ?? []
+})
+const searchDiagnostics = computed(() => {
+  const plan = digest.value?.orchestrator_plan
+  if (!plan || Array.isArray(plan)) return []
+  return plan.search_diagnostics ?? []
+})
 
 async function fetchDigest(): Promise<void> {
   loading.value = true
@@ -147,6 +157,10 @@ function actionTagType(action: string | null | undefined): 'success' | 'warning'
 function diagnosticTagType(severity: string | undefined): 'success' | 'warning' | 'danger' | 'info' {
   if (severity === 'success' || severity === 'warning' || severity === 'danger') return severity
   return 'info'
+}
+
+function formatDomains(domains: string[] | undefined): string {
+  return (domains ?? []).join(', ')
 }
 
 function goBack(): void {
@@ -416,15 +430,34 @@ watch(() => route.params, () => {
       </div>
 
       <!-- Orchestrator Plan Log -->
-      <el-collapse v-if="digest.orchestrator_plan?.length" class="mb-6">
+      <el-collapse v-if="orchestratorPlanLogs.length" class="mb-6">
         <el-collapse-item title="总管 Agent 规划日志" name="plan">
           <div class="space-y-1 text-xs font-mono text-content-secondary">
-            <div v-for="(log, idx) in digest.orchestrator_plan" :key="idx" class="py-0.5">
+            <div v-for="(log, idx) in orchestratorPlanLogs" :key="idx" class="py-0.5">
               {{ log }}
             </div>
           </div>
         </el-collapse-item>
       </el-collapse>
+
+      <div v-if="searchDiagnostics.length" class="mb-6 rounded-2xl p-5 glass-card">
+        <div class="mb-3 text-sm font-medium text-content-primary">Search Diagnostics</div>
+        <el-table :data="searchDiagnostics" border size="small">
+          <el-table-column prop="section" label="Section" width="120" />
+          <el-table-column prop="engine" label="Engine" width="90" />
+          <el-table-column prop="intent" label="Intent" width="100" />
+          <el-table-column prop="query" label="Query" min-width="220" show-overflow-tooltip />
+          <el-table-column prop="requested" label="Req" width="70" />
+          <el-table-column prop="returned" label="Ret" width="70" />
+          <el-table-column prop="kept" label="Kept" width="80" />
+          <el-table-column prop="filtered" label="Drop" width="80" />
+          <el-table-column label="Top Domains" min-width="180" show-overflow-tooltip>
+            <template #default="{ row }">
+              {{ formatDomains(row.top_domains) }}
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
 
       <!-- AI Summary -->
       <div v-if="digest.ai_summary" class="mb-6 rounded-2xl p-6 glass-card">
