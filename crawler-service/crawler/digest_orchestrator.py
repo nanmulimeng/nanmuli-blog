@@ -457,6 +457,26 @@ class DigestOrchestrator:
         except Exception as e:
             logger.debug("[Orchestrator] KB plan building failed: %s", e)
 
+        try:
+            from standalone import repository as repo
+            from crawler.search_feedback import derive_search_feedback_hints
+
+            snapshots = await repo.get_recent_digest_search_feedback(limit=10)
+            feedback_hints = derive_search_feedback_hints(snapshots)
+            if feedback_hints:
+                plan.config_snapshot["search_feedback_hints"] = feedback_hints
+                hint_sections = sorted({
+                    section
+                    for values in feedback_hints.values()
+                    if isinstance(values, dict)
+                    for section in values.keys()
+                })
+                plan.plan_log.append(
+                    f"Search feedback hints: sections={hint_sections[:5]}"
+                )
+        except Exception as e:
+            logger.debug("[Orchestrator] Search feedback hint building failed: %s", e)
+
         recommended_engine = kb_hint.get("recommended_engine") or settings.digest_search_engine
 
         # 3. 转换板块为 PlannedSection

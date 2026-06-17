@@ -61,3 +61,53 @@ def test_choose_engine_avoids_repeated_zero_result_engine():
         section_name="hot_trend",
         selector_health=health,
     ) == "sogou"
+
+
+def test_feedback_hints_override_penalized_primary_engine():
+    health = {
+        "sogou": {"total_attempts": 1, "zero_results": 0},
+        "bing": {"total_attempts": 4, "zero_results": 1},
+    }
+
+    assert choose_engine(
+        "sogou",
+        keyword="AI developer tools",
+        section_name="open_source",
+        selector_health=health,
+        feedback_hints={
+            "section_engine_preferences": {"open_source": ["bing"]},
+            "section_engine_penalties": {"open_source": ["sogou"]},
+        },
+    ) == "bing"
+
+
+def test_build_plan_uses_feedback_to_prioritize_engine_and_delay_bad_intents():
+    section = PlannedSection(
+        name="paper",
+        source_type="keyword",
+        keywords=["LLM agent benchmark"],
+        max_items=3,
+        engine="sogou",
+    )
+    plan = SourceCrawlPlan(
+        section_name="paper",
+        active_keywords=["LLM agent benchmark"],
+        recommended_engine="sogou",
+        adjusted_max_items=3,
+    )
+
+    query_plan = build_search_query_plan(
+        section,
+        plan,
+        config_snapshot={
+            "search_feedback_hints": {
+                "section_engine_preferences": {"paper": ["google"]},
+                "section_engine_penalties": {"paper": ["sogou"]},
+                "section_intent_penalties": {"paper": ["base"]},
+            }
+        },
+    )
+
+    assert {q.engine for q in query_plan.queries} == {"google"}
+    assert query_plan.queries[0].intent == "arxiv"
+    assert query_plan.queries[-1].intent == "base"

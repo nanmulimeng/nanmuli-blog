@@ -147,6 +147,27 @@ class TestBuildPlan:
         assert any("Source feedback actions" in log for log in plan.plan_log)
 
     @pytest.mark.asyncio
+    async def test_recent_search_feedback_hints_stored_in_config_snapshot(self):
+        sections = [{"name": "open_source", "source_type": "keyword", "keyword": "AI tools"}]
+        snapshots = [{"task_id": 7, "diagnostics": []}]
+        hints = {
+            "section_engine_preferences": {"open_source": ["bing"]},
+            "section_engine_penalties": {"open_source": ["sogou"]},
+        }
+        orch = DigestOrchestrator()
+        with patch("standalone.task_executor.get_digest_sections", return_value=sections), \
+             patch("optimization.knowledge_base.KnowledgeBase.get_strategy_hint", return_value=None), \
+             patch("optimization.knowledge_base.KnowledgeBase.get_last_digest_weaknesses", return_value=None), \
+             patch("optimization.knowledge_base.KnowledgeBase.get_digest_source_actions", return_value=None), \
+             patch("optimization.knowledge_base.KnowledgeBase.get_digest_quality_trend", return_value=[]), \
+             patch("standalone.repository.get_recent_digest_search_feedback", return_value=snapshots), \
+             patch("crawler.search_feedback.derive_search_feedback_hints", return_value=hints):
+            plan = await orch._build_plan({"id": 1})
+
+        assert plan.config_snapshot["search_feedback_hints"] == hints
+        assert any("Search feedback hints" in log for log in plan.plan_log)
+
+    @pytest.mark.asyncio
     async def test_quality_trend_uses_actual_dimension_fields(self):
         sections = [{"name": "s1", "source_type": "keyword", "keyword": "AI"}]
         trend = [{
