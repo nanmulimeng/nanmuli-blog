@@ -59,6 +59,29 @@ class WebCollectorControllerTest {
     }
 
     @Test
+    void getSearchFeedbackClampsLimitAndProxiesToCrawler() {
+        Map<String, Object> upstream = Map.of("records", List.of(), "total", 0);
+        when(crawlerTaskClient.proxyGet("/api/v1/optimization/search-feedback?limit=50"))
+                .thenReturn(upstream);
+
+        Result<Object> result = controller.getSearchFeedback(999);
+
+        assertThat(result.getCode()).isEqualTo(200);
+        assertThat(result.getData()).isSameAs(upstream);
+        verify(crawlerTaskClient).proxyGet("/api/v1/optimization/search-feedback?limit=50");
+    }
+
+    @Test
+    void getSearchFeedbackWrapsCrawlerFailure() {
+        when(crawlerTaskClient.proxyGet("/api/v1/optimization/search-feedback?limit=1"))
+                .thenThrow(new RuntimeException("crawler down"));
+
+        assertThatThrownBy(() -> controller.getSearchFeedback(0))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("crawler down");
+    }
+
+    @Test
     void testSourceDelegatesToSourceAppService() {
         Map<String, Object> upstream = Map.of("crawlable", true, "success_count", 1);
 

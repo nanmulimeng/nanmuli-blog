@@ -298,6 +298,62 @@ export interface DigestQualityTrendItem {
   created_at?: string
 }
 
+export interface DigestSearchFeedbackResult {
+  total: number
+  limit: number
+  records: DigestSearchFeedbackSnapshot[]
+}
+
+export interface DigestSearchFeedbackSnapshot {
+  task_id: number
+  digest_date: string | null
+  status: number
+  created_at: string | null
+  diagnostics: DigestSearchDiagnostic[]
+  summary: DigestSearchFeedbackSummary
+}
+
+export interface DigestSearchFeedbackSummary {
+  total_queries: number
+  total_returned: number
+  total_kept: number
+  total_filtered: number
+  keep_rate: number
+  zero_result_queries: DigestZeroResultQuery[]
+  section_summaries: DigestSearchSectionSummary[]
+  engine_summaries: DigestSearchEngineSummary[]
+}
+
+export interface DigestZeroResultQuery {
+  section: string
+  engine: string
+  query: string
+  returned: number
+  kept: number
+}
+
+export interface DigestSearchSectionSummary {
+  section: string
+  queries: number
+  returned: number
+  kept: number
+  filtered: number
+  zero_result_queries: number
+  keep_rate: number
+  top_domains: string[]
+}
+
+export interface DigestSearchEngineSummary {
+  engine: string
+  queries: number
+  returned: number
+  kept: number
+  filtered: number
+  zero_result_queries: number
+  keep_rate: number
+  top_domains: string[]
+}
+
 export interface CollectPage {
   id: string
   taskId: string

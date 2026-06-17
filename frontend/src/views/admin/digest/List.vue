@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { getDigestList, getDigestOptimizationTrend, getDigestSchedulerStatus, triggerDigest } from '@/api/collector'
-import type { DigestListItem, DigestOptimizationTrend, DigestSchedulerStatus } from '@/types/collector'
+import { getDigestList, getDigestOptimizationTrend, getDigestSchedulerStatus, getDigestSearchFeedback, triggerDigest } from '@/api/collector'
+import type { DigestListItem, DigestOptimizationTrend, DigestSchedulerStatus, DigestSearchFeedbackResult } from '@/types/collector'
 import { CollectTaskStatusMap } from '@/types/collector'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Refresh, Calendar, View, Promotion, Timer } from '@element-plus/icons-vue'
+import { Refresh, Calendar, View, Promotion, Timer, DataAnalysis } from '@element-plus/icons-vue'
 import { usePolling } from '@/composables/usePolling'
 import { PAGE_SIZE, POLLING_INTERVAL, DELAY } from '@/constants/api'
 
@@ -18,6 +18,7 @@ const pageSize = ref(PAGE_SIZE.DIGEST)
 const triggerLoading = ref(false)
 const schedulerStatus = ref<DigestSchedulerStatus | null>(null)
 const qualityOverview = ref<DigestOptimizationTrend | null>(null)
+const searchFeedback = ref<DigestSearchFeedbackResult | null>(null)
 const loadError = ref<string | null>(null)
 
 const qualitySummary = computed(() => qualityOverview.value?.summary ?? null)
@@ -26,6 +27,11 @@ const weakDimensions = computed(() => Object.entries(qualityOverview.value?.weak
 const qualitySuggestions = computed(() => (qualityOverview.value?.suggestions ?? []).slice(0, 3))
 const latestSchedulerDigest = computed(() => schedulerStatus.value?.latest_digest ?? null)
 const schedulerDiagnostics = computed(() => schedulerStatus.value?.diagnostics ?? null)
+const latestSearchFeedback = computed(() => searchFeedback.value?.records?.[0] ?? null)
+const latestSearchSummary = computed(() => latestSearchFeedback.value?.summary ?? null)
+const searchSectionSummaries = computed(() => (latestSearchSummary.value?.section_summaries ?? []).slice(0, 5))
+const searchEngineSummaries = computed(() => (latestSearchSummary.value?.engine_summaries ?? []).slice(0, 4))
+const zeroResultQueries = computed(() => (latestSearchSummary.value?.zero_result_queries ?? []).slice(0, 3))
 
 async function fetchData(): Promise<void> {
   loading.value = true
@@ -56,6 +62,15 @@ async function fetchQualityOverview(): Promise<void> {
   } catch (error: unknown) {
     qualityOverview.value = null
     loadError.value = error instanceof Error ? error.message : '质量趋势加载失败'
+  }
+}
+
+async function fetchSearchFeedback(): Promise<void> {
+  try {
+    searchFeedback.value = await getDigestSearchFeedback(10)
+  } catch (error: unknown) {
+    searchFeedback.value = null
+    loadError.value = error instanceof Error ? error.message : '搜索反馈加载失败'
   }
 }
 
@@ -128,6 +143,22 @@ function formatDelta(delta: number | null | undefined): string {
   return `${sign}${Math.round(delta * 100)}`
 }
 
+function formatPercent(value: number | null | undefined): string {
+  if (value === null || value === undefined) return '-'
+  return `${Math.round(value * 100)}%`
+}
+
+function sectionLabel(key: string): string {
+  const labels: Record<string, string> = {
+    hot_trend: '热点趋势',
+    open_source: '开源项目',
+    dev_tool: '开发工具',
+    tech_article: '技术文章',
+    paper: '论文研究',
+  }
+  return labels[key] || key
+}
+
 function dimensionLabel(key: string): string {
   const labels: Record<string, string> = {
     angle: '选题角度',
@@ -190,6 +221,7 @@ onMounted(() => {
   fetchData()
   fetchSchedulerStatus()
   fetchQualityOverview()
+  fetchSearchFeedback()
   startPolling()
 })
 </script>
@@ -329,6 +361,81 @@ onMounted(() => {
         >
           {{ suggestion }}
         </span>
+      </div>
+    </div>
+
+    <div
+      v-if="latestSearchSummary"
+      class="mb-4 rounded-lg border border-border bg-surface-secondary px-4 py-3 text-sm text-content-secondary"
+    >
+      <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-2 text-content-primary">
+          <el-icon><DataAnalysis /></el-icon>
+          <span class="font-medium">搜索反馈</span>
+          <span v-if="latestSearchFeedback?.digest_date" class="text-content-secondary">
+            {{ formatDate(latestSearchFeedback.digest_date) }}
+          </span>
+        </div>
+        <div class="flex flex-wrap items-center gap-3">
+          <span>Query {{ latestSearchSummary.total_queries }}</span>
+          <span>返回 {{ latestSearchSummary.total_returned }}</span>
+          <span>保留 {{ latestSearchSummary.total_kept }}</span>
+          <el-tag
+            :type="latestSearchSummary.keep_rate >= 0.5 ? 'success' : latestSearchSummary.keep_rate >= 0.25 ? 'warning' : 'danger'"
+            size="small"
+            effect="plain"
+          >
+            保留率 {{ formatPercent(latestSearchSummary.keep_rate) }}
+          </el-tag>
+        </div>
+      </div>
+
+      <div class="grid gap-3 lg:grid-cols-2">
+        <div class="space-y-2">
+          <div class="text-xs font-medium text-content-secondary">板块表现</div>
+          <div class="flex flex-wrap gap-2">
+            <el-tag
+              v-for="section in searchSectionSummaries"
+              :key="section.section"
+              size="small"
+              effect="plain"
+              :type="section.keep_rate >= 0.5 ? 'success' : section.keep_rate >= 0.25 ? 'warning' : 'danger'"
+              :title="section.top_domains.join(', ')"
+            >
+              {{ sectionLabel(section.section) }} {{ section.kept }}/{{ section.returned }} · {{ formatPercent(section.keep_rate) }}
+            </el-tag>
+          </div>
+        </div>
+
+        <div class="space-y-2">
+          <div class="text-xs font-medium text-content-secondary">搜索引擎</div>
+          <div class="flex flex-wrap gap-2">
+            <el-tag
+              v-for="engine in searchEngineSummaries"
+              :key="engine.engine"
+              size="small"
+              effect="plain"
+              :type="engine.zero_result_queries > 0 ? 'warning' : 'success'"
+              :title="engine.top_domains.join(', ')"
+            >
+              {{ engine.engine }} {{ engine.kept }}/{{ engine.returned }} · 零结果 {{ engine.zero_result_queries }}
+            </el-tag>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="zeroResultQueries.length" class="mt-3 flex flex-wrap gap-2">
+        <span class="text-xs font-medium text-content-secondary">需要关注</span>
+        <el-tag
+          v-for="item in zeroResultQueries"
+          :key="`${item.section}-${item.engine}-${item.query}`"
+          size="small"
+          type="warning"
+          effect="plain"
+          :title="item.query"
+        >
+          {{ sectionLabel(item.section) }} / {{ item.engine }}：{{ item.query }}
+        </el-tag>
       </div>
     </div>
 

@@ -354,4 +354,17 @@ public class WebCollectorController {
             throw new BusinessException(503, "Python 爬虫服务不可用: " + e.getMessage());
         }
     }
+
+    @Operation(summary = "获取日报搜索诊断反馈")
+    @GetMapping("/optimization/search-feedback")
+    public Result<Object> getSearchFeedback(
+            @RequestParam(defaultValue = "10") int limit) {
+        try {
+            int safeLimit = Math.max(1, Math.min(limit, 50));
+            return Result.success(crawlerTaskClient.proxyGet("/api/v1/optimization/search-feedback?limit=" + safeLimit));
+        } catch (Exception e) {
+            log.warn("[DigestProxy] getSearchFeedback failed: {}", e.getMessage());
+            throw new BusinessException(503, "Python 爬虫服务不可用: " + e.getMessage());
+        }
+    }
 }
