@@ -784,3 +784,28 @@ async def get_effective_strategies(limit: int = 10) -> list[dict]:
             (limit,),
         )
         return [dict(r) for r in await cursor.fetchall()]
+
+
+async def get_recent_digest_search_feedback(limit: int = 10) -> list[dict]:
+    """Return recent digest search feedback snapshots from task metadata."""
+    from crawler.search_feedback import build_search_feedback_snapshot
+
+    async with get_db() as db:
+        cursor = await db.execute(
+            """SELECT id, digest_date, status, created_at, ai_search_metadata
+               FROM crawl_task
+               WHERE task_type = 'digest'
+                 AND ai_search_metadata IS NOT NULL
+                 AND ai_search_metadata != ''
+               ORDER BY created_at DESC
+               LIMIT ?""",
+            (limit,),
+        )
+        rows = await cursor.fetchall()
+
+    snapshots = []
+    for row in rows:
+        snapshot = build_search_feedback_snapshot(_row_to_dict(row))
+        if snapshot["summary"]["total_queries"] > 0:
+            snapshots.append(snapshot)
+    return snapshots

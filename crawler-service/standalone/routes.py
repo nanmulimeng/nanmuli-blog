@@ -539,6 +539,17 @@ async def get_optimization_history(
     return {"effective_strategies": strategies}
 
 
+@router.get("/optimization/search-feedback")
+async def get_search_feedback(limit: int = Query(10, ge=1, le=50)):
+    """Return recent digest search diagnostics as replayable feedback snapshots."""
+    records = await repo.get_recent_digest_search_feedback(limit=limit)
+    return {
+        "total": len(records),
+        "limit": limit,
+        "records": records,
+    }
+
+
 @router.get("/optimization/stats")
 async def get_optimization_stats():
     """优化引擎统计"""

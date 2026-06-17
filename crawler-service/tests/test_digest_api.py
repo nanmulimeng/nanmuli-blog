@@ -261,6 +261,58 @@ class TestDigestSchedulerStatus:
         assert checks["digest_job"]["status"] == "warning"
 
 
+class TestSearchFeedbackApi:
+    @pytest.mark.asyncio
+    async def test_search_feedback_returns_recent_digest_diagnostics(self, app, patched_repo):
+        repo = patched_repo
+
+        task_id = await repo.create_task(
+            task_type="digest",
+            keyword="2026-06-21",
+            ai_template="daily_digest",
+            digest_date="2026-06-21",
+        )
+        await repo.save_ai_search_metadata(task_id, {
+            "orchestrator_plan": {
+                "search_diagnostics": [
+                    {
+                        "section": "open_source",
+                        "query": "AI agent github",
+                        "engine": "bing",
+                        "requested": 5,
+                        "returned": 7,
+                        "kept": 4,
+                        "filtered": 2,
+                        "top_domains": ["github.com"],
+                    },
+                    {
+                        "section": "paper",
+                        "query": "site:arxiv.org AI agent",
+                        "engine": "bing",
+                        "requested": 5,
+                        "returned": 0,
+                        "kept": 0,
+                        "filtered": 0,
+                        "top_domains": [],
+                    },
+                ],
+            }
+        })
+        await repo.fail_task(task_id, "quality below threshold")
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            resp = await ac.get("/optimization/search-feedback?limit=5")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        record = data["records"][0]
+        assert record["task_id"] == task_id
+        assert record["summary"]["total_queries"] == 2
+        assert record["summary"]["total_kept"] == 4
+        assert record["summary"]["zero_result_queries"][0]["section"] == "paper"
+
+
 # ============== GET /digests/latest ==============
 
 class TestGetLatestDigest:
