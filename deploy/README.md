@@ -56,7 +56,7 @@ docker compose --env-file .env up -d --build
 | --- | --- | --- | --- |
 | Frontend | `nanmuli-frontend` | `80` | Vue 静态资源 + API 反向代理 |
 | Backend | `nanmuli-backend` | `8081` | Spring Boot API |
-| Crawler | `nanmuli-crawler` | `8500` | FastAPI/Crawl4AI |
+| Crawler | `crawler-service` | `8500` | FastAPI/Crawl4AI |
 | PostgreSQL | `nanmuli-postgres` | `5433` | 映射到容器 `5432` |
 | Redis | `nanmuli-redis` | `6380` | 映射到容器 `6379` |
 

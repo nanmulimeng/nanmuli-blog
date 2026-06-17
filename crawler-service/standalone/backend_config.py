@@ -63,6 +63,18 @@ def _is_localhost_url(url: str) -> bool:
         return False
 
 
+def _first_api_key(keys: str) -> str:
+    for key in (keys or "").split(","):
+        key = key.strip()
+        if key:
+            return key
+    return ""
+
+
+def _config_fetch_key() -> str:
+    return _first_api_key(settings.api_keys) or settings.callback_api_key
+
+
 # ============================================================
 # 核心配置映射（仅 33 项）
 # ============================================================
@@ -122,6 +134,12 @@ def _apply_digest_settings(config: dict[str, str]) -> None:
     if config.get("digest.optimization_target_score", ""):
         settings.digest_optimization_target_score = _to_float(
             config["digest.optimization_target_score"]
+        )
+    if config.get("digest.publish_core_sections", ""):
+        settings.digest_publish_core_sections = config["digest.publish_core_sections"]
+    if config.get("digest.publish_min_core_sections", ""):
+        settings.digest_publish_min_core_sections = _to_int(
+            config["digest.publish_min_core_sections"]
         )
 
 
@@ -185,6 +203,8 @@ def _apply_auth_settings(config: dict[str, str]) -> None:
         settings.auth_protected_prefixes = config["auth.protected_prefixes"]
     if config.get("auth.api_keys", "").strip():
         settings.api_keys = config["auth.api_keys"]
+    elif config.get("service.api-key", "").strip():
+        settings.api_keys = config["service.api-key"]
     elif _ENV_API_KEYS:
         settings.api_keys = _ENV_API_KEYS
 
@@ -285,7 +305,7 @@ async def fetch_from_backend() -> dict[str, str]:
         return {}
 
     url = f"{_java_api_url()}/api/internal/collector/config"
-    api_key = settings.callback_api_key
+    api_key = _config_fetch_key()
 
     try:
         import httpx

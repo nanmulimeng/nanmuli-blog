@@ -8,12 +8,79 @@ import logging
 import re
 import time
 from dataclasses import dataclass, field
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 import httpx
 
 from .config import AiSettings, ai_settings
 from .utils import extract_json as _extract_json
 
 logger = logging.getLogger(__name__)
+
+_TRACKING_QUERY_PARAMS = {
+    "fbclid", "gclid", "mc_cid", "mc_eid", "igshid", "yclid",
+    "spm", "ved", "ei", "ref", "ref_src",
+}
+
+_GENERIC_SOURCE_PATHS = {
+    "", "/", "blog", "blogs", "news", "latest", "topics", "topic",
+    "trending", "category", "categories", "tag", "tags",
+}
+
+
+def _canonical_source_url_for_dedup(url: str) -> str:
+    """Canonicalize sourceUrl only for duplicate detection."""
+    if not url:
+        return ""
+    try:
+        parsed = urlsplit(url.strip())
+    except Exception:
+        return url.strip().rstrip("/")
+    if not parsed.scheme or not parsed.netloc:
+        return url.strip().rstrip("/")
+
+    query_pairs = [
+        (key, value)
+        for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+        if not key.lower().startswith("utm_")
+        and key.lower() not in _TRACKING_QUERY_PARAMS
+    ]
+    query = urlencode(query_pairs, doseq=True)
+    path = parsed.path.rstrip("/") or "/"
+    return urlunsplit((
+        parsed.scheme.lower(),
+        parsed.netloc.lower(),
+        path,
+        query,
+        "",
+    ))
+
+
+def _generic_source_dedup_key(url: str) -> str:
+    try:
+        parsed = urlsplit(url.strip())
+    except Exception:
+        return ""
+    if not parsed.netloc:
+        return ""
+
+    domain = parsed.netloc.lower()
+    if domain.startswith("www."):
+        domain = domain[4:]
+    path = parsed.path.strip("/").lower()
+    if path in _GENERIC_SOURCE_PATHS:
+        return f"generic:{domain}"
+    parts = [part for part in path.split("/") if part]
+    if parts and parts[0] in {"category", "categories", "tag", "tags", "topic", "topics"}:
+        return f"generic:{domain}"
+    return ""
+
+
+def _digest_title_dedup_key(title: str) -> str:
+    """Normalize digest item title for exact duplicate detection."""
+    if not title:
+        return ""
+    key = re.sub(r"[\s\W_]+", "", title.lower(), flags=re.UNICODE)
+    return key if len(key) >= 4 else ""
 
 # ============== Constants (configured via ai_settings) ==============
 # Values are read dynamically from ai_settings so changes to config take effect.
@@ -65,6 +132,126 @@ DIGEST_CATEGORY_MAP = {
 }
 
 _DIGEST_CATEGORY_ORDER = ["hot_trend", "open_source", "tech_article", "dev_tool", "paper", "creative"]
+
+DIGEST_CATEGORY_ALIASES = {
+    "news": "hot_trend",
+    "hot_news": "hot_trend",
+    "hot": "hot_trend",
+    "trend": "hot_trend",
+    "trends": "hot_trend",
+    "articles": "tech_article",
+    "article": "tech_article",
+    "blog": "tech_article",
+    "blogs": "tech_article",
+    "engineering": "tech_article",
+    "deep_dive": "tech_article",
+    "opensource": "open_source",
+    "open-source": "open_source",
+    "open source": "open_source",
+    "oss": "open_source",
+    "github": "open_source",
+    "tools": "dev_tool",
+    "tool": "dev_tool",
+    "papers": "paper",
+}
+
+
+def normalize_digest_category(category: str | None) -> str:
+    key = (category or "").strip()
+    if not key:
+        return ""
+    if key in DIGEST_CATEGORY_MAP:
+        return key
+    return DIGEST_CATEGORY_ALIASES.get(key.lower(), key)
+
+
+def digest_relevance_score(page) -> int:
+    text = "\n".join((
+        getattr(page, "category", "") or "",
+        getattr(page, "title", "") or "",
+        getattr(page, "url", "") or "",
+        getattr(page, "summary", "") or "",
+        (getattr(page, "markdown", "") or "")[:2000],
+    )).lower()
+    score = 0
+    positive_terms = {
+        "ai": 8,
+        "artificial intelligence": 8,
+        "llm": 8,
+        "large language model": 8,
+        "agent": 7,
+        "openai": 7,
+        "anthropic": 7,
+        "rag": 7,
+        "mcp": 7,
+        "developer": 6,
+        "software": 6,
+        "engineering": 6,
+        "api": 6,
+        "security": 6,
+        "vulnerability": 6,
+        "scraper": 5,
+        "infrastructure": 5,
+        "cloud": 5,
+        "database": 5,
+        "kubernetes": 5,
+        "docker": 5,
+        "python": 4,
+        "java": 4,
+        "typescript": 4,
+        "javascript": 4,
+        "github": 4,
+        "open source": 4,
+    }
+    negative_terms = {
+        "jobstreet.com": 14,
+        " jobs in ": 14,
+        "-jobs/": 14,
+        "hiring": 8,
+        "comptia.org": 12,
+        "/certifications/": 12,
+        "certification": 10,
+        "security+ (plus)": 10,
+        "softonic.com": 12,
+        "download software": 12,
+        "sciencedaily.com/terms": 12,
+        "bitesize": 10,
+        "what is software": 12,
+        "what is github": 8,
+        "definition, examples": 8,
+        "definition, types": 8,
+        "computer software": 8,
+        "grand theft auto": 10,
+        "gaming": 7,
+        "gamer": 7,
+        "video game": 7,
+        "spacex": 5,
+        "rocket": 5,
+        "space finance": 5,
+        "equity": 4,
+        "ipo": 3,
+        "climate fund": 3,
+        "water access": 3,
+        "gpu": 6,
+        "radeon": 6,
+        "geforce": 6,
+        "hardware review": 6,
+        "gaming monitor": 6,
+        "keyboard": 4,
+        "mouse": 4,
+        "sale": 6,
+        "discount": 6,
+        "coupon": 6,
+        "office 2024": 6,
+        "usd": 4,
+    }
+    for term, weight in positive_terms.items():
+        if term in text:
+            score += weight
+    for term, weight in negative_terms.items():
+        if term in text:
+            score -= weight
+    return score
 
 # ============== Prompts (identical to Java) ==============
 
@@ -158,7 +345,7 @@ DIGEST_SYSTEM_PROMPT = """你是一位资深技术资讯编辑，负责生成每
 2. 去重合并：同一事件、同一项目版本、同一论文解读只保留一条，避免换标题重复报道。
 3. 低可信来源：标注为 low 或 spam 的来源仅作背景参考；除非没有更高可信来源且内容具体可核验，否则不要选为核心条目或 highlight。
 4. 可执行影响：oneLiner 不只复述新闻，要回答“对开发者/团队有什么影响，是否需要行动”。
-5. 质量取舍：优先选择影响大、时效强、来源权威、信息具体的 5-12 条；不要为了覆盖所有来源而降低日报密度。
+5. 质量取舍：优先选择影响大、时效强、来源权威、信息具体的 6-12 条；不要为了覆盖所有来源而降低日报密度。
 ## 热点排序优先级（从高到低）
 按以下标准判断事件重要性，重要事件排在各分类的前面：
 1. **影响范围**：影响全行业/多数开发者 > 仅影响特定技术栈用户
@@ -170,6 +357,13 @@ DIGEST_SYSTEM_PROMPT = """你是一位资深技术资讯编辑，负责生成每
 - 优先选择影响范围最广、时效性最强的事件
 - 100字内说明：事件是什么 + 对开发者意味着什么 + 是否需要行动
 - 安全漏洞、重大版本发布、行业政策变化应优先于普通新闻
+## Category Quality Contract
+- hot_trend: prefer new releases, security incidents, breaking changes, major platform policy shifts, or widely adopted technology changes.
+- open_source: require repository, release, maintainer, star/trending signal, or concrete adoption evidence; do not treat generic list pages as project news.
+- tech_article: require concrete engineering takeaway, architecture tradeoff, benchmark, production lesson, or implementation detail.
+- dev_tool: require install/use case, supported workflow, compatibility, migration impact, or developer productivity change.
+- paper: require finding and practitioner impact; include method, result, and why engineers should care.
+- If a category lacks enough source-backed evidence, omit weak items instead of filling the section with generic summaries.
 ## 输出格式
 {
   "title": "技术日报 | YYYY-MM-DD",
@@ -726,7 +920,11 @@ class ContentOrganizer:
             # 按来源可信度+内容长度排序：可信度高的和内容长的优先发完整版
             cat_pages = sorted(
                 by_category[cat],
-                key=lambda p: (_source_level_order.get(p.source_level, 2), -(len(p.markdown or ""))),
+                key=lambda p: (
+                    _source_level_order.get(p.source_level, 2),
+                    -digest_relevance_score(p),
+                    -(len(p.markdown or "")),
+                ),
             )
             full_detail_count = per_cat_full_count[cat]
             cat_info = DIGEST_CATEGORY_MAP.get(cat, ("技术文章", "📖"))
@@ -786,8 +984,9 @@ class ContentOrganizer:
             parts.append("\n## Coverage requirements\n")
             parts.append(f"- Input categories: {', '.join(sorted_cats)}.\n")
             parts.append("- If a category has valid source content, include at least one supported item for it.\n")
-            parts.append("- Target 5-12 total items when there are enough distinct sources. Do not collapse the digest to a single item unless only one valid event exists.\n")
+            parts.append("- Target 6-12 total items when there are enough distinct sources. Do not collapse the digest to a single item unless only one valid event exists.\n")
             parts.append("- Every item must copy sourceUrl from the provided URL line exactly.\n")
+            parts.append("- Listing-page rule: if the URL is a homepage, news index, topic, tag, category, or other listing page, emit at most one item from that listing unless the input provides exact article URLs.\n")
 
         parts.append("\n请根据以上内容生成结构化技术日报。")
         return "".join(parts)
@@ -1022,7 +1221,15 @@ class ContentOrganizer:
 
         valid_categories = set(DIGEST_CATEGORY_MAP.keys())
         for sec in c.sections:
-            if sec.category and sec.category not in valid_categories:
+            normalized_category = normalize_digest_category(sec.category)
+            if normalized_category and normalized_category in valid_categories:
+                if normalized_category != sec.category:
+                    logger.info("Normalized digest category '%s' to '%s'", sec.category, normalized_category)
+                    sec.category = normalized_category
+                cat_info = DIGEST_CATEGORY_MAP[normalized_category]
+                sec.category_name = cat_info[0]
+                sec.emoji = cat_info[1]
+            elif sec.category and sec.category not in valid_categories:
                 logger.warning("Unknown digest category '%s', mapping to 'tech_article'", sec.category)
                 sec.category = "tech_article"
                 cat_info = DIGEST_CATEGORY_MAP["tech_article"]
@@ -1042,20 +1249,53 @@ class ContentOrganizer:
                 if not url:
                     items_to_keep.append(item)
                     continue
-                if url in seen_urls:
-                    prev_si, prev_ii = seen_urls[url]
+                dedupe_key = (
+                    _generic_source_dedup_key(url)
+                    or _canonical_source_url_for_dedup(url)
+                )
+                if dedupe_key in seen_urls:
+                    prev_si, prev_ii = seen_urls[dedupe_key]
                     prev_item = c.sections[prev_si].items[prev_ii]
                     if prev_item is not None and len(item.one_liner) > len(prev_item.one_liner):
                         # 新条目更完整，标记旧条目为 None，更新 seen_urls 指向新胜者
-                        c.sections[prev_si].items[prev_ii] = None
-                        seen_urls[url] = (si, len(items_to_keep))
+                        if prev_si == si:
+                            items_to_keep[prev_ii] = None
+                        else:
+                            c.sections[prev_si].items[prev_ii] = None
+                        seen_urls[dedupe_key] = (si, len(items_to_keep))
                         items_to_keep.append(item)
                     # else: 旧条目更完整或已被替换，跳过新条目
                     continue
-                seen_urls[url] = (si, len(items_to_keep))
+                seen_urls[dedupe_key] = (si, len(items_to_keep))
                 items_to_keep.append(item)
             sec.items = items_to_keep
         # 清理被标记为 None 的条目
+        for sec in c.sections:
+            sec.items = [it for it in sec.items if it is not None]
+
+        # 同标题事件去重：模型有时会用不同来源 URL 重复输出同一事件
+        seen_titles: dict[str, tuple[int, int]] = {}
+        for si, sec in enumerate(c.sections):
+            items_to_keep = []
+            for item in sec.items:
+                title_key = _digest_title_dedup_key(item.title)
+                if not title_key:
+                    items_to_keep.append(item)
+                    continue
+                if title_key in seen_titles:
+                    prev_si, prev_ii = seen_titles[title_key]
+                    prev_item = c.sections[prev_si].items[prev_ii]
+                    if prev_item is not None and len(item.one_liner) > len(prev_item.one_liner):
+                        if prev_si == si:
+                            items_to_keep[prev_ii] = None
+                        else:
+                            c.sections[prev_si].items[prev_ii] = None
+                        seen_titles[title_key] = (si, len(items_to_keep))
+                        items_to_keep.append(item)
+                    continue
+                seen_titles[title_key] = (si, len(items_to_keep))
+                items_to_keep.append(item)
+            sec.items = items_to_keep
         for sec in c.sections:
             sec.items = [it for it in sec.items if it is not None]
 

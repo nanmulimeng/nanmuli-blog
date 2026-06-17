@@ -17,6 +17,7 @@ from crawler.digest_gen_agent import (
     DigestGenAgent,
     DigestGenAgentResult,
     _collect_allowed_source_urls,
+    _supplement_digest_coverage,
 )
 from crawler.section_document import SectionDocument, SourceEntry
 from crawler.digest_orchestrator import DigestOrchestrator
@@ -144,6 +145,51 @@ class TestBuildDigestPages:
         assert pages[0].category == "hot_trend"
 
     @patch("crawler.quality.SourceAuthority")
+    @patch("standalone.organizer_helper._extract_summary", return_value="sum")
+    def test_normalizes_legacy_section_names_before_url_inference(self, mock_summary, mock_auth):
+        mock_auth.score.return_value = {"level": "high"}
+        agent = self._make_agent()
+        docs = [
+            SectionDocument(
+                section_name="news",
+                entries=[
+                    SourceEntry(
+                        url="https://example.com/company-update",
+                        title="Vendor update",
+                        cleaned_content="vendor update content " * 30,
+                    )
+                ],
+            ),
+            SectionDocument(
+                section_name="articles",
+                entries=[
+                    SourceEntry(
+                        url="https://example.com/deep-dive",
+                        title="Deep dive",
+                        cleaned_content="deep dive content " * 30,
+                    )
+                ],
+            ),
+            SectionDocument(
+                section_name="opensource",
+                entries=[
+                    SourceEntry(
+                        url="https://github.com/example/repo",
+                        title="example/repo release",
+                        cleaned_content="release notes " * 30,
+                    )
+                ],
+            ),
+        ]
+
+        pages = agent._build_digest_pages(docs)
+
+        categories_by_title = {page.title: page.category for page in pages}
+        assert categories_by_title["Vendor update"] == "hot_trend"
+        assert categories_by_title["Deep dive"] == "tech_article"
+        assert categories_by_title["example/repo release"] == "open_source"
+
+    @patch("crawler.quality.SourceAuthority")
     @patch("standalone.organizer_helper._extract_summary", return_value="")
     def test_skips_short_content(self, mock_summary, mock_auth):
         mock_auth.score.return_value = {"level": "medium"}
@@ -204,6 +250,30 @@ class TestBuildDigestPages:
 
     @patch("crawler.quality.SourceAuthority")
     @patch("standalone.organizer_helper._extract_summary", return_value="sum")
+    def test_deduplicates_tracking_url_variants_before_digest(self, mock_summary, mock_auth):
+        mock_auth.score.side_effect = [{"level": "medium"}, {"level": "official"}]
+        agent = self._make_agent()
+        doc = SectionDocument(entries=[
+            SourceEntry(
+                url="https://example.com/article?utm_source=digest#comments",
+                title="Tracked repost",
+                cleaned_content="tracked content " * 20,
+            ),
+            SourceEntry(
+                url="https://example.com/article/",
+                title="Canonical article",
+                cleaned_content="canonical content " * 30,
+            ),
+        ])
+
+        pages = agent._build_digest_pages([doc])
+
+        assert len(pages) == 1
+        assert pages[0].title == "Canonical article"
+        assert pages[0].url == "https://example.com/article/"
+
+    @patch("crawler.quality.SourceAuthority")
+    @patch("standalone.organizer_helper._extract_summary", return_value="sum")
     def test_orders_pages_by_source_quality_before_digest(self, mock_summary, mock_auth):
         levels = {
             "https://low.example.com/post": "low",
@@ -243,6 +313,71 @@ class TestBuildDigestPages:
 
         assert "https://github.blog/" in allowed
         assert "https://github.blog/security/incident-report/" in allowed
+
+    @patch("crawler.quality.SourceAuthority")
+    @patch("standalone.organizer_helper._extract_summary", return_value="homepage summary")
+    def test_hot_trend_listing_expands_article_links_before_digest(self, mock_summary, mock_auth):
+        mock_auth.score.return_value = {"level": "high"}
+        agent = self._make_agent()
+        doc = SectionDocument(
+            section_name="hot_trend",
+            entries=[
+                SourceEntry(
+                    url="https://techcrunch.com/",
+                    title="TechCrunch | Startup and Technology News",
+                    cleaned_content=(
+                        "# TechCrunch\n\n"
+                        "Promo banner [Register now](https://techcrunch.com/events/strictlyvc/).\n\n"
+                        "## [Meta AI客服被利用接管Instagram账户](https://techcrunch.com/2026/06/02/meta-ai-support-instagram-takeover/)\n"
+                        "Attackers abused the support chatbot to obtain account access. "
+                        "This has direct security implications for teams wiring LLMs into account recovery workflows.\n\n"
+                        "[Lorenzo Franceschi-Bicchierai](https://techcrunch.com/author/lorenzo-franceschi-bicchierai/)\n"
+                        "Reporter profile link should not become a digest item.\n\n"
+                        "## [Alphabet plans $80B AI infrastructure financing](https://techcrunch.com/2026/06/02/alphabet-ai-infrastructure-financing/)\n"
+                        "The financing plan points to continued cloud AI capacity expansion and infrastructure competition.\n\n"
+                    ),
+                )
+            ],
+        )
+
+        pages = agent._build_digest_pages([doc])
+
+        urls = [page.url for page in pages]
+        assert "https://techcrunch.com/" not in urls
+        assert "https://techcrunch.com/2026/06/02/meta-ai-support-instagram-takeover/" in urls
+        assert "https://techcrunch.com/2026/06/02/alphabet-ai-infrastructure-financing/" in urls
+        assert "https://techcrunch.com/author/lorenzo-franceschi-bicchierai/" not in urls
+        assert all(page.category == "hot_trend" for page in pages)
+        assert all(page.source_name in {"TechCrunch", "techcrunch.com"} for page in pages)
+        assert any("account recovery" in page.markdown for page in pages)
+
+    @patch("crawler.quality.SourceAuthority")
+    @patch("standalone.organizer_helper._extract_summary", return_value="homepage summary")
+    def test_locale_homepage_expands_article_links_before_digest(self, mock_summary, mock_auth):
+        mock_auth.score.return_value = {"level": "official"}
+        agent = self._make_agent()
+        doc = SectionDocument(
+            section_name="hot_trend",
+            entries=[
+                SourceEntry(
+                    url="https://openai.com/zh-Hans-CN/",
+                    title="OpenAI | Research & Deployment",
+                    cleaned_content=(
+                        "[ChatGPT 图像 2.0 现已上线](https://openai.com/zh-Hans-CN/index/introducing-chatgpt-images-2-0/)\n"
+                        "产品更新增强了多模态图像生成与分析能力。\n\n"
+                        "[通过 API 中的新模型推进语音智能](https://openai.com/zh-Hans-CN/index/new-models-for-speech-intelligence/)\n"
+                        "新语音模型面向实时语音交互与语音代理场景。\n"
+                    ),
+                )
+            ],
+        )
+
+        pages = agent._build_digest_pages([doc])
+
+        urls = [page.url for page in pages]
+        assert "https://openai.com/zh-Hans-CN/" not in urls
+        assert "https://openai.com/zh-Hans-CN/index/introducing-chatgpt-images-2-0/" in urls
+        assert "https://openai.com/zh-Hans-CN/index/new-models-for-speech-intelligence/" in urls
 
     @patch("crawler.quality.SourceAuthority")
     @patch("standalone.organizer_helper._extract_summary", return_value="sum")
@@ -353,6 +488,97 @@ class TestBuildDigestPages:
 
 
 class TestSerializeDigestSections:
+    @patch("crawler.quality.SourceAuthority")
+    def test_fallback_build_digest_pages_expands_listing_links(self, mock_auth):
+        from standalone.organizer_helper import build_digest_pages
+
+        mock_auth.score.return_value = {"level": "high"}
+        pages = build_digest_pages([
+            {
+                "id": 501,
+                "crawl_status": 2,
+                "url": "https://techcrunch.com/",
+                "page_title": "TechCrunch | Startup and Technology News",
+                "raw_markdown": (
+                    "# TechCrunch\n\n"
+                    "## [Meta AI客服被利用接管Instagram账户](https://techcrunch.com/2026/06/02/meta-ai-support-instagram-takeover/)\n"
+                    "Attackers abused the support chatbot to obtain account access. "
+                    "This has direct security implications for account recovery workflows.\n\n"
+                    "## [Alphabet plans AI infrastructure financing](https://techcrunch.com/2026/06/02/alphabet-ai-infrastructure-financing/)\n"
+                    "The plan points to continued AI infrastructure competition.\n"
+                ),
+                "page_metadata": "{}",
+            }
+        ])
+
+        urls = [page.url for page in pages]
+        assert "https://techcrunch.com/" not in urls
+        assert "https://techcrunch.com/2026/06/02/meta-ai-support-instagram-takeover/" in urls
+        assert "https://techcrunch.com/2026/06/02/alphabet-ai-infrastructure-financing/" in urls
+        assert all(page.page_id == 501 for page in pages)
+
+    @patch("crawler.quality.SourceAuthority")
+    def test_fallback_build_digest_pages_skips_low_value_digest_candidates(self, mock_auth):
+        from standalone.organizer_helper import build_digest_pages
+
+        mock_auth.score.return_value = {"level": "medium"}
+        pages = build_digest_pages([
+            {
+                "id": 601,
+                "crawl_status": 2,
+                "url": "https://cn.bing.com/dict/Tutorial",
+                "page_title": "Tutorial - 搜索 词典",
+                "raw_markdown": "dictionary result " * 30,
+                "page_metadata": "{}",
+            },
+            {
+                "id": 602,
+                "crawl_status": 2,
+                "url": "https://wenku.baidu.com/error.html?status=404",
+                "page_title": "百度文库--您的访问出错了",
+                "raw_markdown": "404 页面没有找到 " * 30,
+                "page_metadata": "{}",
+            },
+            {
+                "id": 603,
+                "crawl_status": 2,
+                "url": "https://martinfowler.com/articles/architecture-quality.html",
+                "page_title": "Architecture Quality",
+                "raw_markdown": "Architecture quality content " * 30,
+                "page_metadata": "{}",
+            },
+        ])
+
+        assert [page.url for page in pages] == [
+            "https://martinfowler.com/articles/architecture-quality.html"
+        ]
+
+    @patch("crawler.quality.SourceAuthority")
+    def test_fallback_build_digest_pages_skips_github_topic_listing(self, mock_auth):
+        from standalone.organizer_helper import build_digest_pages
+
+        mock_auth.score.return_value = {"level": "medium"}
+        pages = build_digest_pages([
+            {
+                "id": 604,
+                "crawl_status": 2,
+                "url": "https://github.com/topics/open-source",
+                "page_title": "Build software better, together",
+                "raw_markdown": "Open source topic listing " * 30,
+                "page_metadata": "{}",
+            },
+            {
+                "id": 605,
+                "crawl_status": 2,
+                "url": "https://github.com/example/repo",
+                "page_title": "example/repo",
+                "raw_markdown": "Useful open source repository description " * 30,
+                "page_metadata": "{}",
+            },
+        ])
+
+        assert [page.url for page in pages] == ["https://github.com/example/repo"]
+
     def test_page_id_lookup_normalizes_url(self):
         from ai.organizer import DigestContent, DigestItem, DigestSection
 
@@ -414,6 +640,117 @@ class TestSerializeDigestSections:
         assert "https://github.blog/" in allowed
         assert "https://github.blog/security/incident-report/" in allowed
         assert "https://github.com/microsoft/markitdown" in allowed
+
+
+class TestSupplementDigestCoverage:
+    def test_supplement_targets_six_items_when_sources_are_available(self):
+        from ai.organizer import DigestContent, DigestItem, DigestPageContent, DigestSection
+
+        content = DigestContent(
+            title="Daily Digest",
+            summary="This digest summary is long enough for validation.",
+            tags=["AI"],
+            highlight="",
+            full_content="Original full content that is long enough.",
+            sections=[
+                DigestSection(
+                    category="hot_trend",
+                    category_name="Hot Trend",
+                    emoji="",
+                    items=[
+                        DigestItem(
+                            title="Existing item",
+                            one_liner="Existing item with useful impact.",
+                            source_url="https://example.com/existing",
+                            source_name="example.com",
+                        )
+                    ],
+                )
+            ],
+        )
+        pages = [
+            DigestPageContent(
+                url="https://example.com/existing",
+                title="Existing item",
+                markdown="Existing content " * 10,
+                summary="Existing summary",
+                category="hot_trend",
+                source_name="example.com",
+            ),
+            *[
+                DigestPageContent(
+                    url=f"https://example.com/unique-{i}",
+                    title=f"Unique {i}",
+                    markdown="Unique page content " * 10,
+                    summary=f"Unique summary {i}",
+                    category="hot_trend",
+                    source_name="example.com",
+                )
+                for i in range(5)
+            ],
+        ]
+
+        _supplement_digest_coverage(content, pages)
+
+        item_count = sum(len(section.items) for section in content.sections)
+        assert item_count == 6
+
+    def test_supplement_does_not_add_canonical_duplicate_source_url(self):
+        from ai.organizer import DigestContent, DigestItem, DigestPageContent, DigestSection
+
+        content = DigestContent(
+            title="Daily Digest",
+            summary="This digest summary is long enough for validation.",
+            tags=["AI"],
+            highlight="",
+            full_content="Original full content that is long enough.",
+            sections=[
+                DigestSection(
+                    category="hot_trend",
+                    category_name="Hot Trend",
+                    emoji="",
+                    items=[
+                        DigestItem(
+                            title="Existing item",
+                            one_liner="Existing item already covers the article.",
+                            source_url="https://example.com/article/?utm_source=digest#comments",
+                            source_name="example.com",
+                        )
+                    ],
+                )
+            ],
+        )
+        pages = [
+            DigestPageContent(
+                url="https://example.com/article",
+                title="Duplicate article",
+                markdown="Duplicate page content " * 10,
+                summary="Duplicate summary",
+                category="hot_trend",
+                source_name="example.com",
+            ),
+            *[
+                DigestPageContent(
+                    url=f"https://example.com/unique-{i}",
+                    title=f"Unique {i}",
+                    markdown="Unique page content " * 10,
+                    summary=f"Unique summary {i}",
+                    category="hot_trend",
+                    source_name="example.com",
+                )
+                for i in range(4)
+            ],
+        ]
+
+        _supplement_digest_coverage(content, pages)
+
+        urls = [
+            item.source_url
+            for section in content.sections
+            for item in section.items
+        ]
+        assert "https://example.com/article" not in urls
+        assert len(urls) == len(set(urls))
 
 
 # ============== execute 测试 ==============
@@ -724,9 +1061,11 @@ class TestSavePreGeneratedDigest:
 
         with patch("standalone.digest_post_processor.repo") as mock_repo, \
              patch("standalone.organizer_helper.serialize_digest_sections", return_value=[]), \
-             patch("standalone.organizer_helper._is_highlight_duplicate", return_value=False):
+             patch("standalone.organizer_helper._is_highlight_duplicate", return_value=False), \
+             patch("standalone.digest_quality_gate.evaluate_digest_publish_quality", return_value=({"score": 0.9}, True)):
             mock_repo.get_pages_by_task = AsyncMock(return_value=[])
             mock_repo.get_recent_highlights = AsyncMock(return_value=[])
+            mock_repo.save_ai_search_metadata = AsyncMock()
             mock_repo.save_digest_results = AsyncMock()
 
             result = await processor.save_pre_generated(
@@ -736,7 +1075,46 @@ class TestSavePreGeneratedDigest:
             )
 
         assert result is True
+        mock_repo.save_ai_search_metadata.assert_called_once()
+        metadata = mock_repo.save_ai_search_metadata.call_args.args[1]
+        assert metadata["digest_publishable"] is True
+        assert metadata["digest_publish_stage"] == "pre_generated"
         mock_repo.save_digest_results.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_save_rejects_low_quality_digest(self):
+        processor = self._make_processor()
+
+        mock_digest = MagicMock()
+        mock_digest.title = "Low quality digest"
+        mock_digest.summary = "summary"
+        mock_digest.tags = []
+        mock_digest.full_content = "# Daily"
+        mock_digest.duration_ms = 1000
+        mock_digest.tokens_used = 100
+        mock_digest.highlight = "highlight"
+        mock_digest.sections = []
+        pre_gen = DigestGenAgentResult(success=True, digest_content=mock_digest)
+
+        with patch("standalone.digest_post_processor.repo") as mock_repo, \
+             patch("standalone.digest_quality_gate.evaluate_digest_publish_quality", return_value=({"score": 0.42, "suggestions": ["weak"]}, False)):
+            mock_repo.save_ai_error = AsyncMock()
+            mock_repo.save_ai_search_metadata = AsyncMock()
+            mock_repo.save_digest_results = AsyncMock()
+
+            result = await processor.save_pre_generated(
+                task_id=1,
+                task={"digest_date": "2026-05-24"},
+                pre_generated=pre_gen,
+            )
+
+        assert result is False
+        mock_repo.save_ai_error.assert_called_once()
+        mock_repo.save_ai_search_metadata.assert_called_once()
+        metadata = mock_repo.save_ai_search_metadata.call_args.args[1]
+        assert metadata["digest_publishable"] is False
+        assert metadata["digest_publish_quality"]["score"] == 0.42
+        mock_repo.save_digest_results.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_save_failure_returns_false(self):
@@ -749,9 +1127,11 @@ class TestSavePreGeneratedDigest:
 
         with patch("standalone.digest_post_processor.repo") as mock_repo, \
              patch("standalone.organizer_helper.serialize_digest_sections", return_value=[]), \
-             patch("standalone.organizer_helper._is_highlight_duplicate", return_value=False):
+             patch("standalone.organizer_helper._is_highlight_duplicate", return_value=False), \
+             patch("standalone.digest_quality_gate.evaluate_digest_publish_quality", return_value=({"score": 0.9}, True)):
             mock_repo.get_pages_by_task = AsyncMock(return_value=[])
             mock_repo.get_recent_highlights = AsyncMock(return_value=[])
+            mock_repo.save_ai_search_metadata = AsyncMock()
             mock_repo.save_digest_results = AsyncMock(side_effect=Exception("DB error"))
 
             result = await processor.save_pre_generated(

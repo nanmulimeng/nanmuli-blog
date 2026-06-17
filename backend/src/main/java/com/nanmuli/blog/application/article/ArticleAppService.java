@@ -106,8 +106,7 @@ public class ArticleAppService {
             article.publish(); // 默认发布
         }
 
-        // TODO: 数据库层应添加 slug 唯一索引（如 ALTER TABLE article ADD UNIQUE INDEX uk_slug (slug)）
-        // UUID slug 碰撞概率极低，但仍需防御性处理
+        // 数据库已有 slug 唯一约束，应用层保留 UUID 极小概率碰撞的防御性重试。
         try {
             articleRepository.save(article);
         } catch (DuplicateKeyException e) {

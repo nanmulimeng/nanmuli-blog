@@ -11,11 +11,75 @@
 
 import asyncio
 import logging
-from dataclasses import dataclass, field
+import re
+from dataclasses import dataclass, field, replace
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from config import settings
 
 logger = logging.getLogger(__name__)
+
+_TRACKING_QUERY_PARAMS = {
+    "fbclid", "gclid", "mc_cid", "mc_eid", "igshid", "yclid",
+    "spm", "ved", "ei", "ref", "ref_src",
+}
+
+_GENERIC_SOURCE_PATHS = {
+    "", "/", "blog", "blogs", "news", "latest", "topics", "trending",
+    "category", "categories", "tag", "tags",
+}
+
+
+def _canonical_digest_title(title: str) -> str:
+    if not title:
+        return ""
+    import re
+    key = re.sub(r"[\s\W_]+", "", title.lower(), flags=re.UNICODE)
+    return key if len(key) >= 4 else ""
+
+
+def _canonical_digest_source_url(url: str) -> str:
+    if not url:
+        return ""
+    try:
+        parsed = urlsplit(url.strip())
+    except Exception:
+        return url.strip().rstrip("/")
+    if not parsed.scheme or not parsed.netloc:
+        return url.strip().rstrip("/")
+    query_pairs = [
+        (key, value)
+        for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+        if not key.lower().startswith("utm_")
+        and key.lower() not in _TRACKING_QUERY_PARAMS
+    ]
+    query = urlencode(query_pairs, doseq=True)
+    path = parsed.path.rstrip("/") or "/"
+    return urlunsplit((
+        parsed.scheme.lower(),
+        parsed.netloc.lower(),
+        path,
+        query,
+        "",
+    ))
+
+
+def _is_generic_digest_source_url(url: str) -> bool:
+    if not url:
+        return False
+    try:
+        parsed = urlsplit(url.strip())
+    except Exception:
+        return False
+    path = parsed.path.strip("/").lower()
+    if path in _GENERIC_SOURCE_PATHS:
+        return True
+    parts = [part for part in path.split("/") if part]
+    if len(parts) == 1 and re.fullmatch(r"[a-z]{2}(?:-[a-z]{2,5}){0,2}", parts[0], flags=re.I):
+        return True
+    if parts and parts[0] in {"category", "categories", "tag", "tags", "topic", "topics"}:
+        return True
+    return len(parts) == 1 and parts[0] in _GENERIC_SOURCE_PATHS
 
 
 # ============== 数据结构 ==============
@@ -60,6 +124,10 @@ def _calculate_digest_output_quality(digest_content) -> dict:
             "item_count": 0,
             "section_count": 0,
             "duplicate_source_count": 0,
+            "duplicate_title_count": 0,
+            "generic_source_count": 0,
+            "low_relevance_item_count": 0,
+            "dominant_section_ratio": 0.0,
             "sourced_item_ratio": 0.0,
             "avg_one_liner_length": 0,
             "has_markdown_heading": False,
@@ -74,38 +142,83 @@ def _calculate_digest_output_quality(digest_content) -> dict:
     ]
     item_count = len(items)
     section_count = len([sec for sec in sections if getattr(sec, "items", None)])
+    section_item_counts = [len(getattr(sec, "items", []) or []) for sec in sections if getattr(sec, "items", None)]
+    dominant_section_ratio = round(max(section_item_counts) / item_count, 3) if item_count and section_item_counts else 0.0
     urls = [getattr(item, "source_url", "") for item in items if getattr(item, "source_url", "")]
-    unique_urls = set(urls)
+    canonical_urls = [_canonical_digest_source_url(url) for url in urls]
+    unique_urls = set(canonical_urls)
     duplicate_source_count = max(0, len(urls) - len(unique_urls))
+    title_keys = [
+        key
+        for key in (_canonical_digest_title(getattr(item, "title", "") or "") for item in items)
+        if key
+    ]
+    duplicate_title_count = max(0, len(title_keys) - len(set(title_keys)))
+    generic_source_count = sum(1 for url in urls if _is_generic_digest_source_url(url))
     sourced_item_ratio = round(len(urls) / item_count, 3) if item_count else 0.0
     one_liners = [getattr(item, "one_liner", "") or "" for item in items]
     avg_one_liner_length = int(sum(len(x) for x in one_liners) / item_count) if item_count else 0
     full_content = getattr(digest_content, "full_content", "") or ""
     has_markdown_heading = "#" in full_content
+    relevance_scores = []
+    try:
+        from ai.organizer import digest_relevance_score
+        from types import SimpleNamespace
+
+        for item in items:
+            relevance_scores.append(digest_relevance_score(SimpleNamespace(
+                category="",
+                title=getattr(item, "title", "") or "",
+                url=getattr(item, "source_url", "") or "",
+                summary=getattr(item, "one_liner", "") or "",
+                markdown="",
+            )))
+    except Exception:
+        relevance_scores = []
+    low_relevance_item_count = sum(1 for score in relevance_scores if score <= 0)
 
     unique_url_ratio = len(unique_urls) / len(urls) if urls else 0.0
     score = (
-        min(item_count / 5, 1.0) * 0.25
+        min(item_count / 8, 1.0) * 0.25
         + min(section_count / 2, 1.0) * 0.15
         + sourced_item_ratio * 0.20
         + unique_url_ratio * 0.15
         + min(avg_one_liner_length / 30, 1.0) * 0.10
         + (0.15 if has_markdown_heading else 0.0)
     )
+    score = max(
+        0.0,
+        score
+        - min(0.25, generic_source_count * 0.08)
+        - min(0.15, duplicate_source_count * 0.04)
+        - min(0.15, duplicate_title_count * 0.05),
+    )
+    if item_count:
+        score = max(0.0, score - min(0.35, low_relevance_item_count * 0.06))
+        if dominant_section_ratio > 0.65 and section_count >= 3:
+            score = max(0.0, score - min(0.25, (dominant_section_ratio - 0.65) * 0.9))
 
     suggestions = []
-    if item_count < 5:
+    if item_count < 6:
         suggestions.append("日报条目数偏少，建议增加有效来源或降低重复内容占比")
     if section_count < 2:
         suggestions.append("日报覆盖板块偏少，建议补充不同主题板块的信息源")
     if duplicate_source_count:
         suggestions.append("日报存在重复 sourceUrl，建议加强事件合并和来源去重")
+    if duplicate_title_count:
+        suggestions.append("日报存在重复标题，建议合并同一事件并保留信息量最高的来源")
+    if generic_source_count:
+        suggestions.append("部分 sourceUrl 指向首页/列表页，建议优先提取原文链接或限制同一列表页产出多条")
     if sourced_item_ratio < 1.0:
         suggestions.append("部分日报条目缺少 sourceUrl，建议强化来源引用约束")
     if avg_one_liner_length < 30:
         suggestions.append("oneLiner 信息密度偏低，建议明确影响、动作和适用对象")
     if not has_markdown_heading:
         suggestions.append("fullContent 缺少 Markdown 标题结构")
+    if item_count and low_relevance_item_count / item_count >= 0.3:
+        suggestions.append("digest item relevance is weak; prioritize AI/software/security/infrastructure sources over finance, gaming, hardware, promo, and generic news")
+    if dominant_section_ratio > 0.65 and section_count >= 3:
+        suggestions.append("digest section balance is weak; reduce dominant category items or supplement weaker configured sections")
     if not suggestions:
         suggestions.append("日报成品结构良好，保持当前生成策略")
 
@@ -115,6 +228,10 @@ def _calculate_digest_output_quality(digest_content) -> dict:
         "item_count": item_count,
         "section_count": section_count,
         "duplicate_source_count": duplicate_source_count,
+        "duplicate_title_count": duplicate_title_count,
+        "generic_source_count": generic_source_count,
+        "low_relevance_item_count": low_relevance_item_count,
+        "dominant_section_ratio": dominant_section_ratio,
         "sourced_item_ratio": sourced_item_ratio,
         "avg_one_liner_length": avg_one_liner_length,
         "has_markdown_heading": has_markdown_heading,
@@ -175,6 +292,12 @@ class DigestOrchestrator:
 
             # Phase 1: 派出信息源 Agent
             all_results, seen_urls = await self._dispatch(
+                config, shared_crawler, history_engine,
+                content_dedup, task, lock, seen_urls, all_results,
+            )
+
+            # Phase 1.2: 核心板块补救，避免核心覆盖不足时直接进入 AI 生成
+            all_results, seen_urls = await self._rescue_starved_core_sections(
                 config, shared_crawler, history_engine,
                 content_dedup, task, lock, seen_urls, all_results,
             )
@@ -295,6 +418,19 @@ class DigestOrchestrator:
                 plan.plan_log.append(f"Last eval weaknesses: {last_weaknesses.get('weaknesses', [])[:3]}")
 
             # 能力 7: 读取日报质量趋势 → 影响板块优先级和参数
+            source_actions = await kb.get_digest_source_actions()
+            if source_actions:
+                kb_hint["next_run_actions"] = source_actions
+                action_ids = source_actions.get("source_ids") or {}
+                skip_count = len(action_ids.get("skip") or [])
+                deprioritize_count = len(action_ids.get("deprioritize") or [])
+                boost_sections = source_actions.get("boost_sections") or []
+                plan.plan_log.append(
+                    "Source feedback actions: "
+                    f"skip={skip_count}, deprioritize={deprioritize_count}, "
+                    f"boost={boost_sections[:3]}"
+                )
+
             trend = await kb.get_digest_quality_trend(limit=5)
             if trend:
                 avg_score = sum(t.get("overall_score", 0) for t in trend) / len(trend)
@@ -407,7 +543,10 @@ class DigestOrchestrator:
             len(r.active_keywords) + len(r.active_url_sources) + len(r.active_rss_sources)
             for _, r in reports
         )
-        total_skipped = sum(len(r.skipped_source_ids) for _, r in reports)
+        total_skipped = sum(
+            len(r.skipped_source_ids) + len(getattr(r, "skipped_source_urls", set()))
+            for _, r in reports
+        )
         self._crawl_plan.plan_log.append(
             f"Reports collected: {len(reports)} sections, "
             f"{total_sources} active sources, {total_skipped} dead skipped"
@@ -483,6 +622,203 @@ class DigestOrchestrator:
         from crawler.dedup import merge_results_into
         return merge_results_into(results, seen_urls, all_results, content_dedup)
 
+    def _core_section_status(self, min_per_section: int | None = None) -> dict:
+        """统计核心板块覆盖与饥饿状态。"""
+        if not self._crawl_plan:
+            return {
+                "core_sections": [],
+                "covered_sections": [],
+                "covered_count": 0,
+                "min_core_sections": 0,
+                "min_per_section": 1,
+                "missing_core_sections": [],
+                "starved_sections": [],
+            }
+
+        raw = getattr(settings, "digest_publish_core_sections", "") or ""
+        core_sections = [item.strip() for item in raw.split(",") if item.strip()]
+        if not core_sections:
+            return {
+                "core_sections": [],
+                "covered_sections": [],
+                "covered_count": 0,
+                "min_core_sections": 0,
+                "min_per_section": 1,
+                "missing_core_sections": [],
+                "starved_sections": [],
+            }
+
+        snap = self._crawl_plan.config_snapshot or {}
+        if min_per_section is None:
+            min_per_section = int(
+                snap.get(
+                    "digest_optimization_min_results_per_section",
+                    settings.digest_optimization_min_results_per_section,
+                )
+                or 1
+            )
+        min_per_section = max(1, int(min_per_section))
+        min_core_sections = min(
+            int(getattr(settings, "digest_publish_min_core_sections", 0) or 0),
+            len(core_sections),
+        )
+
+        by_name = {section.name: section for section in self._crawl_plan.sections}
+        covered_sections: list[str] = []
+        missing_core_sections: list[str] = []
+        starved_sections: list[PlannedSection] = []
+        for name in core_sections:
+            section = by_name.get(name)
+            count = section.result_count if section else 0
+            if count > 0:
+                covered_sections.append(name)
+            else:
+                missing_core_sections.append(name)
+            if section and count < min_per_section:
+                starved_sections.append(section)
+
+        return {
+            "core_sections": core_sections,
+            "covered_sections": covered_sections,
+            "covered_count": len(covered_sections),
+            "min_core_sections": min_core_sections,
+            "min_per_section": min_per_section,
+            "missing_core_sections": missing_core_sections,
+            "starved_sections": starved_sections,
+        }
+
+    async def _rescue_starved_core_sections(
+        self, config, crawler, history_engine, content_dedup,
+        task, lock, seen_urls, all_results,
+    ):
+        """对核心板块做一次有界补救抓取。"""
+        if not self._crawl_plan or self._global_timeout_reached:
+            return all_results, seen_urls
+
+        status = self._core_section_status()
+        min_core_sections = status["min_core_sections"]
+        if min_core_sections <= 0 or status["covered_count"] >= min_core_sections:
+            return all_results, seen_urls
+
+        candidates = sorted(
+            status["starved_sections"],
+            key=lambda section: (section.result_count > 0, section.priority),
+        )
+        if not candidates:
+            self._crawl_plan.plan_log.append(
+                "Core section rescue skipped: no configured core section can be rescued"
+            )
+            return all_results, seen_urls
+
+        self._crawl_plan.plan_log.append(
+            "Core section rescue: "
+            f"covered={status['covered_count']}/{min_core_sections}, "
+            f"missing={status['missing_core_sections']}"
+        )
+
+        from crawler.crawler_agent import CrawlerAgent
+        from crawler.source_agent import SourceCrawlPlan
+        from standalone import repository as repo
+        from standalone.task_executor import _fallback_section_keyword
+
+        snap = self._crawl_plan.config_snapshot or {}
+        time_window = {
+            "day": "week",
+            "week": "month",
+            "month": "year",
+            "year": "all",
+        }
+
+        for section in candidates:
+            current = self._core_section_status()
+            if current["covered_count"] >= min_core_sections:
+                break
+
+            fallback_keyword = _fallback_section_keyword(section.name)
+            rescue_keywords = []
+            for keyword in [*section.keywords, fallback_keyword]:
+                keyword = (keyword or "").strip()
+                if keyword and keyword not in rescue_keywords:
+                    rescue_keywords.append(keyword)
+            if not rescue_keywords:
+                self._crawl_plan.plan_log.append(
+                    f"Core section rescue {section.name}: skipped, no keywords"
+                )
+                continue
+
+            rescue_time_range = time_window.get(section.time_range, "month")
+            rescue_max_items = min(
+                max(section.max_items, current["min_per_section"]),
+                30,
+            )
+            rescue_section = replace(
+                section,
+                source_type="keyword",
+                keywords=rescue_keywords,
+                keyword_details=[
+                    {"value": keyword, "effectiveness": {}}
+                    for keyword in rescue_keywords
+                ],
+                url_sources=[],
+                rss_sources=[],
+                max_items=rescue_max_items,
+                time_range=rescue_time_range,
+                status="pending",
+            )
+            report = SourceCrawlPlan(
+                section_name=rescue_section.name,
+                active_keywords=rescue_keywords,
+                recommended_engine=section.engine or snap.get(
+                    "engine", settings.digest_search_engine
+                ),
+                adjusted_max_items=rescue_max_items,
+            )
+
+            self._crawl_plan.plan_log.append(
+                f"Core section rescue {section.name}: "
+                f"time={section.time_range}->{rescue_time_range}, "
+                f"max_items={rescue_max_items}, keywords={rescue_keywords[:2]}"
+            )
+            try:
+                result = await CrawlerAgent(
+                    rescue_section, report, config, snap
+                ).execute(crawler, history_engine)
+            except Exception as exc:
+                section.status = "failed-rescue"
+                self._crawl_plan.plan_log.append(
+                    f"Core section rescue {section.name}: failed={exc}"
+                )
+                logger.warning(
+                    "[Orchestrator] Core section rescue failed for %s: %s",
+                    section.name, exc,
+                )
+                continue
+
+            async with lock:
+                added = self._merge_results(
+                    result.results, seen_urls, all_results, content_dedup
+                )
+                await repo.update_task_progress(task["id"], len(all_results))
+                if result.section_document:
+                    self._section_documents.append(result.section_document)
+
+            section.result_count += added
+            if added > 0:
+                section.status = "ok-rescue"
+            elif section.status == "pending":
+                section.status = "failed-rescue"
+            self._crawl_plan.plan_log.append(
+                f"Core section rescue {section.name}: added={added}"
+            )
+
+        final_status = self._core_section_status()
+        self._crawl_plan.plan_log.append(
+            "Core section rescue post-rescue "
+            f"covered={final_status['covered_count']}/{min_core_sections}, "
+            f"missing={final_status['missing_core_sections']}"
+        )
+        return all_results, seen_urls
+
     # ============== 辅助方法 ==============
 
     def _should_run_optimization(self, snap: dict, all_results: list) -> bool:
@@ -514,6 +850,8 @@ class DigestOrchestrator:
             "digest_optimization_min_sections": settings.digest_optimization_min_sections,
             "digest_optimization_min_results_per_section": settings.digest_optimization_min_results_per_section,
             "digest_optimization_target_score": settings.digest_optimization_target_score,
+            "digest_publish_core_sections": settings.digest_publish_core_sections,
+            "digest_publish_min_core_sections": settings.digest_publish_min_core_sections,
         }
 
     def get_plan(self) -> DigestCrawlPlan | None:

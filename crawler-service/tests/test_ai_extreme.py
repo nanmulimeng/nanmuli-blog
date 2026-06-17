@@ -1027,6 +1027,98 @@ class TestSourceUrlValidation:
         assert "更完整" in remaining.one_liner
 
     @pytest.mark.asyncio
+    async def test_cross_section_url_dedup_normalizes_slash_and_tracking(self, org):
+        """sourceUrl 去重应识别尾部斜杠、fragment 和 tracking 参数变体。"""
+        c = self._make_digest_with_items([
+            {
+                "title": "Short variant",
+                "one_liner": "short",
+                "source_url": "https://example.com/article/?utm_source=newsletter#comments",
+                "source_name": "example.com",
+            },
+            {
+                "title": "Long variant",
+                "one_liner": "This item has richer developer impact and should be kept",
+                "source_url": "https://example.com/article",
+                "source_name": "example.com",
+            },
+        ])
+
+        org._validate_digest(c)
+
+        items = c.sections[0].items
+        assert len(items) == 1
+        assert items[0].title == "Long variant"
+        assert items[0].source_url == "https://example.com/article"
+
+    @pytest.mark.asyncio
+    async def test_duplicate_title_dedup_keeps_richer_item(self, org):
+        """不同 sourceUrl 但标题完全重复时，保留 oneLiner 更完整的一条。"""
+        c = self._make_digest_with_items([
+            {
+                "title": "React 19 正式发布",
+                "one_liner": "短",
+                "source_url": "https://news.example.com/react-19",
+                "source_name": "News",
+            },
+            {
+                "title": "React 19 正式发布",
+                "one_liner": "React 19 稳定版发布，Server Components 与并发特性进入正式推荐路径。",
+                "source_url": "https://react.dev/blog/react-19",
+                "source_name": "React",
+            },
+            {
+                "title": "Bun 1.2 性能更新",
+                "one_liner": "Bun 发布新的性能优化。",
+                "source_url": "https://bun.sh/blog/bun-v1.2",
+                "source_name": "Bun",
+            },
+        ])
+
+        org._validate_digest(c)
+
+        items = c.sections[0].items
+        titles = [item.title for item in items]
+        urls = [item.source_url for item in items]
+        assert titles.count("React 19 正式发布") == 1
+        assert "https://react.dev/blog/react-19" in urls
+        assert "https://news.example.com/react-19" not in urls
+        assert "Bun 1.2 性能更新" in titles
+
+    @pytest.mark.asyncio
+    async def test_generic_listing_source_limited_per_domain(self, org):
+        """同一域名的首页/列表页泛来源只能产出一条，避免不可精确回源。"""
+        c = self._make_digest_with_items([
+            {
+                "title": "Homepage item",
+                "one_liner": "short",
+                "source_url": "https://techcrunch.com/",
+                "source_name": "TechCrunch",
+            },
+            {
+                "title": "News listing item",
+                "one_liner": "This listing item has more concrete developer impact and should remain",
+                "source_url": "https://techcrunch.com/news/?utm_source=digest",
+                "source_name": "TechCrunch",
+            },
+            {
+                "title": "Article item",
+                "one_liner": "This precise article link should not be removed by generic source limiting",
+                "source_url": "https://techcrunch.com/2026/06/02/specific-ai-story/",
+                "source_name": "TechCrunch",
+            },
+        ])
+
+        org._validate_digest(c)
+
+        items = c.sections[0].items
+        urls = [item.source_url for item in items]
+        assert len(items) == 2
+        assert "https://techcrunch.com/news/?utm_source=digest" in urls
+        assert "https://techcrunch.com/2026/06/02/specific-ai-story/" in urls
+        assert "https://techcrunch.com/" not in urls
+
+    @pytest.mark.asyncio
     async def test_all_items_invalid_urls_section_removed(self, org):
         """所有条目 URL 都不合法时，sections 被清空 → missing valid items"""
         c = self._make_digest_with_items([

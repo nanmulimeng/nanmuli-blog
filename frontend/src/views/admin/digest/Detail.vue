@@ -34,6 +34,18 @@ const isActive = computed(() => {
   return digest.value.status === 0 || digest.value.status === 1 || digest.value.status === 2
 })
 
+const qualityEvaluation = computed(() => digest.value?.quality_evaluation ?? null)
+const sectionQualityScores = computed(() => {
+  return (qualityEvaluation.value?.section_scores ?? []).filter(score => score.name !== '__digest_output__')
+})
+const outputQuality = computed(() => {
+  return (qualityEvaluation.value?.section_scores ?? []).find(score => score.name === '__digest_output__') ?? null
+})
+const sourceDiagnostics = computed(() => (qualityEvaluation.value?.source_diagnostics ?? []).slice(0, 6))
+const nextRunActions = computed(() => qualityEvaluation.value?.next_run_actions ?? null)
+const nextRunActionSources = computed(() => Object.values(nextRunActions.value?.sources ?? {}).slice(0, 6))
+const taskDiagnostics = computed(() => digest.value?.diagnostics ?? null)
+
 async function fetchDigest(): Promise<void> {
   loading.value = true
   try {
@@ -58,6 +70,83 @@ async function fetchDigest(): Promise<void> {
 
 function sectionBorderColor(category: string): string {
   return getDigestCategoryColor(category)
+}
+
+function formatScore(score: number | null | undefined): string {
+  if (score === null || score === undefined) return '-'
+  const normalized = score > 1 ? score : score * 100
+  return `${Math.round(normalized)}`
+}
+
+function normalizedScore(score: number | null | undefined): number | null {
+  if (score === null || score === undefined) return null
+  return score > 1 ? score / 100 : score
+}
+
+function dimensionLabel(key: string): string {
+  const labels: Record<string, string> = {
+    angle: '选题角度',
+    source_diversity: '来源多样性',
+    depth: '分析深度',
+    temporal: '时效性',
+    perspective: '观点平衡',
+    language: '语言覆盖',
+  }
+  return labels[key] || key
+}
+
+function scoreTagType(score: number | null | undefined): 'success' | 'warning' | 'danger' | 'info' {
+  const normalized = normalizedScore(score)
+  if (normalized === null) return 'info'
+  if (normalized >= 0.75) return 'success'
+  if (normalized >= 0.6) return 'warning'
+  return 'danger'
+}
+
+function sectionStatusLabel(status: string | undefined): string {
+  const labels: Record<string, string> = {
+    completed: '完成',
+    skipped: '跳过',
+    failed: '失败',
+    partial: '部分完成',
+  }
+  return status ? (labels[status] || status) : '-'
+}
+
+function publishStageLabel(stage: string | null | undefined): string {
+  const labels: Record<string, string> = {
+    pre_generated: '预生成',
+    fallback: 'AI 回退整理',
+  }
+  return stage ? (labels[stage] || stage) : '-'
+}
+
+function verdictLabel(verdict: string | null | undefined): string {
+  const labels: Record<string, string> = {
+    keep: '保留',
+    review: '需复核',
+    filter: '过滤',
+  }
+  return verdict ? (labels[verdict] || verdict) : '-'
+}
+
+function actionLabel(action: string | null | undefined): string {
+  const labels: Record<string, string> = {
+    skip: '下次跳过',
+    deprioritize: '下次降权',
+  }
+  return action ? (labels[action] || action) : '-'
+}
+
+function actionTagType(action: string | null | undefined): 'success' | 'warning' | 'danger' | 'info' {
+  if (action === 'skip') return 'danger'
+  if (action === 'deprioritize') return 'warning'
+  return 'info'
+}
+
+function diagnosticTagType(severity: string | undefined): 'success' | 'warning' | 'danger' | 'info' {
+  if (severity === 'success' || severity === 'warning' || severity === 'danger') return severity
+  return 'info'
 }
 
 function goBack(): void {
@@ -119,10 +208,211 @@ watch(() => route.params, () => {
         <div class="mt-1 text-sm text-error/80">{{ digest.error_message }}</div>
       </div>
 
+      <div v-if="taskDiagnostics" class="mb-6 rounded-xl border border-border bg-surface-secondary p-4">
+        <div class="mb-3 flex flex-wrap items-center gap-2">
+          <div class="text-sm font-medium text-content-primary">失败诊断</div>
+          <el-tag :type="diagnosticTagType(taskDiagnostics.failure?.severity)" size="small">
+            {{ taskDiagnostics.failure?.label || '暂无异常' }}
+          </el-tag>
+          <el-tag size="small" effect="plain">
+            阶段 {{ taskDiagnostics.stage }}
+          </el-tag>
+        </div>
+        <div class="text-sm text-content-secondary">
+          {{ taskDiagnostics.summary }}
+        </div>
+        <div v-if="taskDiagnostics.failure?.action_hint" class="mt-2 text-sm text-content-secondary">
+          建议：{{ taskDiagnostics.failure.action_hint }}
+        </div>
+        <div class="mt-3 flex flex-wrap gap-2">
+          <el-tag
+            v-for="(enabled, key) in taskDiagnostics.signals"
+            v-show="enabled"
+            :key="key"
+            type="info"
+            size="small"
+            effect="plain"
+          >
+            {{ key }}
+          </el-tag>
+        </div>
+      </div>
+
       <!-- Highlight Banner -->
       <div v-if="digest.highlight" class="mb-6 rounded-xl bg-primary/5 border border-primary/20 p-4">
         <div class="text-sm font-medium text-primary">今日亮点</div>
         <div class="mt-1 text-sm text-content-primary">{{ digest.highlight }}</div>
+      </div>
+
+      <!-- Quality Evaluation -->
+      <div v-if="qualityEvaluation" class="mb-6 rounded-xl border border-border bg-surface-secondary p-4">
+        <div class="mb-3 flex flex-wrap items-center gap-3">
+          <div class="text-sm font-medium text-content-primary">质量评估</div>
+          <el-tag :type="scoreTagType(qualityEvaluation.overall_score)" size="small">
+            总分 {{ formatScore(qualityEvaluation.overall_score) }}
+          </el-tag>
+          <el-tag
+            v-if="qualityEvaluation.publishable === false"
+            type="danger"
+            size="small"
+          >
+            质量门拒绝
+          </el-tag>
+          <el-tag
+            v-else-if="qualityEvaluation.publishable === true"
+            type="success"
+            size="small"
+          >
+            可发布
+          </el-tag>
+          <el-tag
+            v-if="qualityEvaluation.stage"
+            type="info"
+            size="small"
+            effect="plain"
+          >
+            {{ publishStageLabel(qualityEvaluation.stage) }}
+          </el-tag>
+          <el-tag
+            v-for="weakness in qualityEvaluation.weaknesses"
+            :key="weakness"
+            type="warning"
+            size="small"
+            effect="plain"
+          >
+            {{ dimensionLabel(weakness) }}
+          </el-tag>
+        </div>
+
+        <div class="mb-3 flex flex-wrap gap-2">
+          <el-tag
+            v-for="(score, key) in qualityEvaluation.dimensions"
+            :key="key"
+            :type="scoreTagType(score)"
+            size="small"
+            effect="plain"
+          >
+            {{ dimensionLabel(String(key)) }} {{ formatScore(score) }}
+          </el-tag>
+        </div>
+
+        <div v-if="sectionQualityScores.length" class="grid gap-2 md:grid-cols-2">
+          <div
+            v-for="score in sectionQualityScores"
+            :key="score.name"
+            class="rounded-lg border border-border bg-surface-primary px-3 py-2"
+          >
+            <div class="flex items-center justify-between gap-3">
+              <span class="truncate text-sm font-medium text-content-primary">{{ dimensionLabel(score.name) }}</span>
+              <el-tag :type="scoreTagType(score.fill_score)" size="small">
+                {{ formatScore(score.fill_score) }}
+              </el-tag>
+            </div>
+            <div class="mt-1 flex flex-wrap gap-3 text-xs text-content-secondary">
+              <span>结果 {{ score.result_count ?? 0 }}</span>
+              <span>状态 {{ sectionStatusLabel(score.status) }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="sourceDiagnostics.length" class="mt-3 grid gap-2 md:grid-cols-2">
+          <div
+            v-for="source in sourceDiagnostics"
+            :key="`${source.section}-${source.source_id || source.source_url || source.source_name}`"
+            class="rounded-lg border border-border bg-surface-primary px-3 py-2"
+          >
+            <div class="flex items-center justify-between gap-3">
+              <a
+                v-if="source.source_url"
+                :href="source.source_url"
+                target="_blank"
+                rel="noopener"
+                class="truncate text-sm font-medium text-content-primary hover:text-primary"
+              >
+                {{ source.source_name || source.source_url }}
+              </a>
+              <span v-else class="truncate text-sm font-medium text-content-primary">
+                {{ source.source_name || '未知来源' }}
+              </span>
+              <el-tag :type="scoreTagType(source.quality_score)" size="small">
+                {{ formatScore(source.quality_score) }}
+              </el-tag>
+            </div>
+            <div class="mt-1 flex flex-wrap gap-3 text-xs text-content-secondary">
+              <span>{{ dimensionLabel(source.section) }}</span>
+              <span>条目 {{ source.item_count }}</span>
+              <span>判定 {{ verdictLabel(source.quality_verdict) }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div
+          v-if="nextRunActions && (nextRunActions.source_ids.skip.length || nextRunActions.source_ids.deprioritize.length || nextRunActions.source_urls?.skip.length || nextRunActions.source_urls?.deprioritize.length || nextRunActions.boost_sections.length)"
+          class="mt-3 rounded-lg border border-border bg-surface-primary px-3 py-2"
+        >
+          <div class="mb-2 flex flex-wrap items-center gap-2 text-sm text-content-primary">
+            <span>下次优化动作</span>
+            <el-tag v-if="nextRunActions.source_ids.skip.length" type="danger" size="small">
+              跳过 {{ nextRunActions.source_ids.skip.length }}
+            </el-tag>
+            <el-tag v-if="nextRunActions.source_ids.deprioritize.length" type="warning" size="small">
+              降权 {{ nextRunActions.source_ids.deprioritize.length }}
+            </el-tag>
+            <el-tag
+              v-for="section in nextRunActions.boost_sections.slice(0, 4)"
+              :key="section"
+              type="primary"
+              size="small"
+              effect="plain"
+            >
+              增强 {{ dimensionLabel(section) }}
+            </el-tag>
+          </div>
+          <div v-if="nextRunActionSources.length" class="grid gap-2 md:grid-cols-2">
+            <div
+              v-for="source in nextRunActionSources"
+              :key="`${source.action}-${source.source_id || source.source_url || source.source_name}`"
+              class="rounded border border-border bg-surface-secondary px-3 py-2"
+            >
+              <div class="flex items-center justify-between gap-3">
+                <span class="truncate text-sm font-medium text-content-primary">
+                  {{ source.source_name || source.source_url || source.source_id }}
+                </span>
+                <el-tag :type="actionTagType(source.action)" size="small">
+                  {{ actionLabel(source.action) }}
+                </el-tag>
+              </div>
+              <div class="mt-1 flex flex-wrap gap-3 text-xs text-content-secondary">
+                <span>{{ dimensionLabel(source.section) }}</span>
+                <span v-if="source.quality_score != null">质量 {{ formatScore(source.quality_score) }}</span>
+                <span>{{ source.reason }}</span>
+              </div>
+            </div>
+          </div>
+          <div v-else-if="nextRunActions.reasons.length" class="space-y-1 text-xs text-content-secondary">
+            <div v-for="reason in nextRunActions.reasons.slice(0, 4)" :key="reason">{{ reason }}</div>
+          </div>
+        </div>
+
+        <div v-if="outputQuality" class="mt-3 rounded-lg border border-border bg-surface-primary px-3 py-2">
+          <div class="flex items-center gap-2 text-sm text-content-primary">
+            <span>成品质量</span>
+            <el-tag :type="scoreTagType(outputQuality.score)" size="small">
+              {{ formatScore(outputQuality.score) }}
+            </el-tag>
+          </div>
+          <div v-if="outputQuality.issues?.length" class="mt-1 flex flex-wrap gap-2">
+            <el-tag v-for="issue in outputQuality.issues" :key="issue" type="warning" size="small" effect="plain">
+              {{ issue }}
+            </el-tag>
+          </div>
+        </div>
+
+        <div v-if="qualityEvaluation.suggestions?.length" class="mt-3 space-y-1 text-sm text-content-secondary">
+          <div v-for="suggestion in qualityEvaluation.suggestions" :key="suggestion">
+            {{ suggestion }}
+          </div>
+        </div>
       </div>
 
       <!-- Orchestrator Plan Log -->

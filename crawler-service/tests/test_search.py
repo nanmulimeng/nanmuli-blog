@@ -1844,5 +1844,22 @@ class TestSkipDedup(unittest.IsolatedAsyncioTestCase):
         mock_dedup.assert_called_once()
 
 
+class TestDigestSearchNoiseFilters(unittest.TestCase):
+    def test_real_digest_noise_urls_are_excluded_before_relevance(self):
+        from crawler.filters import is_excluded_domain
+
+        noisy_urls = [
+            "https://my.jobstreet.com/security-jobs/in-Penang",
+            "https://www.comptia.org/en-us/certifications/security/",
+            "https://en.softonic.com/windows",
+            "https://www.simplilearn.com/tutorials/programming-tutorial/what-is-software",
+            "https://www.sciencedaily.com/terms/computer_software.htm",
+            "https://www.bbc.co.uk/bitesize/guides/zcxgr82/revision/1",
+        ]
+
+        for url in noisy_urls:
+            self.assertTrue(is_excluded_domain(url), url)
+
+
 if __name__ == "__main__":
     unittest.main()

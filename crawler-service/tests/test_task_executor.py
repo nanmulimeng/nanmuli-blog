@@ -78,6 +78,171 @@ def _mock_crawler_factory():
     return lambda config=None: _mock_crawler()
 
 
+def _passing_quality_result(*_args, **_kwargs):
+    return {
+        "verdict": "pass",
+        "final_score": 88,
+        "source": {"level": "medium", "reason": "test source"},
+        "quality": {"total_score": 82},
+    }
+
+
+# ============== Digest Quality Filter Tests ==============
+
+class TestDigestQualityFilter:
+
+    def test_digest_rejects_low_value_dictionary_qna_and_error_pages(self, monkeypatch):
+        monkeypatch.setattr("standalone.task_executor.settings.page_classifier_enabled", False)
+        monkeypatch.setattr("standalone.task_executor.settings.digest_filter_min_content", 80)
+        monkeypatch.setattr("standalone.task_executor.settings.digest_eval_reject_threshold", 40)
+
+        long_content = "# Content\n\n" + "substantial technical article body " * 30
+        results = [
+            make_crawl_result(
+                url="https://cn.bing.com/dict/search?q=tutorial",
+                title="Tutorial - 必应词典",
+                markdown=long_content,
+            ),
+            make_crawl_result(
+                url="https://zhidao.baidu.com/question/763846006257527404.html",
+                title="tutorial是什么意思？_百度知道",
+                markdown=long_content,
+            ),
+            make_crawl_result(
+                url="https://wenku.baidu.com/error.html?status=404",
+                title="百度文库--您的访问出错了",
+                markdown=long_content,
+            ),
+            make_crawl_result(
+                url="https://martinfowler.com/articles/patterns-of-distributed-systems/",
+                title="Patterns of Distributed Systems",
+                markdown=long_content,
+            ),
+        ]
+
+        with patch("crawler.quality.evaluate_content", side_effect=_passing_quality_result):
+            filtered = TaskExecutor()._filter_low_quality(results, task_type="digest")
+
+        assert filtered[0].success is False
+        assert "Low-value digest candidate" in filtered[0].error_message
+        assert filtered[1].success is False
+        assert "Low-value digest candidate" in filtered[1].error_message
+        assert filtered[2].success is False
+        assert "Low-value digest candidate" in filtered[2].error_message
+        assert filtered[3].success is True
+        assert filtered[3].metadata["quality_score"] == 88
+
+    def test_digest_rejects_generic_tutorial_and_hardware_promo_pages(self, monkeypatch):
+        monkeypatch.setattr("standalone.task_executor.settings.page_classifier_enabled", False)
+        monkeypatch.setattr("standalone.task_executor.settings.digest_filter_min_content", 80)
+        monkeypatch.setattr("standalone.task_executor.settings.digest_eval_reject_threshold", 40)
+
+        long_content = "# Content\n\n" + "substantial article body " * 30
+        results = [
+            make_crawl_result(
+                url="https://blog.csdn.net/u014158430/article/details/141093791",
+                title="Tutorial and Sandbox are common terms in programming learning",
+                markdown=long_content,
+            ),
+            make_crawl_result(
+                url="https://blog.csdn.net/gitblog_00388/article/details/148375675",
+                title="Technical documentation content creation guide",
+                markdown=long_content,
+            ),
+            make_crawl_result(
+                url="https://www.techpowerup.com/349500/godeal24-unveils-6th-anniversary-sale-office-2024-at-just-usd-16-99",
+                title="GoDeal24 unveils anniversary sale: Office 2024 at USD 16.99",
+                markdown=long_content,
+            ),
+            make_crawl_result(
+                url="https://www.techpowerup.com/review/asrock-radeon-rx-9070-gre-steel-legend/",
+                title="ASRock Radeon RX 9070 GRE Steel Legend Review",
+                markdown=long_content,
+            ),
+            make_crawl_result(
+                url="https://martinfowler.com/articles/patterns-of-distributed-systems/",
+                title="Patterns of Distributed Systems",
+                markdown=long_content,
+            ),
+        ]
+
+        with patch("crawler.quality.evaluate_content", side_effect=_passing_quality_result):
+            filtered = TaskExecutor()._filter_low_quality(results, task_type="digest")
+
+        assert filtered[0].success is False
+        assert "Low-value digest candidate" in filtered[0].error_message
+        assert filtered[1].success is False
+        assert "Low-value digest candidate" in filtered[1].error_message
+        assert filtered[2].success is False
+        assert "Low-value digest candidate" in filtered[2].error_message
+        assert filtered[3].success is False
+        assert "Low-value digest candidate" in filtered[3].error_message
+        assert filtered[4].success is True
+
+    def test_digest_rejects_jobs_certifications_basic_definitions_and_download_directories(self, monkeypatch):
+        monkeypatch.setattr("standalone.task_executor.settings.page_classifier_enabled", False)
+        monkeypatch.setattr("standalone.task_executor.settings.digest_filter_min_content", 80)
+        monkeypatch.setattr("standalone.task_executor.settings.digest_eval_reject_threshold", 40)
+
+        long_content = "# Content\n\n" + "substantial page body " * 30
+        results = [
+            make_crawl_result(
+                url="https://my.jobstreet.com/security-jobs/in-Penang",
+                title="Security Jobs in Penang - June 2026 | Jobstreet",
+                markdown=long_content,
+            ),
+            make_crawl_result(
+                url="https://www.comptia.org/en-us/certifications/security/",
+                title="Security+ (Plus) Certification | CompTIA",
+                markdown=long_content,
+            ),
+            make_crawl_result(
+                url="https://www.simplilearn.com/tutorials/programming-tutorial/what-is-software",
+                title="What is Software? Definition, Examples, & Types Explained",
+                markdown=long_content,
+            ),
+            make_crawl_result(
+                url="https://www.sciencedaily.com/terms/computer_software.htm",
+                title="Computer software",
+                markdown=long_content,
+            ),
+            make_crawl_result(
+                url="https://en.softonic.com/windows",
+                title="Download software for Windows",
+                markdown=long_content,
+            ),
+            make_crawl_result(
+                url="https://github.blog/changelog/2026-06-01-copilot-coding-agent-updates/",
+                title="GitHub Copilot coding agent updates",
+                markdown=long_content,
+            ),
+        ]
+
+        with patch("crawler.quality.evaluate_content", side_effect=_passing_quality_result):
+            filtered = TaskExecutor()._filter_low_quality(results, task_type="digest")
+
+        for result in filtered[:5]:
+            assert result.success is False
+            assert "Low-value digest candidate" in result.error_message
+        assert filtered[5].success is True
+
+    def test_single_task_does_not_apply_digest_low_value_prefilter(self, monkeypatch):
+        monkeypatch.setattr("standalone.task_executor.settings.page_classifier_enabled", False)
+        monkeypatch.setattr("standalone.task_executor.settings.min_content_length", 80)
+
+        result = make_crawl_result(
+            url="https://cn.bing.com/dict/search?q=tutorial",
+            title="Tutorial - 必应词典",
+            markdown="# Content\n\n" + "dictionary content " * 30,
+        )
+
+        with patch("crawler.quality.evaluate_content", side_effect=_passing_quality_result):
+            filtered = TaskExecutor()._filter_low_quality([result], task_type="single")
+
+        assert filtered[0].success is True
+        assert filtered[0].metadata["quality_score"] == 88
+
+
 # ============== Fixtures ==============
 
 @pytest.fixture
@@ -256,6 +421,69 @@ class TestSingleTask:
             await tx._execute(tid)
 
         assert mock_db._tasks[tid]["status"] == TaskStatus.COMPLETED
+
+
+class TestDigestTask:
+
+    @pytest.mark.asyncio
+    async def test_digest_ai_failure_marks_task_failed(self, tx, mock_db):
+        tid = mock_db.add_task(
+            task_type="digest",
+            keyword="2026-06-16",
+            ai_template="daily_digest",
+            digest_date="2026-06-16",
+        )
+
+        with patch("standalone.task_executor.repo", mock_db), \
+             patch("standalone.digest_post_processor.repo", mock_db), \
+             patch("crawler.digest_orchestrator.DigestOrchestrator") as orch_cls, \
+             patch.object(TaskExecutor, "_filter_low_quality", lambda self, results, task_type=None, dedup_engine=None: results):
+            orch = orch_cls.return_value
+            orch.execute = AsyncMock(return_value=[make_crawl_result()])
+            orch.get_plan.return_value = None
+            orch.get_section_documents.return_value = []
+            orch.get_digest_result.return_value = None
+            with patch(
+                "standalone.digest_post_processor.DigestPostProcessor.organize_with_ai",
+                new_callable=AsyncMock,
+                return_value=False,
+            ):
+                await tx._execute(tid)
+
+        assert mock_db._tasks[tid]["status"] == TaskStatus.FAILED
+        assert "AI" in mock_db._tasks[tid]["error_message"]
+
+    @pytest.mark.asyncio
+    async def test_digest_ai_failure_preserves_specific_error(self, tx, mock_db):
+        tid = mock_db.add_task(
+            task_type="digest",
+            keyword="2026-06-16",
+            ai_template="daily_digest",
+            digest_date="2026-06-16",
+        )
+
+        async def _organize_with_specific_error(task_id, task):
+            await mock_db.save_ai_error(task_id, "AI not configured")
+            return False
+
+        with patch("standalone.task_executor.repo", mock_db), \
+             patch("standalone.digest_post_processor.repo", mock_db), \
+             patch("crawler.digest_orchestrator.DigestOrchestrator") as orch_cls, \
+             patch.object(TaskExecutor, "_filter_low_quality", lambda self, results, task_type=None, dedup_engine=None: results):
+            orch = orch_cls.return_value
+            orch.execute = AsyncMock(return_value=[make_crawl_result()])
+            orch.get_plan.return_value = None
+            orch.get_section_documents.return_value = []
+            orch.get_digest_result.return_value = None
+            with patch(
+                "standalone.digest_post_processor.DigestPostProcessor.organize_with_ai",
+                new_callable=AsyncMock,
+                side_effect=_organize_with_specific_error,
+            ):
+                await tx._execute(tid)
+
+        assert mock_db._tasks[tid]["status"] == TaskStatus.FAILED
+        assert mock_db._tasks[tid]["error_message"] == "AI not configured"
 
 
 # ============== State Transition Tests ==============

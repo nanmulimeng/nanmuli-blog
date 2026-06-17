@@ -110,7 +110,7 @@ class CrawlerAgent:
                         crawler=crawler,
                         skip_dedup=True,
                     )
-                    results.extend(kw_results)
+                    results.extend(self._apply_url_feedback(kw_results))
                 except Exception as e:
                     logger.warning("[CrawlerAgent] Keyword '%s' search failed: %s", kw, e)
                 await asyncio.sleep(1)
@@ -119,13 +119,13 @@ class CrawlerAgent:
         if plan.active_url_sources:
             url_sec = self._to_raw_section()
             url_results = await crawl_url_sources(url_sec, self._config, crawler)
-            results.extend(url_results)
+            results.extend(self._apply_url_feedback(url_results))
 
         # RSS Feed（仅活跃源）
         if plan.active_rss_sources:
             rss_sec = self._to_raw_section()
             rss_results = await crawl_rss_sources(rss_sec, self._config, crawler)
-            results.extend(rss_results)
+            results.extend(self._apply_url_feedback(rss_results))
 
         return dedup_results(results, history_engine=history_engine)
 
@@ -152,23 +152,73 @@ class CrawlerAgent:
 
         results = []
         for kw in plan.active_keywords[:2]:
+            kw_time_range = self.section.time_range if "site:" in kw.lower() else fallback_time
             try:
                 kw_results = await crawl_by_keyword(
                     keyword=kw,
                     engine=fallback_engine,
                     max_results=5,
-                    time_range=fallback_time,
+                    time_range=kw_time_range,
                     config=self._config,
                     crawler=crawler,
                     skip_dedup=True,
                 )
-                results.extend(kw_results)
+                results.extend(self._apply_url_feedback(kw_results))
             except Exception as e:
                 logger.debug("[CrawlerAgent] Fallback keyword '%s' failed: %s", kw, e)
 
         return dedup_results(results, history_engine=history_engine)
 
     # ============== 板块清洗文档 ==============
+
+    def _apply_url_feedback(self, results: list) -> list:
+        """Filter or deprioritize result URLs using previous digest feedback."""
+        skipped_urls = {
+            self._normalize_url(url)
+            for url in getattr(self.crawl_plan, "skipped_source_urls", set())
+        }
+        deprioritized_urls = {
+            self._normalize_url(url)
+            for url in getattr(self.crawl_plan, "deprioritized_source_urls", set())
+        }
+        skipped_urls.discard(None)
+        deprioritized_urls.discard(None)
+        if not skipped_urls and not deprioritized_urls:
+            return results
+
+        kept = []
+        deprioritized = []
+        skipped = 0
+        for item in results:
+            url = self._normalize_url(self._result_url(item))
+            if url in skipped_urls:
+                skipped += 1
+                continue
+            if url in deprioritized_urls:
+                deprioritized.append(item)
+                continue
+            kept.append(item)
+        if skipped:
+            logger.info("[CrawlerAgent] Skipped %d result(s) by next_run_actions URL feedback", skipped)
+        if deprioritized:
+            logger.info(
+                "[CrawlerAgent] Deprioritized %d result(s) by next_run_actions URL feedback",
+                len(deprioritized),
+            )
+        return kept + deprioritized
+
+    @staticmethod
+    def _result_url(item) -> str:
+        if isinstance(item, dict):
+            return item.get("url", "")
+        return getattr(item, "url", "")
+
+    @staticmethod
+    def _normalize_url(url) -> str | None:
+        if url is None:
+            return None
+        value = str(url).strip()
+        return value or None
 
     async def _build_section_document(self, results: list):
         """对爬取结果生成清洗文档（AI 优先，降级 heuristic）"""

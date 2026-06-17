@@ -1245,6 +1245,37 @@ class WebCollectorAppServiceTest {
         }
 
         @Test
+        @DisplayName("syncPythonTaskToDb - merges top-level diagnostics into aiSearchMetadata")
+        void syncPythonTaskToDb_mergesDiagnosticsIntoAiSearchMetadata() throws Exception {
+            ReflectionTestUtils.setField(service, "objectMapper", new ObjectMapper());
+            WebCollectTask task = buildTask(CollectTaskStatus.CRAWLING.getValue());
+            when(taskRepository.findById(TASK_ID)).thenReturn(Optional.of(task));
+
+            Map<String, Object> diagnostics = Map.of(
+                    "stage", "failed",
+                    "summary", "AI 调用：检查 AI key",
+                    "failure", Map.of("category", "ai", "label", "AI 调用")
+            );
+
+            Map<String, Object> pythonData = new HashMap<>();
+            pythonData.put("status", 4);
+            pythonData.put("error_message", "AI timeout");
+            pythonData.put("diagnostics", diagnostics);
+
+            service.syncPythonTaskToDb(TASK_ID, pythonData);
+
+            ArgumentCaptor<WebCollectTask> captor = ArgumentCaptor.forClass(WebCollectTask.class);
+            verify(taskRepository).save(captor.capture());
+            WebCollectTask saved = captor.getValue();
+            Map<String, Object> metadata = new ObjectMapper().readValue(saved.getAiSearchMetadata(), Map.class);
+
+            assertThat(metadata).containsKey("diagnostics");
+            assertThat((Map<String, Object>) metadata.get("diagnostics"))
+                    .containsEntry("stage", "failed")
+                    .containsEntry("summary", "AI 调用：检查 AI key");
+        }
+
+        @Test
         @DisplayName("syncPythonTaskToDb - task not found, does nothing")
         void syncPythonTaskToDb_notFound_noError() {
             when(taskRepository.findById(TASK_ID)).thenReturn(Optional.empty());

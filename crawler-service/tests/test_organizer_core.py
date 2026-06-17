@@ -4,9 +4,9 @@ import pytest
 from ai.organizer import (
     _truncate_at_paragraph_boundary, _normalize,
     _normalize_list, _normalize_category, _extract_message_content,
-    ContentOrganizer, OrganizedContent, DigestContent,
+    ContentOrganizer, OrganizedContent, DigestContent, DigestPageContent,
     CATEGORY_ALIASES, ALLOWED_CATEGORIES, DIGEST_CATEGORY_MAP,
-    DIGEST_SYSTEM_PROMPT, InvalidOutputError,
+    DIGEST_SYSTEM_PROMPT, InvalidOutputError, digest_relevance_score,
 )
 from ai.utils import extract_json as _extract_json
 from ai.config import AiSettings
@@ -138,6 +138,50 @@ class TestNormalizeCategory:
 
     def test_empty_returns_empty(self):
         assert _normalize_category("") == ""
+
+
+class TestDigestRelevanceScore:
+    def _page(self, title, url, markdown=""):
+        return DigestPageContent(
+            category="tech_article",
+            url=url,
+            title=title,
+            summary=title,
+            markdown=markdown or title,
+            source_name="test",
+            source_level="medium",
+        )
+
+    def test_penalizes_real_low_value_digest_samples(self):
+        bad_pages = [
+            self._page(
+                "Security Jobs in Penang - June 2026 | Jobstreet",
+                "https://my.jobstreet.com/security-jobs/in-Penang",
+            ),
+            self._page(
+                "Security+ (Plus) Certification | CompTIA",
+                "https://www.comptia.org/en-us/certifications/security/",
+            ),
+            self._page(
+                "What is Software? Definition, Examples, & Types Explained",
+                "https://www.simplilearn.com/tutorials/programming-tutorial/what-is-software",
+            ),
+            self._page(
+                "Download software for Windows",
+                "https://en.softonic.com/windows",
+            ),
+        ]
+
+        assert all(digest_relevance_score(page) <= 0 for page in bad_pages)
+
+    def test_keeps_specific_engineering_article_positive(self):
+        page = self._page(
+            "GitHub Copilot coding agent updates",
+            "https://github.blog/changelog/2026-06-01-copilot-coding-agent-updates/",
+            "GitHub Copilot coding agent now supports software engineering workflows.",
+        )
+
+        assert digest_relevance_score(page) > 0
 
     def test_unknown_falls_back_to_default(self):
         assert _normalize_category("quantum") == "其他"
@@ -310,6 +354,64 @@ class TestParseDigestContent:
         assert result.sections[0].category == "hot_trend"
         assert result.sections[0].items[0].title == "AI Breakthrough"
         assert result.highlight == "Big news today"
+
+    def test_legacy_digest_category_aliases_are_normalized(self):
+        response = """{
+            "title": "Daily Digest 2026-05-07",
+            "summary": "This digest summary is definitely long enough for validation.",
+            "highlight": "Big news today",
+            "tags": ["ai", "cloud"],
+            "fullContent": "This full digest content is definitely long enough for validation. It covers AI infrastructure updates, open source project changes, and developer-facing technical articles with enough detail to pass validation.",
+            "sections": [
+                {
+                    "category": "news",
+                    "categoryName": "News",
+                    "emoji": "n",
+                    "items": [
+                        {
+                            "title": "AI infrastructure update",
+                            "oneLiner": "A vendor expanded AI capacity",
+                            "sourceUrl": "https://example.com/news",
+                            "sourceName": "example.com"
+                        }
+                    ]
+                },
+                {
+                    "category": "articles",
+                    "categoryName": "Articles",
+                    "emoji": "a",
+                    "items": [
+                        {
+                            "title": "Engineering deep dive",
+                            "oneLiner": "A technical article explains tradeoffs",
+                            "sourceUrl": "https://example.com/article",
+                            "sourceName": "example.com"
+                        }
+                    ]
+                },
+                {
+                    "category": "opensource",
+                    "categoryName": "Open Source",
+                    "emoji": "o",
+                    "items": [
+                        {
+                            "title": "Open source release",
+                            "oneLiner": "A repository shipped a new release",
+                            "sourceUrl": "https://github.com/example/repo",
+                            "sourceName": "GitHub"
+                        }
+                    ]
+                }
+            ]
+        }"""
+
+        result = self.organizer._parse_digest_content(response)
+
+        assert [section.category for section in result.sections] == [
+            "hot_trend",
+            "tech_article",
+            "open_source",
+        ]
 
     def test_empty_summary_rejected(self):
         response = """{
@@ -488,11 +590,68 @@ class TestPromptBuilders:
 
         assert "来源可信度: low" in prompt
 
+    def test_digest_prompt_warns_against_multi_item_listing_sources(self):
+        from ai.organizer import DigestPageContent
+        pages = [
+            DigestPageContent(
+                url="https://techcrunch.com/",
+                title="TechCrunch",
+                markdown="Homepage listing content with several headlines",
+                category="hot_trend",
+                source_name="TechCrunch",
+                source_level="high",
+            )
+        ]
+
+        prompt = self.organizer._build_digest_prompt(pages, "2026-05-07")
+
+        assert "Listing-page rule" in prompt
+        assert "at most one item" in prompt
+
+    def test_digest_prompt_orders_same_source_level_by_relevance(self):
+        pages = [
+            DigestPageContent(
+                url="https://techcrunch.com/game",
+                title="Grand Theft Auto cheat service gets hacked",
+                markdown="gaming account breach " * 400,
+                category="hot_trend",
+                source_level="high",
+            ),
+            DigestPageContent(
+                url="https://techcrunch.com/ai-security",
+                title="Meta AI support chatbot account recovery security incident",
+                markdown="AI support chatbot account recovery security incident developer risk " * 80,
+                category="hot_trend",
+                source_level="high",
+            ),
+            DigestPageContent(
+                url="https://techcrunch.com/space",
+                title="SpaceX may issue equity in future transactions",
+                markdown="space finance launch vehicle investor update " * 300,
+                category="hot_trend",
+                source_level="high",
+            ),
+        ]
+
+        prompt = self.organizer._build_digest_prompt(pages, "2026-05-07")
+
+        assert prompt.index("Meta AI support chatbot") < prompt.index("Grand Theft Auto")
+        assert prompt.index("Meta AI support chatbot") < prompt.index("SpaceX may issue equity")
+
     def test_digest_system_prompt_contains_quality_guardrails(self):
         assert "事实边界" in DIGEST_SYSTEM_PROMPT
         assert "没有来源支撑" in DIGEST_SYSTEM_PROMPT
         assert "低可信" in DIGEST_SYSTEM_PROMPT
         assert "可执行影响" in DIGEST_SYSTEM_PROMPT
+
+
+    def test_digest_system_prompt_contains_category_quality_contract(self):
+        assert "Category Quality Contract" in DIGEST_SYSTEM_PROMPT
+        assert "hot_trend: prefer new releases" in DIGEST_SYSTEM_PROMPT
+        assert "open_source: require repository" in DIGEST_SYSTEM_PROMPT
+        assert "tech_article: require concrete engineering takeaway" in DIGEST_SYSTEM_PROMPT
+        assert "dev_tool: require install/use case" in DIGEST_SYSTEM_PROMPT
+        assert "paper: require finding and practitioner impact" in DIGEST_SYSTEM_PROMPT
 
 
 # ============== Constants ==============

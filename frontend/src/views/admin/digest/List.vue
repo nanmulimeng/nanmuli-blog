@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { getDigestList, getDigestSchedulerStatus, triggerDigest } from '@/api/collector'
-import type { DigestListItem, DigestSchedulerStatus } from '@/types/collector'
+import { getDigestList, getDigestOptimizationTrend, getDigestSchedulerStatus, triggerDigest } from '@/api/collector'
+import type { DigestListItem, DigestOptimizationTrend, DigestSchedulerStatus } from '@/types/collector'
 import { CollectTaskStatusMap } from '@/types/collector'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, Calendar, View, Promotion, Timer } from '@element-plus/icons-vue'
@@ -17,13 +17,25 @@ const currentPage = ref(1)
 const pageSize = ref(PAGE_SIZE.DIGEST)
 const triggerLoading = ref(false)
 const schedulerStatus = ref<DigestSchedulerStatus | null>(null)
+const qualityOverview = ref<DigestOptimizationTrend | null>(null)
+const loadError = ref<string | null>(null)
+
+const qualitySummary = computed(() => qualityOverview.value?.summary ?? null)
+const latestQuality = computed(() => qualityOverview.value?.latest ?? null)
+const weakDimensions = computed(() => Object.entries(qualityOverview.value?.weak_dimensions ?? {}).slice(0, 4))
+const qualitySuggestions = computed(() => (qualityOverview.value?.suggestions ?? []).slice(0, 3))
+const latestSchedulerDigest = computed(() => schedulerStatus.value?.latest_digest ?? null)
+const schedulerDiagnostics = computed(() => schedulerStatus.value?.diagnostics ?? null)
 
 async function fetchData(): Promise<void> {
   loading.value = true
+  loadError.value = null
   try {
     const res = await getDigestList(currentPage.value, pageSize.value)
     digests.value = res.records
     total.value = res.total
+  } catch (error: unknown) {
+    loadError.value = error instanceof Error ? error.message : '日报列表加载失败'
   } finally {
     loading.value = false
   }
@@ -32,8 +44,18 @@ async function fetchData(): Promise<void> {
 async function fetchSchedulerStatus(): Promise<void> {
   try {
     schedulerStatus.value = await getDigestSchedulerStatus()
-  } catch {
+  } catch (error: unknown) {
     schedulerStatus.value = null
+    loadError.value = error instanceof Error ? error.message : '调度状态加载失败'
+  }
+}
+
+async function fetchQualityOverview(): Promise<void> {
+  try {
+    qualityOverview.value = await getDigestOptimizationTrend(10)
+  } catch (error: unknown) {
+    qualityOverview.value = null
+    loadError.value = error instanceof Error ? error.message : '质量趋势加载失败'
   }
 }
 
@@ -43,7 +65,7 @@ function handlePageChange(page: number): void {
 }
 
 function handleView(row: DigestListItem): void {
-  if (row.digest_date) {
+  if (row.status === 3 && row.ai_title && row.digest_date) {
     router.push(`/admin/digest/${row.digest_date}`)
   } else {
     router.push(`/admin/digest/task/${row.id}`)
@@ -95,6 +117,65 @@ function formatDate(dateStr: string | null): string {
   return dateStr.slice(0, 10)
 }
 
+function formatScore(score: number | null | undefined): string {
+  if (score === null || score === undefined) return '-'
+  return `${Math.round(score * 100)}`
+}
+
+function formatDelta(delta: number | null | undefined): string {
+  if (delta === null || delta === undefined) return '-'
+  const sign = delta > 0 ? '+' : ''
+  return `${sign}${Math.round(delta * 100)}`
+}
+
+function dimensionLabel(key: string): string {
+  const labels: Record<string, string> = {
+    angle: '选题角度',
+    source_diversity: '来源多样性',
+    depth: '分析深度',
+    temporal: '时效性',
+    perspective: '观点平衡',
+    language: '语言覆盖',
+  }
+  return labels[key] || key
+}
+
+function qualityTagType(status: string | undefined): 'success' | 'warning' | 'danger' | 'info' {
+  if (status === 'success' || status === 'warning' || status === 'danger') return status
+  return 'info'
+}
+
+function taskStatusTagType(status: number | undefined): 'success' | 'warning' | 'danger' | 'info' {
+  if (status === 3) return 'success'
+  if (status === 4) return 'danger'
+  if (status === 1 || status === 2) return 'warning'
+  return 'info'
+}
+
+function schedulerStateLabel(state: string | undefined): string {
+  const labels: Record<string, string> = {
+    disabled: '未启用',
+    running: '执行中',
+    misconfigured: '配置异常',
+    idle: '等待执行',
+    latest_failed: '最近失败',
+    healthy: '运行正常',
+  }
+  return state ? (labels[state] || state) : '未知'
+}
+
+function schedulerStateTagType(state: string | undefined): 'success' | 'warning' | 'danger' | 'info' {
+  if (state === 'healthy') return 'success'
+  if (state === 'latest_failed' || state === 'misconfigured') return 'danger'
+  if (state === 'disabled' || state === 'idle' || state === 'running') return 'warning'
+  return 'info'
+}
+
+function diagnosticCheckTagType(status: string | undefined): 'success' | 'warning' | 'danger' | 'info' {
+  if (status === 'success' || status === 'warning' || status === 'danger') return status
+  return 'info'
+}
+
 function hasActiveTasks(): boolean {
   return digests.value.some(d => d.status === 0 || d.status === 1 || d.status === 2)
 }
@@ -108,6 +189,7 @@ const { start: startPolling } = usePolling(fetchData, POLLING_INTERVAL.DIGEST_ST
 onMounted(() => {
   fetchData()
   fetchSchedulerStatus()
+  fetchQualityOverview()
   startPolling()
 })
 </script>
@@ -133,6 +215,121 @@ onMounted(() => {
       <span v-if="schedulerStatus.cron">Cron: {{ schedulerStatus.cron }}</span>
       <span v-if="schedulerStatus.next_run">下次: {{ schedulerStatus.next_run }}</span>
       <span>信息源任务: {{ schedulerStatus.source_jobs || 0 }}</span>
+    </div>
+
+    <el-alert
+      v-if="loadError"
+      class="mb-4"
+      type="error"
+      show-icon
+      :closable="false"
+      title="日报系统接口异常"
+      :description="loadError"
+    />
+
+    <div
+      v-if="schedulerDiagnostics"
+      class="mb-4 rounded-lg border border-border bg-surface-secondary px-4 py-3 text-sm text-content-secondary"
+    >
+      <div class="mb-2 flex flex-wrap items-center gap-2">
+        <span class="text-content-primary">调度诊断</span>
+        <el-tag :type="schedulerStateTagType(schedulerDiagnostics.state)" size="small">
+          {{ schedulerStateLabel(schedulerDiagnostics.state) }}
+        </el-tag>
+        <span class="text-content-primary">{{ schedulerDiagnostics.summary }}</span>
+      </div>
+      <div class="mb-2 flex flex-wrap gap-2">
+        <el-tag
+          v-for="check in schedulerDiagnostics.checks"
+          :key="check.key"
+          :type="diagnosticCheckTagType(check.status)"
+          size="small"
+          effect="plain"
+          :title="check.message"
+        >
+          {{ check.label }}：{{ check.message }}
+        </el-tag>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <span v-if="schedulerDiagnostics.action_hint">
+          建议：{{ schedulerDiagnostics.action_hint }}
+        </span>
+        <template v-if="latestSchedulerDigest">
+          <span>最近执行</span>
+          <el-tag :type="taskStatusTagType(latestSchedulerDigest.status)" size="small">
+            {{ latestSchedulerDigest.status_label || CollectTaskStatusMap[latestSchedulerDigest.status ?? -1]?.display || '未知' }}
+          </el-tag>
+          <span v-if="latestSchedulerDigest.digest_date">{{ formatDate(latestSchedulerDigest.digest_date) }}</span>
+          <span v-if="latestSchedulerDigest.diagnostics?.failure?.category">
+            {{ latestSchedulerDigest.diagnostics.failure.category }}
+          </span>
+          <span v-if="latestSchedulerDigest.error_message" class="text-error">
+            {{ latestSchedulerDigest.error_message }}
+          </span>
+        </template>
+      </div>
+    </div>
+
+    <div v-if="schedulerStatus && !schedulerDiagnostics" class="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface-secondary px-4 py-3 text-sm text-content-secondary">
+      <span class="text-content-primary">调度诊断</span>
+      <el-tag :type="schedulerStatus.digest_job_registered ? 'success' : 'warning'" size="small" effect="plain">
+        日报任务 {{ schedulerStatus.digest_job_registered ? '已注册' : '未注册' }}
+      </el-tag>
+      <el-tag :type="schedulerStatus.ai_configured ? 'success' : 'warning'" size="small" effect="plain">
+        AI {{ schedulerStatus.ai_enabled ? (schedulerStatus.ai_configured ? '可用' : '缺少 Key') : '未启用' }}
+      </el-tag>
+      <template v-if="latestSchedulerDigest">
+        <span>最近执行:</span>
+        <el-tag :type="taskStatusTagType(latestSchedulerDigest.status)" size="small">
+          {{ latestSchedulerDigest.status_label || CollectTaskStatusMap[latestSchedulerDigest.status ?? -1]?.display || '未知' }}
+        </el-tag>
+        <span v-if="latestSchedulerDigest.digest_date">{{ formatDate(latestSchedulerDigest.digest_date) }}</span>
+        <span v-if="latestSchedulerDigest.diagnostics?.failure?.category">
+          {{ latestSchedulerDigest.diagnostics.failure.category }}
+        </span>
+        <span v-if="latestSchedulerDigest.error_message" style="color: var(--el-color-danger)">
+          {{ latestSchedulerDigest.error_message }}
+        </span>
+      </template>
+    </div>
+
+    <div
+      v-if="qualitySummary"
+      class="mb-4 grid gap-3 rounded-lg border border-border bg-surface-secondary px-4 py-3 text-sm md:grid-cols-[auto_1fr]"
+    >
+      <div class="flex flex-wrap items-center gap-3">
+        <div class="text-content-primary">
+          <span class="text-content-secondary">最近质量</span>
+          <span class="ml-2 text-lg font-semibold">{{ formatScore(qualitySummary.latest_score) }}</span>
+        </div>
+        <el-tag :type="qualityTagType(qualitySummary.status)" size="small">
+          {{ qualitySummary.status === 'success' ? '稳定' : qualitySummary.status === 'danger' ? '需处理' : qualitySummary.status === 'warning' ? '观察' : '暂无数据' }}
+        </el-tag>
+        <span class="text-content-secondary">均分 {{ formatScore(qualitySummary.average_score) }}</span>
+        <span class="text-content-secondary">变化 {{ formatDelta(qualitySummary.score_delta) }}</span>
+        <span v-if="latestQuality?.digest_date" class="text-content-secondary">
+          {{ formatDate(latestQuality.digest_date) }}
+        </span>
+      </div>
+      <div class="flex flex-wrap items-center gap-2 md:justify-end">
+        <el-tag
+          v-for="[key, count] in weakDimensions"
+          :key="key"
+          type="warning"
+          size="small"
+          effect="plain"
+        >
+          {{ dimensionLabel(key) }} x{{ count }}
+        </el-tag>
+        <span
+          v-for="suggestion in qualitySuggestions"
+          :key="suggestion"
+          class="max-w-[260px] truncate text-content-secondary"
+          :title="suggestion"
+        >
+          {{ suggestion }}
+        </span>
+      </div>
     </div>
 
     <el-table v-loading="loading" :data="digests" border>

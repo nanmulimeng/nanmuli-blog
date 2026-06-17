@@ -11,6 +11,7 @@ import sys
 import logging
 import time
 import httpx
+from config import settings
 from crawler.dependencies import require_crawl4ai
 
 logger = logging.getLogger(__name__)
@@ -238,6 +239,8 @@ async def get_browser_config(text_mode: bool = True, light_mode: bool = False,
     return BrowserConfig(
         headless=True,
         browser_type="chromium",
+        channel=getattr(settings, "browser_channel", "chromium") or "chromium",
+        chrome_channel=getattr(settings, "browser_channel", "chromium") or "chromium",
         text_mode=text_mode,
         light_mode=light_mode,
         java_script_enabled=True,

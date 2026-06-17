@@ -2,6 +2,7 @@
 
 import pytest
 
+from config import settings
 from standalone.task_executor import _sources_to_sections
 
 
@@ -348,3 +349,41 @@ class TestFreshnessToTimeRange:
     def test_very_large_hours(self):
         from standalone.task_executor import _freshness_to_time_range
         assert _freshness_to_time_range(87600) == "year"
+
+
+class TestDigestKeywordExpansion:
+    def test_standalone_default_digest_sections_are_high_signal(self):
+        import json
+
+        sections = json.loads(settings.digest_sections)
+        keywords = {section["name"]: section["keyword"] for section in sections}
+
+        assert "site:github.blog" in keywords["hot_trend"]
+        assert "site:github.com/trending" in keywords["open_source"]
+        assert "site:martinfowler.com" in keywords["tech_article"]
+        assert "site:arxiv.org" in keywords["paper"]
+
+    def test_broad_real_digest_keywords_expand_to_high_signal_queries(self):
+        sources = [
+            {
+                "type": "keyword",
+                "value": "AI developer tools LLM agent latest release OR security AI software engineering",
+                "contentCategory": "hot_trend",
+            },
+            {
+                "type": "keyword",
+                "value": "GitHub trending open source AI developer tool repository release",
+                "contentCategory": "open_source",
+            },
+            {
+                "type": "keyword",
+                "value": "software engineering best practices AI agent architecture technical article",
+                "contentCategory": "tech_article",
+            },
+        ]
+
+        sections = {section["name"]: section for section in _sources_to_sections(sources)}
+
+        assert "site:github.blog" in sections["hot_trend"]["keyword"]
+        assert "site:github.com/trending" in sections["open_source"]["keyword"]
+        assert "site:martinfowler.com" in sections["tech_article"]["keyword"]

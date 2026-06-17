@@ -194,6 +194,7 @@ docker compose --env-file .env.example build frontend
 - [日报系统与自动优化系统](./docs/digest-system.md)
 - [Web Collector 模块设计](./docs/web-collector-module-design.md)
 - [Crawler Service 说明](./crawler-service/README.md)
+- [mvp-beta.2 发布检查清单](./docs/mvp-beta-2-release-checklist.md)
 - [部署说明](./deploy/README.md)
 - [前端说明](./frontend/README.md)
 

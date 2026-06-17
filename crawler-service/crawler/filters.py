@@ -45,7 +45,7 @@ EXCLUDED_DOMAINS = {
     # Low-value encyclopedias, dictionaries, and domain sales pages for digests
     'baike.baidu.com', 'dictionary.cambridge.org', 'iciba.com', 'get.tech',
     'merriam-webster.com', 'runoob.com', 'investopedia.com', 'educationleaves.com',
-    'britannica.com',
+    'britannica.com', 'comptia.org', 'softonic.com',
     # AI tool directory pages are noisy for digest trend sections; keep articles/news instead.
     'ai-bot.cn', 'ai-kit.cn', 'dongaigc.com',
 }
@@ -57,6 +57,8 @@ EXCLUDED_DOMAIN_SUFFIXES = (
     '.haokan.baidu.com',
     '.sina.com.cn',
     '.k.sina.com.cn',
+    '.jobstreet.com',
+    '.softonic.com',
     '.astro.com',
     '.horoscope.com',
     '.zodiac.com',
@@ -78,6 +80,9 @@ DOMAIN_PATH_EXCLUSIONS = (
     ('nvidia.com', '/industries/aec/'),
     ('catalog.northeastern.edu', '/course-descriptions/'),
     ('udemy.com', '/course/'),
+    ('simplilearn.com', '/tutorials/programming-tutorial/what-is-software'),
+    ('sciencedaily.com', '/terms/'),
+    ('bbc.co.uk', '/bitesize/'),
     ('iisd.org', '/taxonomy/term/'),
     ('timextender.com', '/hubfs/downloads/'),
     ('github.blog', '/news-insights/company-news/still-a-developer-just-outside-our-latest-github-shop-collection-is-here'),

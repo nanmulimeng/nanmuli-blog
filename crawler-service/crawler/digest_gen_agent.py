@@ -8,13 +8,13 @@
 import logging
 import re
 from dataclasses import dataclass
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 logger = logging.getLogger(__name__)
 
 _SOURCE_LEVEL_ORDER = {"official": 0, "high": 1, "medium": 2, "low": 3, "spam": 4}
 _MIN_DIGEST_SECTIONS = 2
-_MIN_DIGEST_ITEMS = 5
+_MIN_DIGEST_ITEMS = 6
 _MAX_DIGEST_ITEMS = 12
 _OPEN_SOURCE_DOMAINS = {
     "github.com", "github.blog", "gitlab.com", "gitee.com",
@@ -22,6 +22,23 @@ _OPEN_SOURCE_DOMAINS = {
     "huggingface.co", "apache.org", "cncf.io", "openjsf.org",
     "rust-lang.org", "python.org", "nodejs.org", "deno.land",
     "bun.sh", "kubernetes.io", "docker.com", "ossinsight.io",
+}
+_TRACKING_QUERY_PARAMS = {
+    "fbclid", "gclid", "mc_cid", "mc_eid", "igshid", "yclid",
+    "spm", "ved", "ei", "ref", "ref_src",
+}
+_GENERIC_LISTING_PATHS = {
+    "", "/", "blog", "blogs", "news", "latest", "topics", "topic",
+    "trending", "category", "categories", "tag", "tags",
+}
+_LOW_VALUE_LINK_TEXT = {
+    "register", "register now", "subscribe", "sign up", "login", "log in",
+    "advertise", "privacy", "terms", "cookie", "about", "contact",
+    "tickets", "events", "newsletter",
+}
+_LOW_VALUE_LINK_PATH_PARTS = {
+    "author", "authors", "events", "event", "about", "contact",
+    "privacy", "terms", "login", "signup", "subscribe", "newsletter",
 }
 
 
@@ -124,7 +141,7 @@ class DigestGenAgent:
         return True
 
     def _build_digest_pages(self, section_documents: list) -> list:
-        from ai.organizer import DIGEST_CATEGORY_MAP, DigestPageContent
+        from ai.organizer import DIGEST_CATEGORY_MAP, DigestPageContent, normalize_digest_category
         from standalone.task_executor import extract_source_name, infer_category
         from standalone.organizer_helper import _extract_summary
         from crawler.quality import SourceAuthority
@@ -141,7 +158,7 @@ class DigestGenAgent:
                     continue
 
                 source_name = extract_source_name(url)
-                doc_category = getattr(doc, "section_name", "") or ""
+                doc_category = normalize_digest_category(getattr(doc, "section_name", "") or "")
                 category = doc_category if doc_category in DIGEST_CATEGORY_MAP else infer_category(url, title)
                 if category == "open_source" and not _is_open_source_digest_page(url):
                     continue
@@ -166,6 +183,22 @@ class DigestGenAgent:
                     source_level = authority.get("level", "medium")
                 except Exception:
                     source_level = "medium"
+
+                listing_pages = _expand_generic_listing_page(
+                    url=url,
+                    title=title,
+                    content=content,
+                    category=category,
+                    source_name=source_name,
+                    source_level_provider=SourceAuthority.score,
+                )
+                if listing_pages:
+                    for page in listing_pages:
+                        dedupe_key = _canonical_digest_url(page.url)
+                        existing = pages_by_url.get(dedupe_key)
+                        if existing is None or _is_better_digest_page(page, existing):
+                            pages_by_url[dedupe_key] = page
+                    continue
 
                 summary = _extract_summary(content)
 
@@ -209,14 +242,26 @@ def _canonical_digest_url(url: str) -> str:
     if not parsed.scheme or not parsed.netloc:
         return url.strip().rstrip("/")
 
+    query_pairs = [
+        (key, value)
+        for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+        if not key.lower().startswith("utm_")
+        and key.lower() not in _TRACKING_QUERY_PARAMS
+    ]
+    query = urlencode(query_pairs, doseq=True)
     path = parsed.path.rstrip("/") or "/"
     return urlunsplit((
         parsed.scheme.lower(),
         parsed.netloc.lower(),
         path,
-        parsed.query,
+        query,
         "",
     ))
+
+
+def _canonical_digest_source_key(url: str) -> str:
+    """Canonical source URL key for supplement de-duplication."""
+    return _canonical_digest_url(url)
 
 
 def _collect_allowed_source_urls(pages: list) -> set[str]:
@@ -361,6 +406,138 @@ def _is_github_trending_url(url: str) -> bool:
     return domain == "github.com" and parsed.path.rstrip("/") == "/trending"
 
 
+def _expand_generic_listing_page(
+    *,
+    url: str,
+    title: str,
+    content: str,
+    category: str,
+    source_name: str,
+    source_level_provider,
+) -> list:
+    """Split generic listing/home pages into article-link backed digest pages."""
+    if not _is_generic_listing_page_url(url):
+        return []
+
+    from ai.organizer import DigestPageContent
+
+    matches = _extract_article_link_matches(url, content)
+    if len(matches) < 2:
+        return []
+
+    pages = []
+    for idx, match in enumerate(matches[:10]):
+        next_start = matches[idx + 1]["start"] if idx + 1 < len(matches) else len(content)
+        entry_markdown = content[match["start"]:next_start].strip()
+        if len(entry_markdown) < 80:
+            entry_markdown = _context_around(content, match["start"], next_start)
+        if len(entry_markdown) < 80:
+            continue
+        article_url = match["url"]
+        try:
+            authority = source_level_provider(article_url)
+            source_level = authority.get("level", "medium")
+        except Exception:
+            source_level = "medium"
+        pages.append(DigestPageContent(
+            url=article_url,
+            title=match["title"],
+            markdown=entry_markdown,
+            summary=_first_non_heading_line(entry_markdown),
+            category=category,
+            source_name=source_name or _domain_name(url),
+            source_level=source_level,
+            page_id=None,
+        ))
+
+    if pages:
+        logger.info(
+            "[DigestGenAgent] Expanded listing page '%s' into %d article pages",
+            title or url,
+            len(pages),
+        )
+    return pages
+
+
+def _is_generic_listing_page_url(url: str) -> bool:
+    if not url:
+        return False
+    try:
+        parsed = urlsplit(url.strip())
+    except Exception:
+        return False
+    if not parsed.netloc:
+        return False
+    path = parsed.path.strip("/").lower()
+    if path in _GENERIC_LISTING_PATHS:
+        return True
+    parts = [part for part in path.split("/") if part]
+    if len(parts) == 1 and re.match(r"^[a-z]{2}(?:-[a-z]{2,5}){0,2}$", parts[0], re.IGNORECASE):
+        return True
+    return bool(parts and parts[0] in {"category", "categories", "tag", "tags", "topic", "topics"})
+
+
+def _extract_article_link_matches(listing_url: str, content: str) -> list[dict]:
+    listing_domain = _domain_name(listing_url)
+    raw_matches = list(re.finditer(
+        r"(?:^|\n)\s*(?:#{1,4}\s+|[-*]\s+)?\[([^\]\n]{8,180})\]\((https?://[^)\s]+)\)",
+        content or "",
+        flags=re.MULTILINE,
+    ))
+    matches = []
+    seen = set()
+    for match in raw_matches:
+        link_title = re.sub(r"\s+", " ", match.group(1)).strip()
+        link_url = _clean_source_url(match.group(2))
+        if not _is_digest_article_link(listing_domain, link_title, link_url):
+            continue
+        key = _canonical_digest_url(link_url)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        matches.append({
+            "start": match.start(),
+            "title": link_title,
+            "url": link_url,
+        })
+    return matches
+
+
+def _is_digest_article_link(listing_domain: str, title: str, url: str) -> bool:
+    title_key = re.sub(r"\s+", " ", (title or "").strip().lower())
+    if not title_key or title_key in _LOW_VALUE_LINK_TEXT:
+        return False
+    if any(word in title_key for word in ("cookie", "privacy", "terms", "advertis", "subscribe", "newsletter")):
+        return False
+    if not url or _is_generic_listing_page_url(url):
+        return False
+    try:
+        parsed = urlsplit(url.strip())
+    except Exception:
+        return False
+    domain = _domain_name(url)
+    if not parsed.scheme.startswith("http") or not domain:
+        return False
+    if listing_domain and domain != listing_domain:
+        return False
+    path_parts = [part for part in parsed.path.split("/") if part]
+    if path_parts and path_parts[0].lower() in _LOW_VALUE_LINK_PATH_PARTS:
+        return False
+    return len(path_parts) >= 2
+
+
+def _context_around(content: str, start: int, end: int, max_chars: int = 600) -> str:
+    return (content or "")[start:min(len(content or ""), max(end, start + max_chars))].strip()
+
+
+def _domain_name(url: str) -> str:
+    try:
+        domain = urlsplit((url or "").strip()).netloc.lower()
+    except Exception:
+        return ""
+    return domain[4:] if domain.startswith("www.") else domain
+
+
 def _first_non_heading_line(markdown: str, max_chars: int = 220) -> str:
     for line in (markdown or "").splitlines()[1:]:
         text = line.strip()
@@ -410,6 +587,11 @@ def _supplement_digest_coverage(content, pages: list):
         for item in current_items
         if getattr(item, "source_url", "")
     }
+    current_url_keys = set()
+    for url in current_urls:
+        url_key = _canonical_digest_source_key(url)
+        if url_key:
+            current_url_keys.add(url_key)
     current_categories = {
         getattr(section, "category", "")
         for section in content.sections
@@ -447,7 +629,8 @@ def _supplement_digest_coverage(content, pages: list):
         if current_count >= min(len(usable_pages), _MAX_DIGEST_ITEMS):
             return False
         url = getattr(page, "url", "")
-        if not url or url in current_urls:
+        url_key = _canonical_digest_source_key(url)
+        if not url or url in current_urls or (url_key and url_key in current_url_keys):
             return False
         section = ensure_section(getattr(page, "category", "") or "tech_article")
         item = DigestItem(
@@ -458,6 +641,8 @@ def _supplement_digest_coverage(content, pages: list):
         )
         section.items.append(item)
         current_urls.add(url)
+        if url_key:
+            current_url_keys.add(url_key)
         current_count += 1
         added_items.append((section, item))
         return True

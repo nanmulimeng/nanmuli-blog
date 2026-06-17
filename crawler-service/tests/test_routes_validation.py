@@ -877,3 +877,29 @@ class TestRepositoryTransactionSafety:
 
         assert row["digest_date"] is None
         assert row["digest_highlight"] is None
+
+
+class TestDigestOptimizationTrendEndpoint:
+    """Optimization trend endpoint returns dashboard-ready overview."""
+
+    def test_digest_trend_endpoint_returns_overview(self, app_client):
+        overview = {
+            "trend": [{"digest_date": "2026-05-31", "overall_score": 0.64}],
+            "count": 1,
+            "summary": {"latest_score": 0.64, "average_score": 0.64, "score_delta": None, "status": "warning"},
+            "latest": {"digest_date": "2026-05-31", "weaknesses": ["source_diversity"]},
+            "weak_dimensions": {"source_diversity": 1},
+            "suggestions": ["补充 GitHub Trending"],
+        }
+        kb = MagicMock()
+        kb.get_digest_quality_overview = AsyncMock(return_value=overview)
+
+        with patch("optimization.knowledge_base.KnowledgeBase", return_value=kb):
+            resp = app_client.get("/api/v1/optimization/digest-trend?limit=5")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["summary"]["latest_score"] == 0.64
+        assert body["latest"]["weaknesses"] == ["source_diversity"]
+        assert body["suggestions"] == ["补充 GitHub Trending"]
+        kb.get_digest_quality_overview.assert_awaited_once_with(limit=5)

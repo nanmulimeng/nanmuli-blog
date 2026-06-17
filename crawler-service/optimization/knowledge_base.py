@@ -1,5 +1,6 @@
 """策略知识库 — 基于历史数据的策略推荐引擎"""
 
+import json as _json
 import logging
 
 from standalone.db import get_db
@@ -16,6 +17,58 @@ def _escape_like(text: str) -> str:
             .replace("%", "!%")
             .replace("_", "!_")
     )
+
+
+def _parse_json_list(value) -> list:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = _json.loads(value)
+        except _json.JSONDecodeError:
+            return []
+        return parsed if isinstance(parsed, list) else []
+    return []
+
+
+def _score_status(score: float | None) -> str:
+    if score is None:
+        return "unknown"
+    if score >= 0.75:
+        return "success"
+    if score >= 0.6:
+        return "warning"
+    return "danger"
+
+
+def _normalize_source_score(score) -> float | None:
+    if score is None:
+        return None
+    try:
+        value = float(score)
+    except (TypeError, ValueError):
+        return None
+    if value > 1:
+        value = value / 100.0
+    return max(0.0, min(value, 1.0))
+
+
+def _normalize_source_id(source_id) -> int | str | None:
+    if source_id is None or source_id == "":
+        return None
+    try:
+        return int(source_id)
+    except (TypeError, ValueError):
+        return str(source_id)
+
+
+def _normalize_source_url(source_url) -> str | None:
+    if source_url is None:
+        return None
+    value = str(source_url).strip()
+    return value or None
 
 
 class KnowledgeBase:
@@ -277,7 +330,7 @@ class KnowledgeBase:
                           overall_score,
                           angle_coverage, source_diversity, depth_coverage,
                           temporal_coverage, perspective_balance, language_coverage,
-                          strategy_detail, suggestions, created_at
+                          strategy_detail, weaknesses, suggestions, created_at
                    FROM optimization_record
                    WHERE strategy_type = 'digest_final_eval'
                    ORDER BY created_at DESC
@@ -285,21 +338,221 @@ class KnowledgeBase:
                 (limit,),
             )
             rows = await cursor.fetchall()
-        import json as _json
         results = []
         for r in rows:
             d = dict(r)
-            for field in ("strategy_detail", "suggestions"):
-                raw = d.get(field)
-                if raw and isinstance(raw, str):
-                    try:
-                        d[field] = _json.loads(raw)
-                    except _json.JSONDecodeError:
-                        pass
+            d["strategy_detail"] = _parse_json_list(d.get("strategy_detail"))
+            d["weaknesses"] = _parse_json_list(d.get("weaknesses"))
+            d["suggestions"] = _parse_json_list(d.get("suggestions"))
             results.append(d)
         return results
 
+    async def get_digest_quality_overview(self, limit: int = 10) -> dict:
+        """Build a dashboard-ready digest quality summary from final evaluations."""
+        trend = await self.get_digest_quality_trend(limit=limit)
+        next_run_actions = await self.get_digest_source_actions()
+        if not trend:
+            return {
+                "trend": [],
+                "count": 0,
+                "summary": {
+                    "average_score": None,
+                    "latest_score": None,
+                    "score_delta": None,
+                    "status": "unknown",
+                },
+                "latest": None,
+                "weak_dimensions": {},
+                "suggestions": [],
+                "next_run_actions": next_run_actions,
+            }
+
+        scores = [
+            float(item["overall_score"])
+            for item in trend
+            if item.get("overall_score") is not None
+        ]
+        latest = trend[0]
+        latest_score = float(latest["overall_score"]) if latest.get("overall_score") is not None else None
+        oldest_score = float(trend[-1]["overall_score"]) if trend[-1].get("overall_score") is not None else None
+        score_delta = None
+        if latest_score is not None and oldest_score is not None and len(scores) >= 2:
+            score_delta = round(latest_score - oldest_score, 4)
+
+        weak_counts: dict[str, int] = {}
+        for item in trend:
+            for dim in item.get("weaknesses") or []:
+                dim_key = str(dim)
+                weak_counts[dim_key] = weak_counts.get(dim_key, 0) + 1
+
+        suggestions = [
+            str(suggestion).strip()
+            for suggestion in latest.get("suggestions") or []
+            if str(suggestion).strip()
+        ]
+
+        return {
+            "trend": trend,
+            "count": len(trend),
+            "summary": {
+                "average_score": round(sum(scores) / len(scores), 4) if scores else None,
+                "latest_score": latest_score,
+                "score_delta": score_delta,
+                "status": _score_status(latest_score),
+            },
+            "latest": latest,
+            "weak_dimensions": dict(sorted(weak_counts.items(), key=lambda item: item[1], reverse=True)),
+            "suggestions": suggestions[:5],
+            "next_run_actions": next_run_actions,
+        }
+
     # ============== 跨运行疲劳感知 ==============
+
+    async def get_digest_source_actions(self) -> dict:
+        """Derive conservative next-run source actions from the latest digest evaluation."""
+        async with get_db() as db:
+            cursor = await db.execute(
+                """SELECT task_id, search_keyword AS digest_date, strategy_detail,
+                          weaknesses, suggestions, created_at
+                   FROM optimization_record
+                   WHERE strategy_type = 'digest_final_eval'
+                   ORDER BY created_at DESC
+                   LIMIT 1""",
+            )
+            row = await cursor.fetchone()
+        if not row:
+            return self._empty_digest_source_actions()
+
+        latest = dict(row)
+        task_id = latest.get("task_id")
+        diagnostics: list[dict] = []
+        if task_id is not None:
+            try:
+                from standalone import repository as repo
+                diagnostics = await repo.get_digest_source_diagnostics(int(task_id))
+            except Exception as exc:
+                logger.debug("[KnowledgeBase] source diagnostics lookup failed: %s", exc)
+                diagnostics = []
+        if not diagnostics:
+            diagnostics = [
+                item for item in _parse_json_list(latest.get("strategy_detail"))
+                if isinstance(item, dict) and (
+                    "source_id" in item or "source_url" in item or "quality_verdict" in item
+                )
+            ]
+
+        weaknesses = _parse_json_list(latest.get("weaknesses"))
+        suggestions = _parse_json_list(latest.get("suggestions"))
+        return self.derive_digest_source_actions(
+            diagnostics=diagnostics,
+            weaknesses=weaknesses,
+            suggestions=suggestions,
+            digest_date=latest.get("digest_date"),
+            created_at=latest.get("created_at"),
+        )
+
+    @classmethod
+    def derive_digest_source_actions(
+        cls,
+        diagnostics: list[dict] | None,
+        weaknesses: list | None = None,
+        suggestions: list | None = None,
+        digest_date=None,
+        created_at=None,
+    ) -> dict:
+        """Derive next-run source actions from already loaded source diagnostics."""
+        diagnostics = diagnostics or []
+        weaknesses = weaknesses or []
+        suggestions = suggestions or []
+        actions = cls._empty_digest_source_actions(
+            digest_date=digest_date,
+            created_at=created_at,
+            weaknesses=weaknesses,
+            suggestions=suggestions,
+        )
+        actions["boost_sections"] = [str(dim) for dim in weaknesses if str(dim).strip()][:6]
+
+        skip_ids: list[int | str] = []
+        deprioritize_ids: list[int | str] = []
+        skip_urls: list[str] = []
+        deprioritize_urls: list[str] = []
+        sources: dict[int | str, dict] = {}
+
+        for item in diagnostics:
+            source_id = _normalize_source_id(item.get("source_id"))
+            source_url = _normalize_source_url(item.get("source_url"))
+            if source_id is None and source_url is None:
+                continue
+            score = _normalize_source_score(item.get("quality_score"))
+            verdict = str(item.get("quality_verdict") or "").lower()
+            action = ""
+            reason = ""
+            if verdict == "filter" or (score is not None and score < 0.4):
+                action = "skip"
+                reason = "quality_score < 40 or filter verdict"
+            elif verdict == "review" or (score is not None and score < 0.6):
+                action = "deprioritize"
+                reason = "quality_score < 60 or review verdict"
+            if not action:
+                continue
+
+            if source_id is not None:
+                target = skip_ids if action == "skip" else deprioritize_ids
+                if source_id not in target:
+                    target.append(source_id)
+                source_key: int | str = source_id
+            else:
+                target_url = skip_urls if action == "skip" else deprioritize_urls
+                if source_url not in target_url:
+                    target_url.append(source_url)
+                source_key = f"url:{source_url}"
+            sources[source_key] = {
+                "source_id": source_id,
+                "source_name": item.get("source_name") or "",
+                "source_url": source_url or "",
+                "section": item.get("section") or "",
+                "item_count": item.get("item_count") or 0,
+                "quality_score": score,
+                "quality_verdict": verdict or None,
+                "action": action,
+                "reason": reason,
+            }
+
+        actions["source_ids"] = {
+            "skip": skip_ids,
+            "deprioritize": deprioritize_ids,
+        }
+        actions["source_urls"] = {
+            "skip": skip_urls,
+            "deprioritize": deprioritize_urls,
+        }
+        actions["sources"] = sources
+        actions["reasons"] = [
+            f"{src.get('source_name') or src.get('source_url') or sid}: {src['reason']}"
+            for sid, src in sources.items()
+        ][:8]
+        if skip_ids or deprioritize_ids or skip_urls or deprioritize_urls:
+            actions["confidence"] = "medium" if len(diagnostics) >= 2 else "low"
+        return actions
+
+    @staticmethod
+    def _empty_digest_source_actions(
+        digest_date=None,
+        created_at=None,
+        weaknesses: list | None = None,
+        suggestions: list | None = None,
+    ) -> dict:
+        return {
+            "digest_date": digest_date,
+            "created_at": created_at,
+            "source_ids": {"skip": [], "deprioritize": []},
+            "source_urls": {"skip": [], "deprioritize": []},
+            "boost_sections": weaknesses or [],
+            "sources": {},
+            "reasons": [],
+            "suggestions": suggestions or [],
+            "confidence": "none",
+        }
 
     async def get_recent_dimension_fatigue(self, limit: int = 3) -> dict[str, list[float]]:
         """查询最近 N 次日报评估中各维度的改善情况，用于跨运行疲劳预填充。

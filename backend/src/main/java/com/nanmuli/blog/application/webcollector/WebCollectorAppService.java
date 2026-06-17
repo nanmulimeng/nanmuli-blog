@@ -470,8 +470,9 @@ public class WebCollectorAppService {
             task.setAiTags(aiTags instanceof String s ? s : safeToJson(aiTags));
         }
         Object aiSearchMetadata = pythonTask.get("ai_search_metadata");
-        if (aiSearchMetadata != null) {
-            task.setAiSearchMetadata(aiSearchMetadata instanceof String s ? s : safeToJson(aiSearchMetadata));
+        Object diagnostics = pythonTask.get("diagnostics");
+        if (aiSearchMetadata != null || diagnostics != null) {
+            task.setAiSearchMetadata(mergeDiagnosticsIntoMetadata(aiSearchMetadata, diagnostics));
         }
         Object aiDuration = pythonTask.get("ai_duration");
         if (aiDuration instanceof Number num) task.setAiDuration(num.intValue());
@@ -534,6 +535,27 @@ public class WebCollectorAppService {
     private String safeToJson(Object value) {
         try { return objectMapper.writeValueAsString(value); }
         catch (Exception e) { log.debug("[DTO] JSON serialization failed: {}", e.getMessage()); return null; }
+    }
+
+    @SuppressWarnings("unchecked")
+    private String mergeDiagnosticsIntoMetadata(Object metadata, Object diagnostics) {
+        if (diagnostics == null) {
+            return metadata instanceof String s ? s : safeToJson(metadata);
+        }
+
+        Map<String, Object> merged = new LinkedHashMap<>();
+        if (metadata instanceof Map<?, ?> map) {
+            map.forEach((key, value) -> merged.put(String.valueOf(key), value));
+        } else if (metadata instanceof String s && !s.isBlank()) {
+            try {
+                merged.putAll(objectMapper.readValue(s, new TypeReference<Map<String, Object>>() {}));
+            } catch (Exception e) {
+                log.debug("[SyncFromPython] Failed to parse aiSearchMetadata while merging diagnostics: {}", e.getMessage());
+                merged.put("raw", s);
+            }
+        }
+        merged.putIfAbsent("diagnostics", diagnostics);
+        return safeToJson(merged);
     }
 
     private WebCollectTask loadTaskForUser(Long taskId, Long userId) {

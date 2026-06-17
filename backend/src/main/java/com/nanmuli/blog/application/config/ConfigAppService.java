@@ -75,6 +75,20 @@ public class ConfigAppService {
 
     @CacheEvict(value = {"config", "config:admin:list"}, allEntries = true)
     @Transactional
+    public void resetToDefault(String key) {
+        Config config = configRepository.findByKey(key)
+                .orElseThrow(() -> new BusinessException("配置不存在"));
+        String defaultValue = config.getDefaultValue();
+        if (defaultValue == null) {
+            defaultValue = "";
+        }
+        String storeValue = isEncrypted(config) ? aesEncryptor.encrypt(defaultValue) : defaultValue;
+        config.setConfigValue(storeValue);
+        configRepository.save(config);
+    }
+
+    @CacheEvict(value = {"config", "config:admin:list"}, allEntries = true)
+    @Transactional
     public void set(String key, String value, String description, String groupName,
                     String inputType, Boolean isPublic) {
         Config config = configRepository.findByKey(key).orElse(null);

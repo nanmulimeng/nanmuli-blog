@@ -21,6 +21,18 @@ logger = logging.getLogger(__name__)
 _scheduler: AsyncIOScheduler | None = None
 _registered_source_jobs: set[str] = set()
 
+
+def _is_ai_configured() -> bool:
+    return bool(getattr(settings, "ai_enabled", False) and getattr(settings, "ai_api_key", ""))
+
+
+def _serialize_job(job) -> dict:
+    return {
+        "id": getattr(job, "id", None),
+        "name": getattr(job, "name", None),
+        "next_run": str(job.next_run_time) if getattr(job, "next_run_time", None) else None,
+    }
+
 # 任务完成事件注册表（供 _wait_and_update_source_status 使用）
 _task_completion_events: dict[int, asyncio.Event] = {}
 
@@ -509,13 +521,21 @@ def stop_scheduler():
 
 
 def get_scheduler_status() -> dict:
-    """获取调度器状态"""
+    """Return stable scheduler diagnostics for admin troubleshooting."""
+    base_status = {
+        "cron": settings.digest_cron,
+        "enabled": backend_config.get_bool("digest.enabled"),
+        "ai_enabled": bool(getattr(settings, "ai_enabled", False)),
+        "ai_configured": _is_ai_configured(),
+    }
     if _scheduler is None:
         return {
+            **base_status,
             "running": False,
-            "cron": settings.digest_cron,
-            "enabled": backend_config.get_bool("digest.enabled"),
+            "next_run": None,
             "source_jobs": 0,
+            "digest_job_registered": False,
+            "jobs": [],
         }
 
     jobs = _scheduler.get_jobs()
@@ -524,9 +544,10 @@ def get_scheduler_status() -> dict:
     source_count = sum(1 for j in jobs if j.id.startswith("source_"))
 
     return {
+        **base_status,
         "running": True,
-        "cron": settings.digest_cron,
-        "enabled": backend_config.get_bool("digest.enabled"),
         "next_run": next_run,
         "source_jobs": source_count,
+        "digest_job_registered": digest_job is not None,
+        "jobs": [_serialize_job(job) for job in jobs],
     }

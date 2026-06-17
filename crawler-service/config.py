@@ -73,6 +73,10 @@ class Settings(BaseSettings):
     optimization_round_delay_min: float = 2.0
     optimization_round_delay_max: float = 4.0
 
+    # Browser runtime. Use "chrome" or "msedge" when Playwright's bundled
+    # Chromium cannot be downloaded in a constrained server environment.
+    browser_channel: str = "chromium"
+
     # 质量评估配置
     quality_source_weight: float = 0.4         # 来源可信度权重
     quality_content_weight: float = 0.6        # 内容质量权重
@@ -129,10 +133,11 @@ class Settings(BaseSettings):
     digest_cron: str = "0 8 * * 1-5"  # 工作日 8:00
     digest_search_engine: str = "sogou"  # 日报专用搜索引擎（sogou 对中文技术内容搜索效果好于 bing）
     digest_sections: str = (
-        '[{"name":"hot_trend","keyword":"技术新闻 OR 科技资讯 OR 今日热点 OR 版本发布 OR 人工智能 OR 大模型 OR LLM OR 深度学习 OR AI agent","time_range":"week","max_items":6},'
-        '{"name":"open_source","keyword":"开源项目 OR 最新发布 OR 热门仓库 OR GitHub trending","time_range":"week","max_items":4},'
-        '{"name":"dev_tool","keyword":"开发工具 OR IDE OR 插件 OR 编程工具 OR VS Code","time_range":"week","max_items":3},'
-        '{"name":"tech_article","keyword":"技术博客 OR 教程 OR 最佳实践 OR 深度解析 OR 源码分析","time_range":"week","max_items":3}]'
+        '[{"name":"hot_trend","keyword":"site:github.blog GitHub Copilot coding agent developer update OR site:openai.com/blog API model release developer impact OR site:anthropic.com/news Claude API developer release OR AI security vulnerability developer impact","time_range":"week","max_items":6},'
+        '{"name":"open_source","keyword":"site:github.com/trending AI developer tools OR site:github.com/trending llm agent OR site:github.com trending open source developer tool release OR site:github.com releases AI developer tool","time_range":"week","max_items":4},'
+        '{"name":"dev_tool","keyword":"site:code.visualstudio.com release developer tool OR site:jetbrains.com release IDE developer tool OR site:github.blog developer workflow tool OR site:postman.com release API developer tool","time_range":"week","max_items":3},'
+        '{"name":"tech_article","keyword":"site:martinfowler.com architecture AI software engineering OR site:github.blog/engineering AI developer workflow architecture OR site:cloudflare.com/blog AI agent architecture engineering OR site:netflixtechblog.com architecture reliability engineering","time_range":"week","max_items":3},'
+        '{"name":"paper","keyword":"site:arxiv.org AI agent RAG LLM systems paper OR site:openreview.net language model agent paper OR site:paperswithcode.com LLM agent benchmark","time_range":"week","max_items":3}]'
     )
     digest_parallel_sections: int = 2  # 板块并行爬取上限
     digest_global_timeout: int = 600  # 板块并行总时限（秒），超时返回已有结果
@@ -193,6 +198,8 @@ class Settings(BaseSettings):
     digest_optimization_min_sections: int = 2     # 最少板块数才触发优化
     digest_optimization_min_results_per_section: int = 3  # 每板块最少结果数才触发优化
     digest_optimization_target_score: float = 0.65  # 日报优化目标分（比通用 0.7 稍低）
+    digest_publish_core_sections: str = "hot_trend,open_source,dev_tool,tech_article,paper"
+    digest_publish_min_core_sections: int = 3
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 

@@ -10,6 +10,7 @@ from typing import Optional as Opt
 from standalone.models import TaskStatus, TASK_TYPE_LABELS, AI_TEMPLATE_LABELS
 from standalone import repository as repo
 from standalone.task_executor import executor
+from standalone.task_diagnostics import build_task_diagnostics
 from standalone.export import export_task_as_markdown
 from standalone import backend_config
 from config import settings
@@ -83,6 +84,11 @@ def _enrich_task(task: dict) -> dict:
         except json.JSONDecodeError:
             pass
 
+    diagnostics = build_task_diagnostics(task)
+    task["diagnostics"] = diagnostics
+    if isinstance(task.get("ai_search_metadata"), dict):
+        task["ai_search_metadata"].setdefault("diagnostics", diagnostics)
+
     task["ai_template_label"] = AI_TEMPLATE_LABELS.get(
         task.get("ai_template", "tech_summary"), "技术摘要"
     )
@@ -113,6 +119,107 @@ def _summarize_source_test_results(results: list) -> dict:
         "failed_count": max(total - success_count, 0),
         "crawlable": success_count > 0,
         "items": items,
+    }
+
+
+def _scheduler_check(key: str, label: str, status: str, message: str) -> dict:
+    return {
+        "key": key,
+        "label": label,
+        "status": status,
+        "message": message,
+    }
+
+
+def _build_scheduler_diagnostics(status: dict) -> dict:
+    """Build a stable scheduler diagnostics payload for admin UI."""
+    latest = status.get("latest_digest")
+    checks = []
+
+    enabled = bool(status.get("enabled"))
+    running = bool(status.get("running"))
+    digest_job_registered = bool(status.get("digest_job_registered"))
+    ai_enabled = bool(status.get("ai_enabled"))
+    ai_configured = bool(status.get("ai_configured"))
+
+    checks.append(_scheduler_check(
+        "scheduler",
+        "调度器",
+        "success" if running else ("warning" if not enabled else "danger"),
+        "调度器运行中" if running else "调度器未运行",
+    ))
+    checks.append(_scheduler_check(
+        "digest_job",
+        "日报任务",
+        "success" if digest_job_registered else ("info" if not enabled else "warning"),
+        "日报定时任务已注册" if digest_job_registered else "日报定时任务未注册",
+    ))
+    checks.append(_scheduler_check(
+        "ai",
+        "AI 配置",
+        "success" if (not ai_enabled or ai_configured) else "warning",
+        "AI 可用" if ai_configured else ("AI 未启用" if not ai_enabled else "AI 已启用但缺少可用配置"),
+    ))
+
+    if latest:
+        latest_diagnostics = latest.get("diagnostics") or {}
+        latest_failure = latest_diagnostics.get("failure") or {}
+        latest_status = latest.get("status")
+        latest_status_label = latest.get("status_label") or str(latest_status)
+        latest_message = latest.get("error_message") or latest_diagnostics.get("summary") or latest_status_label
+        checks.append(_scheduler_check(
+            "latest_digest",
+            "最近执行",
+            "danger" if latest_status == TaskStatus.FAILED else ("warning" if latest_status in (TaskStatus.PENDING, TaskStatus.CRAWLING, TaskStatus.PROCESSING) else "success"),
+            latest_message,
+        ))
+    else:
+        latest_failure = {}
+        checks.append(_scheduler_check(
+            "latest_digest",
+            "最近执行",
+            "info",
+            "暂无日报执行记录",
+        ))
+
+    if not enabled:
+        state = "disabled"
+        summary = "自动日报未启用"
+        action_hint = "如需自动生成日报，请先启用 digest.enabled 并刷新 crawler 配置。"
+    elif not running:
+        state = "misconfigured"
+        summary = "自动日报已启用，但调度器未运行"
+        action_hint = "检查 crawler-service 启动日志和 scheduler 初始化状态。"
+    elif ai_enabled and not ai_configured:
+        state = "misconfigured"
+        summary = "AI 已启用但配置不完整"
+        action_hint = "检查 AI API Key、base URL 和 model 配置，然后刷新 crawler 配置。"
+    elif not digest_job_registered:
+        state = "misconfigured"
+        summary = "日报调度任务未注册"
+        action_hint = "检查 digest cron 表达式和调度器注册日志，必要时刷新配置。"
+    elif latest and latest.get("status") == TaskStatus.FAILED:
+        state = "latest_failed"
+        summary = latest_failure.get("label") or "最近一次日报执行失败"
+        action_hint = latest_failure.get("action_hint") or "打开最近日报详情，按失败阶段继续排查。"
+    elif latest and latest.get("status") in (TaskStatus.PENDING, TaskStatus.CRAWLING, TaskStatus.PROCESSING):
+        state = "running"
+        summary = "日报任务正在执行"
+        action_hint = "继续观察任务详情中的阶段、页面数、AI 处理和错误信息。"
+    elif not latest:
+        state = "idle"
+        summary = "自动日报已就绪，暂无执行记录"
+        action_hint = "等待下一次 cron，或在管理端手动触发一次日报生成。"
+    else:
+        state = "healthy"
+        summary = "自动日报最近执行正常"
+        action_hint = "继续观察质量趋势和自动优化动作即可。"
+
+    return {
+        "state": state,
+        "summary": summary,
+        "action_hint": action_hint,
+        "checks": checks,
     }
 
 
@@ -557,7 +664,7 @@ async def list_digests(
 @router.get("/digests/latest")
 async def get_latest_digest():
     """最近一期日报"""
-    task = await repo.get_latest_completed_digest()
+    task = await repo.get_latest_public_digest()
     if not task:
         raise HTTPException(404, "暂无日报")
     return await _build_digest_detail(task["id"])
@@ -592,7 +699,23 @@ async def get_digest_sections_config(force_refresh: bool = Query(False)):
 async def get_scheduler_status():
     """获取调度器状态"""
     from standalone.scheduler import get_scheduler_status
-    return get_scheduler_status()
+    status = get_scheduler_status()
+    records, _ = await repo.list_digests_with_ai(page=1, size=1, include_all=True)
+    if records:
+        latest = _enrich_task(records[0])
+        status["latest_digest"] = {
+            "id": latest.get("id"),
+            "digest_date": latest.get("digest_date"),
+            "status": latest.get("status"),
+            "status_label": latest.get("status_label"),
+            "error_message": latest.get("error_message") or latest.get("ai_error_message"),
+            "created_at": latest.get("created_at"),
+            "diagnostics": latest.get("diagnostics"),
+        }
+    else:
+        status["latest_digest"] = None
+    status["diagnostics"] = _build_scheduler_diagnostics(status)
+    return status
 
 
 @router.post("/digests/trigger")
@@ -619,7 +742,7 @@ async def get_digest_by_task_id(task_id: int):
 @router.get("/digests/{date}")
 async def get_digest_by_date(date: str):
     """按日期查询日报详情"""
-    task = await repo.get_digest_by_date(date)
+    task = await repo.get_public_digest_by_date(date)
     if not task:
         raise HTTPException(404, f"未找到 {date} 的日报")
     return await _build_digest_detail(task["id"])
@@ -633,6 +756,21 @@ async def _build_digest_detail(task_id: int) -> dict:
 
     task = _enrich_task(task)
     sections = await repo.get_digest_sections(task_id)
+    evaluation = await repo.get_latest_digest_evaluation(task_id)
+    source_diagnostics = await repo.get_digest_source_diagnostics(task_id)
+    next_run_actions = None
+    if evaluation:
+        try:
+            from optimization.knowledge_base import KnowledgeBase
+            next_run_actions = KnowledgeBase.derive_digest_source_actions(
+                diagnostics=source_diagnostics,
+                weaknesses=evaluation.get("weaknesses") or [],
+                suggestions=evaluation.get("suggestions") or [],
+                digest_date=task.get("digest_date"),
+                created_at=evaluation.get("created_at"),
+            )
+        except Exception:
+            next_run_actions = None
 
     # 清理内部 id（用副本避免修改原始数据）
     clean_sections = []
@@ -646,14 +784,49 @@ async def _build_digest_detail(task_id: int) -> dict:
 
     # 提取 orchestrator 规划日志（从 ai_search_metadata JSON 中）
     orchestrator_plan = None
+    metadata = None
     raw_meta = task.get("ai_search_metadata")
     if raw_meta:
         try:
             import json as _json
-            meta = _json.loads(raw_meta) if isinstance(raw_meta, str) else raw_meta
-            orchestrator_plan = meta.get("orchestrator_plan")
+            metadata = _json.loads(raw_meta) if isinstance(raw_meta, str) else raw_meta
+            orchestrator_plan = metadata.get("orchestrator_plan")
         except Exception:
             pass
+
+    quality_evaluation = None
+    if evaluation:
+        quality_evaluation = {
+            "overall_score": evaluation.get("overall_score"),
+            "dimensions": {
+                "angle": evaluation.get("angle_coverage"),
+                "source_diversity": evaluation.get("source_diversity"),
+                "depth": evaluation.get("depth_coverage"),
+                "temporal": evaluation.get("temporal_coverage"),
+                "perspective": evaluation.get("perspective_balance"),
+                "language": evaluation.get("language_coverage"),
+            },
+            "section_scores": evaluation.get("strategy_detail") or [],
+            "source_diagnostics": source_diagnostics,
+            "next_run_actions": next_run_actions,
+            "weaknesses": evaluation.get("weaknesses") or [],
+            "suggestions": evaluation.get("suggestions") or [],
+            "created_at": evaluation.get("created_at"),
+        }
+    elif isinstance(metadata, dict) and metadata.get("digest_publish_quality"):
+        publish_quality = metadata.get("digest_publish_quality") or {}
+        quality_evaluation = {
+            "overall_score": publish_quality.get("score"),
+            "dimensions": {},
+            "section_scores": [publish_quality],
+            "source_diagnostics": source_diagnostics,
+            "next_run_actions": None,
+            "weaknesses": [],
+            "suggestions": publish_quality.get("suggestions") or [],
+            "publishable": metadata.get("digest_publishable"),
+            "stage": metadata.get("digest_publish_stage"),
+            "created_at": None,
+        }
 
     return {
         "id": task["id"],
@@ -670,6 +843,8 @@ async def _build_digest_detail(task_id: int) -> dict:
         "error_message": task.get("error_message") or task.get("ai_error_message"),
         "sections": clean_sections,
         "orchestrator_plan": orchestrator_plan,
+        "diagnostics": task.get("diagnostics"),
+        "quality_evaluation": quality_evaluation,
         "created_at": task.get("created_at"),
     }
 
@@ -720,7 +895,6 @@ async def get_digest_quality_trend(limit: int = Query(default=10, ge=1, le=50)):
     try:
         from optimization.knowledge_base import KnowledgeBase
         kb = KnowledgeBase()
-        trend = await kb.get_digest_quality_trend(limit=limit)
-        return {"trend": trend, "count": len(trend)}
+        return await kb.get_digest_quality_overview(limit=limit)
     except Exception as e:
         raise HTTPException(500, f"Failed to get digest quality trend: {e}")

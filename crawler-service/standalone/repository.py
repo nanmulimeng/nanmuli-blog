@@ -25,6 +25,36 @@ def _row_to_dict(row) -> Optional[dict]:
     return dict(row)
 
 
+def _json_object(value) -> dict:
+    if isinstance(value, dict):
+        return value
+    if not isinstance(value, str) or not value.strip():
+        return {}
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def is_publishable_digest_task(task: dict | None) -> bool:
+    """Return whether a digest task is safe for public API exposure."""
+    if not task or task.get("task_type") != "digest":
+        return False
+    try:
+        status = int(task.get("status") or 0)
+    except (TypeError, ValueError):
+        return False
+    if status != TaskStatus.COMPLETED:
+        return False
+    if not str(task.get("ai_title") or "").strip():
+        return False
+    if not str(task.get("ai_full_content") or "").strip():
+        return False
+    metadata = _json_object(task.get("ai_search_metadata"))
+    return metadata.get("digest_publishable") is not False
+
+
 # ============== Task CRUD ==============
 
 async def create_task(
@@ -96,24 +126,39 @@ async def list_digests_with_ai(
     默认只返回有 AI 内容的日报，供公开列表使用；include_all=True 时返回
     全状态日报，供管理端查看生成中的任务。
     """
+    offset = max(0, (page - 1) * size)
+
     async with get_db() as db:
-        where_sql = "WHERE task_type = 'digest'"
-        if not include_all:
-            where_sql += " AND ai_title IS NOT NULL AND ai_title != ''"
+        if include_all:
+            where_sql = "WHERE task_type = 'digest'"
+            count_cursor = await db.execute(
+                "SELECT COUNT(*) FROM crawl_task " + where_sql
+            )
+            total = (await count_cursor.fetchone())[0]
 
-        count_cursor = await db.execute(
-            "SELECT COUNT(*) FROM crawl_task " + where_sql
-        )
-        total = (await count_cursor.fetchone())[0]
+            cursor = await db.execute(
+                "SELECT * FROM crawl_task " + where_sql
+                + " ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                [size, offset]
+            )
+            rows = await cursor.fetchall()
+            return [_row_to_dict(r) for r in rows], total
 
-        offset = max(0, (page - 1) * size)
         cursor = await db.execute(
-            "SELECT * FROM crawl_task " + where_sql
-            + " ORDER BY created_at DESC LIMIT ? OFFSET ?",
-            [size, offset]
+            """SELECT * FROM crawl_task
+               WHERE task_type = 'digest'
+                 AND status = ?
+                 AND ai_title IS NOT NULL AND ai_title != ''
+                 AND ai_full_content IS NOT NULL AND ai_full_content != ''
+               ORDER BY created_at DESC""",
+            (TaskStatus.COMPLETED,)
         )
         rows = await cursor.fetchall()
-        return [_row_to_dict(r) for r in rows], total
+        publishable = [
+            task for task in (_row_to_dict(r) for r in rows)
+            if is_publishable_digest_task(task)
+        ]
+        return publishable[offset:offset + size], len(publishable)
 
 
 async def get_digest_by_date(digest_date: str) -> dict | None:
@@ -125,6 +170,27 @@ async def get_digest_by_date(digest_date: str) -> dict | None:
         )
         row = await cursor.fetchone()
         return _row_to_dict(row) if row else None
+
+
+async def get_public_digest_by_date(digest_date: str) -> dict | None:
+    """Return a publishable digest for a date, or None for public 404."""
+    async with get_db() as db:
+        cursor = await db.execute(
+            """SELECT * FROM crawl_task
+               WHERE task_type = 'digest'
+                 AND digest_date = ?
+                 AND status = ?
+                 AND ai_title IS NOT NULL AND ai_title != ''
+                 AND ai_full_content IS NOT NULL AND ai_full_content != ''
+               ORDER BY created_at DESC""",
+            (digest_date, TaskStatus.COMPLETED)
+        )
+        rows = await cursor.fetchall()
+    for row in rows:
+        task = _row_to_dict(row)
+        if is_publishable_digest_task(task):
+            return task
+    return None
 
 
 async def get_digest_existing_non_failed(digest_date: str) -> dict | None:
@@ -146,6 +212,26 @@ async def get_latest_completed_digest() -> dict | None:
         )
         row = await cursor.fetchone()
         return _row_to_dict(row) if row else None
+
+
+async def get_latest_public_digest() -> dict | None:
+    """Return the latest digest that is publishable on public APIs."""
+    async with get_db() as db:
+        cursor = await db.execute(
+            """SELECT * FROM crawl_task
+               WHERE task_type = 'digest'
+                 AND status = ?
+                 AND ai_title IS NOT NULL AND ai_title != ''
+                 AND ai_full_content IS NOT NULL AND ai_full_content != ''
+               ORDER BY created_at DESC""",
+            (TaskStatus.COMPLETED,)
+        )
+        rows = await cursor.fetchall()
+    for row in rows:
+        task = _row_to_dict(row)
+        if is_publishable_digest_task(task):
+            return task
+    return None
 
 
 async def get_recent_highlights(count: int = 5) -> list[str]:
@@ -434,6 +520,97 @@ async def get_digest_sections(task_id: int) -> list[dict]:
         return sections
 
 
+async def get_latest_digest_evaluation(task_id: int) -> dict | None:
+    """Get the latest final quality evaluation for a digest task."""
+    async with get_db() as db:
+        cursor = await db.execute(
+            """SELECT angle_coverage, source_diversity, depth_coverage,
+                      temporal_coverage, perspective_balance, language_coverage,
+                      overall_score, strategy_detail, weaknesses, suggestions,
+                      created_at
+               FROM optimization_record
+               WHERE task_id = ? AND strategy_type = 'digest_final_eval'
+               ORDER BY created_at DESC
+               LIMIT 1""",
+            (task_id,),
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+
+        evaluation = _row_to_dict(row)
+        for field in ("strategy_detail", "weaknesses", "suggestions"):
+            raw = evaluation.get(field)
+            if raw and isinstance(raw, str):
+                try:
+                    evaluation[field] = json.loads(raw)
+                except json.JSONDecodeError:
+                    evaluation[field] = []
+            elif raw is None:
+                evaluation[field] = []
+        return evaluation
+
+
+async def get_digest_source_diagnostics(task_id: int) -> list[dict]:
+    """Summarize sources used by each digest section for quality troubleshooting."""
+    async with get_db() as db:
+        cursor = await db.execute(
+            """SELECT ds.category AS section,
+                      di.source_name,
+                      di.source_url,
+                      di.page_id,
+                      cp.page_metadata
+               FROM digest_section ds
+               INNER JOIN digest_item di ON di.section_id = ds.id
+               LEFT JOIN crawl_page cp ON cp.id = di.page_id
+               WHERE ds.task_id = ?
+               ORDER BY ds.sort_order, di.sort_order""",
+            (task_id,),
+        )
+        rows = await cursor.fetchall()
+
+    diagnostics: dict[tuple, dict] = {}
+    for row in rows:
+        item = _row_to_dict(row)
+        metadata = {}
+        raw_meta = item.get("page_metadata")
+        if raw_meta and isinstance(raw_meta, str):
+            try:
+                parsed = json.loads(raw_meta)
+                metadata = parsed if isinstance(parsed, dict) else {}
+            except json.JSONDecodeError:
+                metadata = {}
+
+        source_id = metadata.get("source_id")
+        source_name = metadata.get("source_name") or item.get("source_name") or ""
+        source_url = item.get("source_url") or ""
+        section = item.get("section") or ""
+        key = (section, str(source_id or ""), source_name, source_url)
+        current = diagnostics.setdefault(key, {
+            "section": section,
+            "source_id": source_id,
+            "source_name": source_name,
+            "source_url": source_url,
+            "item_count": 0,
+            "quality_score": None,
+            "quality_verdict": None,
+        })
+        current["item_count"] += 1
+        if metadata.get("quality_score") is not None:
+            current["quality_score"] = metadata.get("quality_score")
+        if metadata.get("quality_verdict"):
+            current["quality_verdict"] = metadata.get("quality_verdict")
+
+    return sorted(
+        diagnostics.values(),
+        key=lambda item: (
+            item["quality_score"] is None,
+            item["quality_score"] if item["quality_score"] is not None else 999,
+            -item["item_count"],
+        ),
+    )
+
+
 # ============== Page CRUD ==============
 
 async def save_pages(task_id: int, results: list) -> int:
@@ -583,7 +760,8 @@ async def get_history_digest_pages(count: int = 3) -> list[dict]:
             """SELECT p.url, p.page_title, SUBSTR(p.raw_markdown, 1, 2000) AS raw_markdown
                FROM crawl_page p
                INNER JOIN (
-                   SELECT id FROM crawl_task
+                   SELECT id, created_at
+                   FROM crawl_task
                    WHERE task_type = 'digest' AND status = 3
                    ORDER BY created_at DESC LIMIT ?
                ) t ON p.task_id = t.id

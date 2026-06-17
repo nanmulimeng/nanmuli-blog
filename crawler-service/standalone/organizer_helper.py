@@ -40,6 +40,14 @@ def build_digest_pages(pages: list[dict]) -> list[DigestPageContent]:
         if p.get("crawl_status") != 2 or not p.get("raw_markdown"):
             continue
         url = p.get("url", "")
+        title = p.get("page_title", "")
+        markdown = p.get("raw_markdown", "")
+        try:
+            from standalone.task_executor import _low_value_digest_candidate_reason
+            if _low_value_digest_candidate_reason(url, title, markdown):
+                continue
+        except Exception:
+            pass
         # 优先从 metadata 读取源名（信息源自定义名称），回退到域名解析
         source_name = ""
         meta_raw = p.get("page_metadata")
@@ -52,12 +60,38 @@ def build_digest_pages(pages: list[dict]) -> list[DigestPageContent]:
                 pass
         if not source_name:
             source_name = extract_source_name(url)
+        category = infer_category(url, p.get("page_title", ""))
+        if category == "open_source":
+            try:
+                from crawler.digest_gen_agent import _is_open_source_digest_page
+                if not _is_open_source_digest_page(url):
+                    continue
+            except Exception:
+                pass
+        listing_pages = []
+        try:
+            from crawler.digest_gen_agent import _expand_generic_listing_page
+            listing_pages = _expand_generic_listing_page(
+                url=url,
+                title=p.get("page_title", ""),
+                content=p.get("raw_markdown", ""),
+                category=category,
+                source_name=source_name,
+                source_level_provider=SourceAuthority.score,
+            )
+        except Exception:
+            listing_pages = []
+        if listing_pages:
+            for page in listing_pages:
+                page.page_id = p.get("id")
+                result.append(page)
+            continue
         result.append(DigestPageContent(
             url=url,
-            title=p.get("page_title", ""),
-            markdown=p.get("raw_markdown", ""),
-            summary=_extract_summary(p.get("raw_markdown", "")),
-            category=infer_category(url, p.get("page_title", "")),
+            title=title,
+            markdown=markdown,
+            summary=_extract_summary(markdown),
+            category=category,
             source_name=source_name,
             source_level=SourceAuthority.score(url).get("level", "medium"),
             page_id=p.get("id"),
@@ -258,6 +292,24 @@ async def organize_digest_and_save(
     if recent_highlights and result.highlight:
         if _is_highlight_duplicate(result.highlight, recent_highlights):
             _replace_duplicate_highlight(result, recent_highlights)
+
+    from ai.organizer import InvalidOutputError
+    from standalone.digest_quality_gate import (
+        digest_quality_error_message,
+        evaluate_digest_publish_quality,
+        save_digest_publish_quality,
+    )
+    quality, publishable = evaluate_digest_publish_quality(result)
+    if not publishable:
+        msg = digest_quality_error_message(quality)
+        await save_digest_publish_quality(
+            repo, task_id, quality, False, "fallback",
+        )
+        await repo.save_ai_error(task_id, msg)
+        raise InvalidOutputError(msg)
+    await save_digest_publish_quality(
+        repo, task_id, quality, True, "fallback",
+    )
 
     # 构建 URL → page_id 映射，供序列化时回填
     url_to_page_id = {p.url: p.page_id for p in digest_pages if p.url and p.page_id is not None}

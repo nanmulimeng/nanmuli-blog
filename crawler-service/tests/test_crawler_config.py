@@ -30,6 +30,7 @@ from crawler.config import (
     _filter_boilerplate,
     _is_inline_nav,
 )
+import crawler.config as crawler_config
 
 
 # ============== RunParams ==============
@@ -144,6 +145,16 @@ class TestGetBrowserConfig:
         await get_browser_config()
         call_kwargs = MockBrowserConfig.call_args[1]
         assert call_kwargs["headless"] is True
+
+    @pytest.mark.asyncio
+    @patch("crawler.config.BrowserConfig")
+    @patch("crawler.config.get_effective_proxy", new_callable=AsyncMock, return_value="")
+    async def test_browser_channel_from_settings(self, mock_eff_proxy, MockBrowserConfig, monkeypatch):
+        monkeypatch.setattr(crawler_config.settings, "browser_channel", "chrome")
+        await get_browser_config()
+        call_kwargs = MockBrowserConfig.call_args[1]
+        assert call_kwargs["channel"] == "chrome"
+        assert call_kwargs["chrome_channel"] == "chrome"
 
 
 # ============== extract_markdown ==============

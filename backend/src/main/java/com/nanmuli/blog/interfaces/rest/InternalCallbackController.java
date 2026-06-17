@@ -72,6 +72,28 @@ public class InternalCallbackController {
                 .anyMatch(profile -> profile.equals("dev") || profile.equals("local") || profile.equals("test"));
     }
 
+    private boolean configAuthRequired(String requestKey) {
+        String expectedCallbackKey = configService.get("crawler.callback.api-key", "");
+        if (!expectedCallbackKey.isBlank() && expectedCallbackKey.equals(requestKey)) {
+            return false;
+        }
+
+        String expectedCrawlerKey = configService.get("crawler.service.api-key", "");
+        if (!expectedCrawlerKey.isBlank() && expectedCrawlerKey.equals(requestKey)) {
+            return false;
+        }
+
+        if (expectedCallbackKey.isBlank() && isBootstrapAllowedProfile()) {
+            if (!apiKeyBlankWarned) {
+                log.warn("[Auth] crawler.callback.api-key is blank - allowing unauthenticated access for bootstrap endpoint in non-production profile");
+                apiKeyBlankWarned = true;
+            }
+            return false;
+        }
+
+        return true;
+    }
+
     @PostMapping("/callback")
     public Result<Void> handleCallback(
             @RequestHeader(value = "X-Callback-Key", required = false) String callbackKey,
@@ -118,7 +140,7 @@ public class InternalCallbackController {
     @GetMapping("/config")
     public Result<Map<String, String>> getCrawlerConfig(
             @RequestHeader(value = "X-Callback-Key", required = false) String callbackKey) {
-        if (authRequired(callbackKey, true)) {
+        if (configAuthRequired(callbackKey)) {
             log.warn("[Config] Unauthorized: requestKey={}***", maskKey(callbackKey));
             return Result.error(403, "Invalid callback key");
         }

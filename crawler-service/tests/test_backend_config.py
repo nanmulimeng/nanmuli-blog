@@ -92,6 +92,48 @@ def test_blank_backend_auth_keys_do_not_clear_env_api_keys(monkeypatch):
         settings.api_keys = original_keys
 
 
+def test_backend_service_api_key_maps_to_crawler_auth_keys(monkeypatch):
+    from config import settings
+    from standalone import backend_config
+
+    original_keys = settings.api_keys
+    try:
+        settings.api_keys = "env-key"
+        monkeypatch.setattr(backend_config, "_ENV_API_KEYS", "env-key")
+
+        backend_config._apply_all_settings({
+            "auth.enabled": "true",
+            "auth.api_keys": "",
+            "service.api-key": "backend-service-key",
+        })
+
+        assert settings.api_keys == "backend-service-key"
+    finally:
+        settings.api_keys = original_keys
+
+
+def test_config_fetch_key_falls_back_to_service_api_key():
+    from config import settings
+    from standalone import backend_config
+
+    original_callback_key = settings.callback_api_key
+    original_api_keys = settings.api_keys
+    try:
+        settings.callback_api_key = ""
+        settings.api_keys = "first-key,second-key"
+
+        assert backend_config._config_fetch_key() == "first-key"
+
+        settings.callback_api_key = "callback-key"
+        assert backend_config._config_fetch_key() == "first-key"
+
+        settings.api_keys = ""
+        assert backend_config._config_fetch_key() == "callback-key"
+    finally:
+        settings.callback_api_key = original_callback_key
+        settings.api_keys = original_api_keys
+
+
 def test_backend_localhost_urls_do_not_override_env_container_urls(monkeypatch):
     from config import settings
     from standalone import backend_config

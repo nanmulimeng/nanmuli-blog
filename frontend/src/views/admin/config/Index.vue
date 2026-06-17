@@ -2,18 +2,26 @@
 import { ref, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { RefreshRight, Lock, Hide } from '@element-plus/icons-vue'
-import { getAdminConfigList, updateConfig, refreshConfigs, getProxyStatus } from '@/api/config'
+import {
+  getAdminConfigList,
+  updateConfig,
+  resetConfigToDefault,
+  refreshConfigs,
+  getProxyStatus,
+} from '@/api/config'
 import type { Config, ProxyStatus } from '@/types/config'
 import FileUpload from '@/components/common/FileUpload.vue'
 
 const loading = ref(false)
 const refreshing = ref(false)
+const resettingKey = ref<string | null>(null)
 const savingSection = ref<string | null>(null)
 const configs = ref<Config[]>([])
 const formData = ref<Record<string, string>>({})
 const originalData = ref<Record<string, string>>({})
 const activeTab = ref('crawler')
 const proxyStatus = ref<ProxyStatus | null>(null)
+const DIGEST_SECTIONS_KEY = 'crawler.digest.sections'
 
 // ====== 数据获取 ======
 
@@ -53,6 +61,27 @@ async function handleRefreshAll(): Promise<void> {
     ElMessage.error('刷新失败，请检查后端服务状态')
   } finally {
     refreshing.value = false
+  }
+}
+
+async function handleResetDigestSections(): Promise<void> {
+  try {
+    await ElMessageBox.confirm(
+      '将恢复日报推荐源为当前版本内置默认值，并刷新后端与爬虫服务配置。确定继续？',
+      '恢复日报推荐源',
+      { confirmButtonText: '恢复', cancelButtonText: '取消', type: 'warning' },
+    )
+  } catch { return }
+
+  resettingKey.value = DIGEST_SECTIONS_KEY
+  try {
+    await resetConfigToDefault(DIGEST_SECTIONS_KEY)
+    ElMessage.success('日报推荐源已恢复')
+    await fetchData()
+  } catch {
+    ElMessage.error('恢复失败，请检查后端服务状态')
+  } finally {
+    resettingKey.value = null
   }
 }
 
@@ -181,6 +210,15 @@ onMounted(fetchData)
         </p>
       </div>
       <div class="flex gap-2">
+        <el-button
+          type="primary"
+          plain
+          :icon="RefreshRight"
+          :loading="resettingKey === DIGEST_SECTIONS_KEY"
+          @click="handleResetDigestSections"
+        >
+          恢复日报推荐源
+        </el-button>
         <el-button
           type="warning"
           :icon="RefreshRight"

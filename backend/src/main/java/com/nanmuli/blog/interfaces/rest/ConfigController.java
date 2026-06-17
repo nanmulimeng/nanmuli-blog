@@ -52,20 +52,15 @@ public class ConfigController {
                                @Valid @RequestBody UpdateConfigCommand command) {
         configAppService.update(key, command.getValue());
 
-        if (key.startsWith("crawler.")) {
-            // 1. 先用旧 ConfigService 通知 Python（避免 callback key 变更后认证死锁）
-            crawlerTaskClient.reloadPool();
-            crawlerTaskClient.refreshConfig();
+        refreshAfterConfigChange(key);
 
-            // 2. 再刷新 Java ConfigService（Java 侧开始使用新值）
-            configService.reload();
+        return Result.success();
+    }
 
-            // 3. 用新 ConfigService 重建连接池（后续请求使用新地址/密钥）
-            crawlerTaskClient.reloadPool();
-        } else {
-            configService.reload();
-        }
-
+    @PostMapping("/admin/config/{key}/reset-default")
+    public Result<Void> resetToDefault(@PathVariable String key) {
+        configAppService.resetToDefault(key);
+        refreshAfterConfigChange(key);
         return Result.success();
     }
 
@@ -99,6 +94,22 @@ public class ConfigController {
                 "message", "所有配置已刷新",
                 "components", List.of("Spring Cache", "Python Crawler", "ConfigService", "CrawlerTaskClient Pool")
         ));
+    }
+
+    private void refreshAfterConfigChange(String key) {
+        if (key.startsWith("crawler.")) {
+            // 1. 先用旧 ConfigService 通知 Python（避免 callback key 变更后认证死锁）
+            crawlerTaskClient.reloadPool();
+            crawlerTaskClient.refreshConfig();
+
+            // 2. 再刷新 Java ConfigService（Java 侧开始使用新值）
+            configService.reload();
+
+            // 3. 用新 ConfigService 重建连接池（后续请求使用新地址/密钥）
+            crawlerTaskClient.reloadPool();
+        } else {
+            configService.reload();
+        }
     }
 
 }

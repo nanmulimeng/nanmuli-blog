@@ -6,6 +6,19 @@ export interface CollectTaskAiSearchMetadata {
   originalKeyword?: string
   optimizedKeyword?: string
   searchVariants?: string[]
+  diagnostics?: CollectTaskDiagnostics
+}
+
+export interface CollectTaskDiagnostics {
+  stage: string
+  summary: string
+  failure: {
+    category: string
+    label: string
+    severity: 'info' | 'warning' | 'danger' | 'success'
+    action_hint: string
+  }
+  signals: Record<string, boolean>
 }
 
 export interface CollectTask {
@@ -38,6 +51,7 @@ export interface CollectTask {
   aiCategory: string | null
   aiFullContent: string | null
   aiSearchMetadata: CollectTaskAiSearchMetadata | null
+  diagnostics?: CollectTaskDiagnostics | null
   articleId: string | null
   dailyLogId: string | null
   createdAt: string
@@ -109,7 +123,72 @@ export interface DigestDetail {
   error_message: string | null
   sections: DigestSection[]
   orchestrator_plan: string[] | null
+  diagnostics?: CollectTaskDiagnostics | null
+  quality_evaluation?: DigestQualityEvaluation | null
   created_at: string
+}
+
+export interface DigestQualityEvaluation {
+  overall_score: number | null
+  dimensions: Record<string, number | null>
+  section_scores: DigestSectionQuality[]
+  source_diagnostics?: DigestSourceDiagnostic[]
+  next_run_actions?: DigestSourceActions | null
+  weaknesses: string[]
+  suggestions: string[]
+  publishable?: boolean | null
+  stage?: string | null
+  created_at?: string
+}
+
+export interface DigestSourceActionSource {
+  source_id?: string | number | null
+  source_name: string
+  source_url: string
+  section: string
+  item_count: number
+  quality_score?: number | null
+  quality_verdict?: string | null
+  action: 'skip' | 'deprioritize'
+  reason: string
+}
+
+export interface DigestSourceActions {
+  digest_date?: string | null
+  created_at?: string | null
+  source_ids: {
+    skip: Array<string | number>
+    deprioritize: Array<string | number>
+  }
+  source_urls?: {
+    skip: string[]
+    deprioritize: string[]
+  }
+  boost_sections: string[]
+  sources: Record<string, DigestSourceActionSource>
+  reasons: string[]
+  suggestions: string[]
+  confidence: 'none' | 'low' | 'medium' | 'high' | string
+}
+
+export interface DigestSourceDiagnostic {
+  section: string
+  source_id?: string | number | null
+  source_name: string
+  source_url: string
+  item_count: number
+  quality_score?: number | null
+  quality_verdict?: string | null
+}
+
+export interface DigestSectionQuality {
+  name: string
+  result_count?: number
+  status?: string
+  fill_score?: number
+  score?: number
+  issues?: string[]
+  suggestions?: string[]
 }
 
 export interface DigestSchedulerStatus {
@@ -118,6 +197,42 @@ export interface DigestSchedulerStatus {
   enabled: boolean
   next_run: string | null
   source_jobs: number
+  digest_job_registered?: boolean
+  ai_enabled?: boolean
+  ai_configured?: boolean
+  jobs?: DigestSchedulerJob[]
+  latest_digest?: DigestSchedulerLatestDigest | null
+  diagnostics?: DigestSchedulerDiagnostics | null
+}
+
+export interface DigestSchedulerDiagnostics {
+  state: 'disabled' | 'running' | 'misconfigured' | 'idle' | 'latest_failed' | 'healthy' | string
+  summary: string
+  action_hint: string
+  checks: DigestSchedulerDiagnosticsCheck[]
+}
+
+export interface DigestSchedulerDiagnosticsCheck {
+  key: string
+  label: string
+  status: 'success' | 'warning' | 'danger' | 'info' | string
+  message: string
+}
+
+export interface DigestSchedulerJob {
+  id?: string | null
+  name?: string | null
+  next_run?: string | null
+}
+
+export interface DigestSchedulerLatestDigest {
+  id?: number
+  digest_date?: string | null
+  status?: number
+  status_label?: string
+  error_message?: string | null
+  created_at?: string | null
+  diagnostics?: CollectTaskDiagnostics | null
 }
 
 export interface DigestListResult {
@@ -135,8 +250,35 @@ export interface DigestSectionConfig {
 }
 
 export interface DigestOptimizationTrend {
-  trend: Array<Record<string, any>>
+  trend: DigestQualityTrendItem[]
   count: number
+  summary?: DigestQualitySummary
+  latest?: DigestQualityTrendItem | null
+  weak_dimensions?: Record<string, number>
+  suggestions?: string[]
+  next_run_actions?: DigestSourceActions | null
+}
+
+export interface DigestQualitySummary {
+  average_score: number | null
+  latest_score: number | null
+  score_delta: number | null
+  status: 'success' | 'warning' | 'danger' | 'unknown'
+}
+
+export interface DigestQualityTrendItem {
+  digest_date: string | null
+  overall_score: number | null
+  angle_coverage?: number | null
+  source_diversity?: number | null
+  depth_coverage?: number | null
+  temporal_coverage?: number | null
+  perspective_balance?: number | null
+  language_coverage?: number | null
+  strategy_detail?: Array<Record<string, any>>
+  weaknesses?: string[]
+  suggestions?: string[]
+  created_at?: string
 }
 
 export interface CollectPage {

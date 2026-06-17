@@ -109,6 +109,23 @@ class TestBuildPlan:
         assert plan.kb_hint["recommended_engine"] == "bing"
 
     @pytest.mark.asyncio
+    async def test_kb_source_actions_stored_in_plan(self):
+        sections = [{"name": "s1", "source_type": "keyword", "keyword": "AI"}]
+        actions = {
+            "source_ids": {"skip": [10], "deprioritize": [11]},
+            "boost_sections": ["source_diversity"],
+            "confidence": "medium",
+        }
+        orch = DigestOrchestrator()
+        with patch("standalone.task_executor.get_digest_sections", return_value=sections), \
+             patch("optimization.knowledge_base.KnowledgeBase.get_strategy_hint", return_value=None), \
+             patch("optimization.knowledge_base.KnowledgeBase.get_last_digest_weaknesses", return_value=None), \
+             patch("optimization.knowledge_base.KnowledgeBase.get_digest_source_actions", return_value=actions):
+            plan = await orch._build_plan({"id": 1})
+        assert plan.kb_hint["next_run_actions"] == actions
+        assert any("Source feedback actions" in log for log in plan.plan_log)
+
+    @pytest.mark.asyncio
     async def test_quality_trend_uses_actual_dimension_fields(self):
         sections = [{"name": "s1", "source_type": "keyword", "keyword": "AI"}]
         trend = [{
@@ -192,7 +209,9 @@ class TestSnapshotConfig:
                     "optimization_enabled", "optimization_mode",
                     "digest_optimization_enabled",
                     "digest_optimization_min_sections",
-                    "digest_optimization_min_results_per_section"}
+                    "digest_optimization_min_results_per_section",
+                    "digest_publish_core_sections",
+                    "digest_publish_min_core_sections"}
         assert required.issubset(snap.keys())
 
 
@@ -238,6 +257,201 @@ class TestShouldRunOptimization:
         }
         orch = self._setup_orch_with_sections([5, 2, 1])
         assert orch._should_run_optimization(snap, []) is False
+
+
+class TestCoreSectionRescue:
+    def _setup_core_plan(self, result_counts: dict[str, int]) -> DigestOrchestrator:
+        orch = DigestOrchestrator()
+        sections = [
+            _make_section(name=name, keywords=[name], result_count=count)
+            for name, count in result_counts.items()
+        ]
+        orch._crawl_plan = _make_plan(sections=sections)
+        return orch
+
+    def test_core_section_status_tracks_starved_sections(self, monkeypatch):
+        monkeypatch.setattr(
+            "crawler.digest_orchestrator.settings.digest_publish_core_sections",
+            "hot_trend,open_source,dev_tool,tech_article,paper",
+            raising=False,
+        )
+        monkeypatch.setattr(
+            "crawler.digest_orchestrator.settings.digest_publish_min_core_sections",
+            3,
+            raising=False,
+        )
+        orch = self._setup_core_plan({
+            "hot_trend": 3,
+            "open_source": 1,
+            "dev_tool": 0,
+            "tech_article": 0,
+            "paper": 0,
+            "other": 0,
+        })
+
+        status = orch._core_section_status(min_per_section=3)
+
+        assert status["covered_count"] == 2
+        assert [s.name for s in status["starved_sections"]] == [
+            "open_source",
+            "dev_tool",
+            "tech_article",
+            "paper",
+        ]
+        assert status["missing_core_sections"] == ["dev_tool", "tech_article", "paper"]
+        assert "other" not in status["missing_core_sections"]
+
+    @pytest.mark.asyncio
+    async def test_rescue_starved_core_sections_adds_results_and_logs(self, monkeypatch):
+        monkeypatch.setattr(
+            "crawler.digest_orchestrator.settings.digest_publish_core_sections",
+            "hot_trend,open_source,dev_tool,tech_article,paper",
+            raising=False,
+        )
+        monkeypatch.setattr(
+            "crawler.digest_orchestrator.settings.digest_publish_min_core_sections",
+            3,
+            raising=False,
+        )
+        orch = self._setup_core_plan({
+            "hot_trend": 3,
+            "open_source": 0,
+            "dev_tool": 0,
+            "tech_article": 0,
+        })
+        orch._crawl_plan.config_snapshot["digest_optimization_min_results_per_section"] = 3
+        docs = []
+
+        class FakeCrawlerAgent:
+            def __init__(self, section, report, config, snap):
+                self.section = section
+                self.report = report
+
+            async def execute(self, crawler, history_engine):
+                docs.append(SimpleNamespace(section_name=self.section.name))
+                return SimpleNamespace(
+                    success=True,
+                    results=[_make_result(url=f"https://{self.section.name}.example.com/1")],
+                    fallback_used=False,
+                    section_document=docs[-1],
+                )
+
+        def merge_results(results, seen_urls, all_results, content_dedup):
+            all_results.extend(results)
+            return len(results)
+
+        with patch("crawler.crawler_agent.CrawlerAgent", FakeCrawlerAgent), \
+             patch("standalone.repository.update_task_progress", new_callable=AsyncMock), \
+             patch.object(orch, "_merge_results", side_effect=merge_results) as mock_merge:
+            all_results = [_make_result(url="https://hot.example.com/1")]
+            await orch._rescue_starved_core_sections(
+                MagicMock(), MagicMock(), MagicMock(), _mock_dedup(),
+                {"id": 1}, asyncio.Lock(), set(), all_results,
+            )
+
+        assert mock_merge.call_count == 2
+        assert len(all_results) == 3
+        assert len(orch._section_documents) == 2
+        assert orch._crawl_plan.sections[1].result_count == 1
+        assert any("Core section rescue" in log for log in orch._crawl_plan.plan_log)
+        assert any("post-rescue covered=3/3" in log for log in orch._crawl_plan.plan_log)
+
+    @pytest.mark.asyncio
+    async def test_rescue_without_results_does_not_fake_success(self, monkeypatch):
+        monkeypatch.setattr(
+            "crawler.digest_orchestrator.settings.digest_publish_core_sections",
+            "hot_trend,open_source,dev_tool,tech_article,paper",
+            raising=False,
+        )
+        monkeypatch.setattr(
+            "crawler.digest_orchestrator.settings.digest_publish_min_core_sections",
+            3,
+            raising=False,
+        )
+        orch = self._setup_core_plan({
+            "hot_trend": 3,
+            "open_source": 0,
+            "dev_tool": 0,
+        })
+
+        class EmptyCrawlerAgent:
+            def __init__(self, section, report, config, snap):
+                self.section = section
+
+            async def execute(self, crawler, history_engine):
+                return SimpleNamespace(
+                    success=True,
+                    results=[],
+                    fallback_used=False,
+                    section_document=None,
+                )
+
+        with patch("crawler.crawler_agent.CrawlerAgent", EmptyCrawlerAgent), \
+             patch("standalone.repository.update_task_progress", new_callable=AsyncMock), \
+             patch.object(orch, "_merge_results", return_value=0):
+            await orch._rescue_starved_core_sections(
+                MagicMock(), MagicMock(), MagicMock(), _mock_dedup(),
+                {"id": 1}, asyncio.Lock(), set(), [],
+            )
+
+        status = orch._core_section_status()
+        assert status["covered_count"] == 1
+        assert orch._crawl_plan.sections[1].status == "failed-rescue"
+        assert any("post-rescue covered=1/3" in log for log in orch._crawl_plan.plan_log)
+
+    @pytest.mark.asyncio
+    async def test_non_core_starvation_does_not_trigger_rescue(self, monkeypatch):
+        monkeypatch.setattr(
+            "crawler.digest_orchestrator.settings.digest_publish_core_sections",
+            "hot_trend,open_source,dev_tool",
+            raising=False,
+        )
+        monkeypatch.setattr(
+            "crawler.digest_orchestrator.settings.digest_publish_min_core_sections",
+            3,
+            raising=False,
+        )
+        orch = self._setup_core_plan({
+            "hot_trend": 1,
+            "open_source": 1,
+            "dev_tool": 1,
+            "other": 0,
+        })
+
+        with patch("crawler.crawler_agent.CrawlerAgent") as mock_agent:
+            await orch._rescue_starved_core_sections(
+                MagicMock(), MagicMock(), MagicMock(), _mock_dedup(),
+                {"id": 1}, asyncio.Lock(), set(), [],
+            )
+
+        mock_agent.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rescue_skips_when_core_coverage_already_met(self, monkeypatch):
+        monkeypatch.setattr(
+            "crawler.digest_orchestrator.settings.digest_publish_core_sections",
+            "hot_trend,open_source,dev_tool,tech_article,paper",
+            raising=False,
+        )
+        monkeypatch.setattr(
+            "crawler.digest_orchestrator.settings.digest_publish_min_core_sections",
+            3,
+            raising=False,
+        )
+        orch = self._setup_core_plan({
+            "hot_trend": 3,
+            "open_source": 3,
+            "dev_tool": 3,
+            "paper": 0,
+        })
+
+        with patch("crawler.crawler_agent.CrawlerAgent") as mock_agent:
+            await orch._rescue_starved_core_sections(
+                MagicMock(), MagicMock(), MagicMock(), _mock_dedup(),
+                {"id": 1}, asyncio.Lock(), set(), [],
+            )
+
+        mock_agent.assert_not_called()
 
 
 # ============== TestQuickCoverageCheck ==============
@@ -541,6 +755,371 @@ class TestPhase4Evaluation:
         assert quality["item_count"] == 1
         assert any("日报条目数偏少" in s for s in quality["suggestions"])
         assert "fullContent 缺少 Markdown 标题结构" in quality["suggestions"]
+
+    def test_calculate_digest_output_quality_penalizes_generic_source_reuse(self):
+        from ai.organizer import DigestContent, DigestSection, DigestItem
+
+        digest = DigestContent(
+            title="技术日报",
+            summary="summary",
+            highlight="highlight",
+            tags=["ai"],
+            full_content="# 技术日报\n\n## 热点\n\n内容足够完整",
+            sections=[
+                DigestSection(
+                    category="hot_trend",
+                    items=[
+                        DigestItem(
+                            title="Meta AI support issue",
+                            one_liner="This item explains concrete developer impact clearly",
+                            source_url="https://techcrunch.com/",
+                            source_name="TechCrunch",
+                        ),
+                        DigestItem(
+                            title="Alphabet infrastructure funding",
+                            one_liner="This item explains another concrete developer impact clearly",
+                            source_url="https://techcrunch.com/?utm_source=digest",
+                            source_name="TechCrunch",
+                        ),
+                        DigestItem(
+                            title="OpenAI image update",
+                            one_liner="This item explains concrete developer impact clearly",
+                            source_url="https://openai.com/blog/image-update",
+                            source_name="OpenAI",
+                        ),
+                    ],
+                ),
+                DigestSection(
+                    category="tech_article",
+                    items=[
+                        DigestItem(
+                            title="Architecture analysis",
+                            one_liner="This item explains concrete engineering tradeoffs clearly",
+                            source_url="https://martinfowler.com/articles/architecture.html",
+                            source_name="Martin Fowler",
+                        ),
+                        DigestItem(
+                            title="Reliability writeup",
+                            one_liner="This item explains concrete reliability lessons clearly",
+                            source_url="https://cloudflare.com/blog/reliability-writeup",
+                            source_name="Cloudflare",
+                        ),
+                    ],
+                ),
+            ],
+        )
+
+        quality = _calculate_digest_output_quality(digest)
+
+        assert quality["duplicate_source_count"] == 1
+        assert quality["generic_source_count"] == 2
+        assert quality["score"] < 0.9
+        assert any("首页/列表页" in s for s in quality["suggestions"])
+
+    def test_calculate_digest_output_quality_flags_five_items_as_thin(self):
+        from ai.organizer import DigestContent, DigestSection, DigestItem
+
+        digest = DigestContent(
+            title="技术日报",
+            summary="summary",
+            highlight="highlight",
+            tags=["ai"],
+            full_content="# 技术日报\n\n## 热点\n\n内容足够完整",
+            sections=[
+                DigestSection(
+                    category="hot_trend",
+                    items=[
+                        DigestItem(
+                            title=f"Item {i}",
+                            one_liner="This one liner explains developer impact clearly",
+                            source_url=f"https://example.com/{i}",
+                            source_name="example.com",
+                        )
+                        for i in range(5)
+                    ],
+                ),
+                DigestSection(
+                    category="tech_article",
+                    items=[],
+                ),
+            ],
+        )
+
+        quality = _calculate_digest_output_quality(digest)
+
+        assert quality["item_count"] == 5
+        assert quality["score"] < 1.0
+        assert any("日报条目数偏少" in s for s in quality["suggestions"])
+
+    def test_calculate_digest_output_quality_penalizes_duplicate_titles(self):
+        from ai.organizer import DigestContent, DigestSection, DigestItem
+
+        digest = DigestContent(
+            title="技术日报",
+            summary="summary",
+            highlight="highlight",
+            tags=["ai"],
+            full_content="# 技术日报\n\n## 热点\n\n内容足够完整",
+            sections=[
+                DigestSection(
+                    category="hot_trend",
+                    items=[
+                        DigestItem(
+                            title="React 19 正式发布",
+                            one_liner="This item explains concrete developer impact clearly",
+                            source_url="https://news.example.com/react-19",
+                            source_name="News",
+                        ),
+                        DigestItem(
+                            title="React 19 正式发布",
+                            one_liner="This item repeats the same event from another source",
+                            source_url="https://react.dev/blog/react-19",
+                            source_name="React",
+                        ),
+                        DigestItem(
+                            title="Bun 1.2 性能更新",
+                            one_liner="This item explains concrete runtime impact clearly",
+                            source_url="https://bun.sh/blog/bun-v1.2",
+                            source_name="Bun",
+                        ),
+                        DigestItem(
+                            title="Kubernetes 调度器解析",
+                            one_liner="This item explains scheduler tradeoffs clearly",
+                            source_url="https://kubernetes.io/blog/scheduler",
+                            source_name="Kubernetes",
+                        ),
+                        DigestItem(
+                            title="PostgreSQL 索引实践",
+                            one_liner="This item explains database indexing tradeoffs clearly",
+                            source_url="https://postgresql.org/docs/indexes",
+                            source_name="PostgreSQL",
+                        ),
+                    ],
+                ),
+                DigestSection(
+                    category="tech_article",
+                    items=[
+                        DigestItem(
+                            title="架构质量模型",
+                            one_liner="This item explains architecture quality models clearly",
+                            source_url="https://martinfowler.com/articles/architecture-quality.html",
+                            source_name="Martin Fowler",
+                        ),
+                    ],
+                ),
+            ],
+        )
+
+        quality = _calculate_digest_output_quality(digest)
+
+        assert quality["duplicate_title_count"] == 1
+        assert quality["score"] < 1.0
+        assert any("重复标题" in s for s in quality["suggestions"])
+
+    def test_calculate_digest_output_quality_penalizes_low_relevance_items(self):
+        from ai.organizer import DigestContent, DigestSection, DigestItem
+
+        digest = DigestContent(
+            title="Daily Digest",
+            summary="summary",
+            highlight="highlight",
+            tags=["tech"],
+            full_content="# Daily Digest\n\n## Trends\n\nStructured markdown content",
+            sections=[
+                DigestSection(
+                    category="hot_trend",
+                    items=[
+                        DigestItem(
+                            title="Grand Theft Auto cheat service gets hacked",
+                            one_liner="A gaming account breach affects players but has little direct software engineering signal.",
+                            source_url="https://techcrunch.com/game",
+                            source_name="TechCrunch",
+                        ),
+                        DigestItem(
+                            title="SpaceX may issue equity in future transactions",
+                            one_liner="A space finance item is timely but weak for a developer daily digest.",
+                            source_url="https://techcrunch.com/space",
+                            source_name="TechCrunch",
+                        ),
+                        DigestItem(
+                            title="ASRock Radeon RX 9070 GRE Steel Legend Review",
+                            one_liner="A GPU hardware review is not a strong software development signal.",
+                            source_url="https://www.techpowerup.com/review/asrock-radeon-rx-9070-gre-steel-legend/",
+                            source_name="TechPowerUp",
+                        ),
+                    ],
+                ),
+                DigestSection(
+                    category="tech_article",
+                    items=[
+                        DigestItem(
+                            title="GoDeal24 unveils anniversary sale: Office 2024 at USD 16.99",
+                            one_liner="A software discount promotion should not lift digest quality.",
+                            source_url="https://www.techpowerup.com/349500/godeal24-unveils-6th-anniversary-sale-office-2024-at-just-usd-16-99",
+                            source_name="TechPowerUp",
+                        ),
+                        DigestItem(
+                            title="Water access is now a risk factor in SpaceX IPO",
+                            one_liner="A finance and water access item is weak for developer actionability.",
+                            source_url="https://techcrunch.com/water-access-spacex-ipo",
+                            source_name="TechCrunch",
+                        ),
+                        DigestItem(
+                            title="Climate fund raises capital",
+                            one_liner="A climate fund financing item is not a strong engineering update.",
+                            source_url="https://techcrunch.com/climate-fund",
+                            source_name="TechCrunch",
+                        ),
+                    ],
+                ),
+            ],
+        )
+
+        quality = _calculate_digest_output_quality(digest)
+
+        assert quality["low_relevance_item_count"] >= 4
+        assert quality["score"] < 0.75
+        assert any("relevance" in s for s in quality["suggestions"])
+
+    def test_calculate_digest_output_quality_penalizes_thin_homepage_reuse(self):
+        from ai.organizer import DigestContent, DigestSection, DigestItem
+
+        digest = DigestContent(
+            title="Daily Digest",
+            summary="summary",
+            highlight="highlight",
+            tags=["ai"],
+            full_content="# Daily Digest\n\n## Trends\n\nStructured markdown content",
+            sections=[
+                DigestSection(
+                    category="hot_trend",
+                    items=[
+                        DigestItem(
+                            title="Meta AI support issue",
+                            one_liner="This item explains developer impact clearly enough.",
+                            source_url="https://techcrunch.com/",
+                            source_name="TechCrunch",
+                        ),
+                        DigestItem(
+                            title="Alphabet infrastructure funding",
+                            one_liner="This item explains infrastructure impact clearly enough.",
+                            source_url="https://techcrunch.com/?utm_source=digest",
+                            source_name="TechCrunch",
+                        ),
+                        DigestItem(
+                            title="OpenAI image update",
+                            one_liner="This item explains product impact clearly enough.",
+                            source_url="https://openai.com/zh-Hans-CN/",
+                            source_name="OpenAI",
+                        ),
+                    ],
+                ),
+                DigestSection(
+                    category="tech_article",
+                    items=[
+                        DigestItem(
+                            title="Architecture analysis",
+                            one_liner="This item explains engineering tradeoffs clearly enough.",
+                            source_url="https://martinfowler.com/articles/architecture.html",
+                            source_name="Martin Fowler",
+                        ),
+                        DigestItem(
+                            title="Reliability writeup",
+                            one_liner="This item explains reliability lessons clearly enough.",
+                            source_url="https://cloudflare.com/blog/reliability-writeup",
+                            source_name="Cloudflare",
+                        ),
+                    ],
+                ),
+            ],
+        )
+
+        quality = _calculate_digest_output_quality(digest)
+
+        assert quality["item_count"] == 5
+        assert quality["duplicate_source_count"] == 1
+        assert quality["generic_source_count"] == 3
+        assert quality["score"] < 0.7
+
+    def test_calculate_digest_output_quality_flags_topic_listing_source(self):
+        from ai.organizer import DigestContent, DigestSection, DigestItem
+
+        digest = DigestContent(
+            title="Daily Digest",
+            summary="summary",
+            highlight="highlight",
+            tags=["oss"],
+            full_content="# Daily Digest\n\n## Open Source\n\nStructured markdown content",
+            sections=[
+                DigestSection(
+                    category="open_source",
+                    items=[
+                        DigestItem(
+                            title="rtk CLI proxy",
+                            one_liner="A Rust CLI proxy reduces LLM token usage for developer workflows.",
+                            source_url="https://github.com/topics/open-source",
+                            source_name="GitHub",
+                        )
+                    ],
+                )
+            ],
+        )
+
+        quality = _calculate_digest_output_quality(digest)
+
+        assert quality["generic_source_count"] == 1
+        assert any("首页/列表页" in s or "listing" in s for s in quality["suggestions"])
+
+    def test_calculate_digest_output_quality_penalizes_section_imbalance(self):
+        from ai.organizer import DigestContent, DigestSection, DigestItem
+
+        hot_items = [
+            DigestItem(
+                title=f"AI security update {i}",
+                one_liner="This item explains AI security developer impact clearly.",
+                source_url=f"https://techcrunch.com/ai-security-{i}",
+                source_name="TechCrunch",
+            )
+            for i in range(7)
+        ]
+        digest = DigestContent(
+            title="Daily Digest",
+            summary="summary",
+            highlight="highlight",
+            tags=["ai"],
+            full_content="# Daily Digest\n\n## Trends\n\nStructured markdown content",
+            sections=[
+                DigestSection(category="hot_trend", items=hot_items),
+                DigestSection(
+                    category="open_source",
+                    items=[
+                        DigestItem(
+                            title="Project release",
+                            one_liner="This item explains open source developer impact clearly.",
+                            source_url="https://github.com/example/repo",
+                            source_name="GitHub",
+                        )
+                    ],
+                ),
+                DigestSection(
+                    category="tech_article",
+                    items=[
+                        DigestItem(
+                            title="Architecture article",
+                            one_liner="This item explains architecture tradeoffs clearly.",
+                            source_url="https://martinfowler.com/articles/example.html",
+                            source_name="Martin Fowler",
+                        )
+                    ],
+                ),
+            ],
+        )
+
+        quality = _calculate_digest_output_quality(digest)
+
+        assert quality["dominant_section_ratio"] > 0.7
+        assert quality["score"] < 0.9
+        assert any("section balance" in s for s in quality["suggestions"])
 
     @pytest.mark.asyncio
     async def test_evaluate_digest_quality_writes_to_kb(self):

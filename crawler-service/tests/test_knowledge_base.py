@@ -303,3 +303,141 @@ class TestDigestEvaluationFeedback:
         assert fatigue["source_diversity"] == [0.30, 0.50, 0.70]
         assert fatigue["perspective"] == [0.30, 0.50, 0.70]
         assert "depth" not in fatigue
+
+    @pytest.mark.asyncio
+    async def test_digest_quality_overview_summarizes_trend_and_latest_feedback(self, mem_db):
+        await mem_db.execute(
+            "INSERT INTO crawl_task (id, task_type, status) VALUES (301, 'digest', 3)",
+        )
+        rows = [
+            ("2026-05-29", 0.72, 0.70, 0.62, [], [], "2026-05-29 08:00:00"),
+            ("2026-05-30", 0.58, 0.48, 0.55, ["source_diversity"], ["增加英文技术源"], "2026-05-30 08:00:00"),
+            ("2026-05-31", 0.64, 0.44, 0.51, ["source_diversity"], ["补充 GitHub Trending"], "2026-05-31 08:00:00"),
+        ]
+        for digest_date, overall, source_diversity, depth, weaknesses, suggestions, created_at in rows:
+            await mem_db.execute(
+                """INSERT INTO optimization_record
+                   (task_id, round_num, source_diversity, depth_coverage,
+                    angle_coverage, temporal_coverage, perspective_balance,
+                    language_coverage, overall_score, search_keyword, search_engine,
+                    time_range, strategy_type, weaknesses, suggestions,
+                    score_delta, created_at)
+                   VALUES (301, 0, ?, ?, 0.7, 0.7, 0.7, 0.7,
+                           ?, ?, 'digest', '', 'digest_final_eval', ?, ?,
+                           0.0, ?)""",
+                (
+                    source_diversity,
+                    depth,
+                    overall,
+                    digest_date,
+                    __import__("json").dumps(weaknesses, ensure_ascii=False),
+                    __import__("json").dumps(suggestions, ensure_ascii=False),
+                    created_at,
+                ),
+            )
+        await mem_db.commit()
+
+        with patch("optimization.knowledge_base.get_db", _mock_get_db(mem_db)):
+            overview = await KnowledgeBase().get_digest_quality_overview(limit=10)
+
+        assert overview["count"] == 3
+        assert overview["summary"]["average_score"] == 0.6467
+        assert overview["summary"]["latest_score"] == 0.64
+        assert overview["summary"]["score_delta"] == -0.08
+        assert overview["summary"]["status"] == "warning"
+        assert overview["latest"]["digest_date"] == "2026-05-31"
+        assert overview["latest"]["weaknesses"] == ["source_diversity"]
+        assert overview["suggestions"] == ["补充 GitHub Trending"]
+        assert "source_diversity" in overview["weak_dimensions"]
+        assert len(overview["trend"]) == 3
+
+    @pytest.mark.asyncio
+    async def test_digest_source_actions_derive_skip_and_deprioritize_from_latest_eval(self, mem_db):
+        await mem_db.execute(
+            "INSERT INTO crawl_task (id, task_type, status) VALUES (401, 'digest', 3)",
+        )
+        source_scores = [
+            {
+                "section": "open_source",
+                "source_id": 10,
+                "source_name": "Low Quality",
+                "source_url": "https://low.example.com",
+                "item_count": 2,
+                "quality_score": 0.35,
+                "quality_verdict": "keep",
+            },
+            {
+                "section": "tools",
+                "source_id": 11,
+                "source_name": "Review Source",
+                "source_url": "https://review.example.com",
+                "item_count": 1,
+                "quality_score": 0.72,
+                "quality_verdict": "review",
+            },
+            {
+                "section": "ai_news",
+                "source_id": 12,
+                "source_name": "Healthy",
+                "source_url": "https://healthy.example.com",
+                "item_count": 4,
+                "quality_score": 0.86,
+                "quality_verdict": "keep",
+            },
+        ]
+        await _insert(
+            mem_db,
+            task_id=401,
+            round_num=0,
+            strategy_type="digest_final_eval",
+            search_keyword="2026-06-08",
+            search_engine="digest",
+            strategy_detail=__import__("json").dumps(source_scores, ensure_ascii=False),
+            weaknesses=__import__("json").dumps(["source_diversity"], ensure_ascii=False),
+            suggestions=__import__("json").dumps(["补充开源信息源"], ensure_ascii=False),
+            overall_score=0.52,
+        )
+
+        with patch("optimization.knowledge_base.get_db", _mock_get_db(mem_db)):
+            actions = await KnowledgeBase().get_digest_source_actions()
+
+        assert actions["source_ids"]["skip"] == [10]
+        assert actions["source_ids"]["deprioritize"] == [11]
+        assert actions["boost_sections"] == ["source_diversity"]
+        assert actions["confidence"] == "medium"
+        assert actions["sources"][10]["action"] == "skip"
+        assert actions["sources"][11]["action"] == "deprioritize"
+        assert 12 not in actions["sources"]
+
+    def test_digest_source_actions_include_url_actions_without_source_id(self):
+        actions = KnowledgeBase.derive_digest_source_actions(
+            diagnostics=[
+                {
+                    "section": "tech_article",
+                    "source_id": None,
+                    "source_name": "Review URL",
+                    "source_url": "https://review.example.com/article",
+                    "item_count": 1,
+                    "quality_score": 53.6,
+                    "quality_verdict": "review",
+                },
+                {
+                    "section": "hot_trend",
+                    "source_name": "Filtered URL",
+                    "source_url": "https://filter.example.com/post",
+                    "item_count": 1,
+                    "quality_score": 72,
+                    "quality_verdict": "filter",
+                },
+            ],
+            weaknesses=["language"],
+            suggestions=[],
+            digest_date="2026-06-08",
+        )
+
+        assert actions["source_ids"] == {"skip": [], "deprioritize": []}
+        assert actions["source_urls"]["deprioritize"] == ["https://review.example.com/article"]
+        assert actions["source_urls"]["skip"] == ["https://filter.example.com/post"]
+        assert actions["sources"]["url:https://review.example.com/article"]["quality_score"] == 0.536
+        assert actions["sources"]["url:https://filter.example.com/post"]["action"] == "skip"
+        assert actions["confidence"] == "medium"

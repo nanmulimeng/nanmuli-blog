@@ -113,6 +113,132 @@ def _parse_callback_headers(raw_headers: str | None) -> dict[str, str]:
     return headers
 
 
+def _low_value_digest_candidate_reason(url: str, title: str, markdown: str) -> str | None:
+    """识别 digest 候选池中确定无日报价值的页面。
+
+    该规则只服务日报任务：普通采集仍允许用户抓取词典、问答或错误样本用于调试。
+    """
+    try:
+        parsed = urlsplit((url or "").strip())
+    except Exception:
+        return None
+
+    domain = parsed.netloc.lower()
+    if domain.startswith("www."):
+        domain = domain[4:]
+    path = (parsed.path or "").lower()
+    query = (parsed.query or "").lower()
+    title_text = (title or "").strip()
+    title_lower = title_text.lower()
+    sample_lower = f"{title_text}\n{(markdown or '')[:500]}".lower()
+    tech_terms = (
+        "java", "spring", "python", "django", "fastapi", "flask", "go ", "golang",
+        "rust", "typescript", "javascript", "node", "react", "vue", "angular",
+        "kubernetes", "docker", "linux", "postgres", "postgresql", "mysql",
+        "redis", "mongodb", "git", "github", "gitlab", "llm", "openai",
+        "anthropic", "rag", "agent", "mcp", "api", "database", "security",
+        "cloud", "aws", "azure", "gcp",
+    )
+
+    if domain == "cn.bing.com" and path.startswith("/dict"):
+        return "dictionary page"
+
+    if domain == "zhidao.baidu.com":
+        return "qna page"
+
+    if domain == "wenku.baidu.com" and (
+        "error" in path
+        or "status=404" in query
+        or "访问出错" in sample_lower
+        or "404" in title_lower
+    ):
+        return "error page"
+
+    if "百度知道" in title_text:
+        return "qna page"
+
+    if ("error.html" in path or "status=404" in query) and (
+        "404" in sample_lower
+        or "访问出错" in sample_lower
+        or "page not found" in sample_lower
+    ):
+        return "error page"
+
+    if ("dict" in path or "dictionary" in domain) and (
+        "词典" in title_text
+        or "dictionary" in title_lower
+    ):
+        return "dictionary page"
+
+    if (
+        "jobstreet." in domain
+        or "indeed." in domain
+        or "linkedin.com" in domain
+        or "jobs" in path
+        or " job " in f" {title_lower} "
+        or " jobs " in f" {title_lower} "
+        or "hiring" in title_lower
+    ):
+        return "job listing page"
+
+    if (
+        "comptia.org" in domain and "/certifications/" in path
+    ) or (
+        "certification" in title_lower
+        and not any(term in sample_lower for term in ("released", "vulnerability", "cve", "exploit", "patch"))
+    ):
+        return "certification page"
+
+    if (
+        "softonic.com" in domain
+        or title_lower.startswith("download software")
+        or "download software for" in title_lower
+        or ("/download" in path and "software" in sample_lower)
+    ):
+        return "download directory page"
+
+    basic_definition_domains = (
+        "sciencedaily.com",
+        "bitesize",
+    )
+    basic_definition_titles = (
+        "what is software",
+        "what is github",
+        "computer software",
+        "definition, examples",
+        "definition, types",
+    )
+    if (
+        any(d in domain for d in basic_definition_domains)
+        and ("/terms/" in path or "/guides/" in path or "/revision/" in path)
+    ) or any(term in title_lower for term in basic_definition_titles):
+        return "basic definition page"
+
+    if domain in {"blog.csdn.net", "csdn.net", "cnblogs.com"} and (
+        "tutorial" in title_lower
+        or "sandbox" in title_lower
+        or "comprehensive tutorial" in title_lower
+    ):
+        if not any(term in sample_lower for term in tech_terms):
+            return "generic tutorial page"
+
+    if domain == "blog.csdn.net" and path.startswith("/gitblog_"):
+        return "auto-generated csdn gitblog page"
+
+    if domain == "techpowerup.com":
+        hardware_terms = (
+            "radeon", "geforce", "graphics card", "gpu", "monitor", "keyboard",
+            "mouse", "gaming", "motherboard", "review", "computex",
+        )
+        promo_terms = ("sale", "discount", "coupon", "usd", "deal", "office 2024")
+        if any(term in sample_lower for term in promo_terms):
+            return "promo/deal page"
+        if path.startswith("/review/") or any(term in sample_lower for term in hardware_terms):
+            return "hardware news page"
+
+    return None
+
+
 class TaskExecutor:
     """管理异步爬取 + AI 整理任务"""
 
@@ -328,9 +454,28 @@ class TaskExecutor:
                     ai_success = await processor.organize_with_ai(task_id, task)
 
                 if not ai_success:
+                    if task["task_type"] == "digest":
+                        latest_task = await repo.get_task(task_id) or {}
+                        error = (
+                            latest_task.get("ai_error_message")
+                            or latest_task.get("error_message")
+                            or "Digest AI organization failed; no publishable digest generated"
+                        )
+                        logger.warning("Task %d digest AI organization failed; marking task failed.", task_id)
+                        await repo.save_ai_error(task_id, error)
+                        await repo.fail_task(task_id, error)
+                        await _fire_callback(task_id, TaskStatus.FAILED)
+                        return
                     logger.warning("Task %d AI organization failed, task still marked complete with raw content.", task_id)
                     await repo.save_ai_error(task_id, "AI 整理失败，内容为原始 Markdown")
             else:
+                if task["task_type"] == "digest":
+                    error = "Digest AI organization is disabled; no publishable digest generated"
+                    logger.warning("Task %d digest AI organization disabled; marking task failed.", task_id)
+                    await repo.save_ai_error(task_id, error)
+                    await repo.fail_task(task_id, error)
+                    await _fire_callback(task_id, TaskStatus.FAILED)
+                    return
                 logger.info("Task %d AI organization disabled, skipping.", task_id)
 
             await repo.complete_task(task_id)
@@ -393,7 +538,19 @@ class TaskExecutor:
             title = getattr(r, "title", "") or ""
             markdown = getattr(r, "markdown", "") or ""
 
-            # [1] 内容太短直接标记失败
+            # [1] 日报候选池预过滤：词典/Q&A/错误页等即使正文较长也不进入日报
+            if is_digest:
+                low_value_reason = _low_value_digest_candidate_reason(url, title, markdown)
+                if low_value_reason:
+                    r.success = False
+                    r.error_message = f"Low-value digest candidate: {low_value_reason}"
+                    filtered.append(r)
+                    stats["low_quality"] += 1
+                    logger.info("Filtered low-value digest candidate: %s (%s)",
+                                url, low_value_reason)
+                    continue
+
+            # [2] 内容太短直接标记失败
             if is_deep:
                 min_content = settings.filter_deep_min_content
             elif is_digest:
@@ -407,7 +564,7 @@ class TaskExecutor:
                 stats["too_short"] += 1
                 continue
 
-            # [2] 页面类型分类器（P5）：SERP/列表/论坛 → 直接拒绝
+            # [3] 页面类型分类器（P5）：SERP/列表/论坛 → 直接拒绝
             if page_classifier is not None:
                 classification = page_classifier(markdown, url, title)
                 if classification.is_non_article:
@@ -420,7 +577,7 @@ class TaskExecutor:
                                  classification.signals)
                     continue
 
-            # [3] 内容去重（P6）：跳过头部导航区，取中间段做指纹
+            # [4] 内容去重（P6）：跳过头部导航区，取中间段做指纹
             if dedup_engine is not None and len(markdown) >= 100:
                 skip_header = settings.filter_skip_header_chars
                 content_preview = markdown[skip_header:skip_header + settings.filter_content_preview_length] if len(markdown) > skip_header else markdown[:settings.filter_content_preview_length]
@@ -434,7 +591,7 @@ class TaskExecutor:
                                  url, dup["reason"], dup["confidence"])
                     continue
 
-            # [4] 质量评分
+            # [5] 质量评分
             evaluation = evaluate_content(url, title, markdown, task_type=task_type)
             verdict = evaluation["verdict"]
             final_score = evaluation["final_score"]
@@ -476,7 +633,7 @@ class TaskExecutor:
                 r.metadata = metadata
                 stats["passed"] += 1
 
-                # [5] 注册去重指纹（质量通过后）
+                # [6] 注册去重指纹（质量通过后）
                 if dedup_engine is not None and len(markdown) >= 100:
                     skip_header = settings.filter_skip_header_chars
                     content_preview = markdown[skip_header:skip_header + settings.filter_content_preview_length] if len(markdown) > skip_header else markdown[:settings.filter_content_preview_length]
@@ -748,6 +905,24 @@ _DIGEST_SECTION_MAX_ITEMS_CAP = 6
 _DIGEST_RSS_MAX_ENTRIES_CAP = 3
 
 _DIGEST_KEYWORD_EXPANSIONS: dict[tuple[str, str], list[str]] = {
+    ("hot_trend", "ai developer tools llm agent latest release or security ai software engineering"): [
+        "site:github.blog GitHub Copilot coding agent developer update",
+        "site:openai.com/blog API model release developer impact",
+        "site:anthropic.com/news Claude API developer release",
+        "AI security vulnerability developer impact",
+    ],
+    ("open_source", "github trending open source ai developer tool repository release"): [
+        "site:github.com/trending AI developer tools",
+        "site:github.com/trending llm agent",
+        "site:github.com trending open source developer tool release",
+        "site:github.com releases AI developer tool",
+    ],
+    ("tech_article", "software engineering best practices ai agent architecture technical article"): [
+        "site:martinfowler.com architecture AI software engineering",
+        "site:github.blog/engineering AI developer workflow architecture",
+        "site:cloudflare.com/blog AI agent architecture engineering",
+        "site:netflixtechblog.com architecture reliability engineering",
+    ],
     ("hot_trend", "ai llm news today"): [
         "AI security vulnerability developer impact",
         "LLM model release API developer update",

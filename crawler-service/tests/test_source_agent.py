@@ -233,6 +233,124 @@ class TestWeaknessFeedback:
         assert plan.adjusted_max_items > 5
         assert any("source_diversity" in log for log in plan.analysis_log)
 
+
+# ============== TestSourceActionsFeedback ==============
+
+class TestSourceActionsFeedback:
+    """Quality evaluation feedback should affect the next source crawl plan."""
+
+    @patch("crawler.source_analysis.is_truly_dead", return_value=False)
+    def test_next_run_actions_skip_sources_across_source_types(self, _mock):
+        sec = _make_section(
+            source_type="mixed",
+            keyword_details=[
+                {"value": "bad keyword", "source_id": 101, "effectiveness": {}},
+                {"value": "good keyword", "source_id": 102, "effectiveness": {}},
+            ],
+            url_sources=[
+                {"url": "https://bad.example.com", "source_id": 103, "effectiveness": {}},
+                {"url": "https://good.example.com", "source_id": 104, "effectiveness": {}},
+            ],
+            rss_sources=[
+                {"feed_url": "https://bad.example.com/feed", "source_id": 105, "effectiveness": {}},
+                {"feed_url": "https://good.example.com/feed", "source_id": 106, "effectiveness": {}},
+            ],
+        )
+        kb_hint = {
+            "next_run_actions": {
+                "source_ids": {"skip": [101, 103, 105], "deprioritize": []},
+                "sources": {
+                    101: {"action": "skip", "reason": "low quality"},
+                    103: {"action": "skip", "reason": "low quality"},
+                    105: {"action": "skip", "reason": "low quality"},
+                },
+            }
+        }
+
+        plan = SourceAgent(sec, _make_config(), {}).analyze(kb_hint=kb_hint)
+
+        assert plan.active_keywords == ["good keyword"]
+        assert [src["source_id"] for src in plan.active_url_sources] == [104]
+        assert [src["source_id"] for src in plan.active_rss_sources] == [106]
+        assert {101, 103, 105}.issubset(plan.skipped_source_ids)
+        assert any("next_run_actions" in log for log in plan.analysis_log)
+
+    @patch("crawler.source_analysis.is_truly_dead", return_value=False)
+    def test_next_run_actions_deprioritize_sources_and_boost_section(self, _mock):
+        sec = _make_section(
+            name="open_source",
+            max_items=10,
+            keyword_details=[
+                {"value": "review keyword", "source_id": 201, "effectiveness": {}},
+                {"value": "stable keyword", "source_id": 202, "effectiveness": {}},
+            ],
+            url_sources=[
+                {"url": "https://review.example.com", "source_id": 203, "effectiveness": {}},
+                {"url": "https://stable.example.com", "source_id": 204, "effectiveness": {}},
+            ],
+        )
+        kb_hint = {
+            "next_run_actions": {
+                "source_ids": {"skip": [], "deprioritize": [201, 203]},
+                "boost_sections": ["open_source"],
+                "sources": {
+                    201: {"action": "deprioritize", "reason": "review verdict"},
+                    203: {"action": "deprioritize", "reason": "review verdict"},
+                },
+            }
+        }
+
+        plan = SourceAgent(sec, _make_config(), {}).analyze(kb_hint=kb_hint)
+
+        assert plan.active_keywords[-1] == "review keyword"
+        assert plan.active_url_sources[-1]["source_id"] == 203
+        assert plan.adjusted_max_items > 10
+        assert any("deprioritize" in log for log in plan.analysis_log)
+        assert any("boost section" in log for log in plan.analysis_log)
+
+    @patch("crawler.source_analysis.is_truly_dead", return_value=False)
+    def test_next_run_actions_match_url_sources_without_source_id(self, _mock):
+        sec = _make_section(
+            source_type="mixed",
+            url_sources=[
+                {"url": "https://bad.example.com/article", "effectiveness": {}},
+                {"url": "https://review.example.com/article", "effectiveness": {}},
+                {"url": "https://good.example.com/article", "effectiveness": {}},
+            ],
+            rss_sources=[
+                {"feed_url": "https://bad.example.com/feed.xml", "effectiveness": {}},
+                {"feed_url": "https://good.example.com/feed.xml", "effectiveness": {}},
+            ],
+        )
+        kb_hint = {
+            "next_run_actions": {
+                "source_ids": {"skip": [], "deprioritize": []},
+                "source_urls": {
+                    "skip": ["https://bad.example.com/article", "https://bad.example.com/feed.xml"],
+                    "deprioritize": ["https://review.example.com/article"],
+                },
+                "sources": {
+                    "url:https://bad.example.com/article": {"action": "skip", "reason": "filter verdict"},
+                    "url:https://bad.example.com/feed.xml": {"action": "skip", "reason": "filter verdict"},
+                    "url:https://review.example.com/article": {"action": "deprioritize", "reason": "review verdict"},
+                },
+            }
+        }
+
+        plan = SourceAgent(sec, _make_config(), {}).analyze(kb_hint=kb_hint)
+
+        assert [src["url"] for src in plan.active_url_sources] == [
+            "https://good.example.com/article",
+            "https://review.example.com/article",
+        ]
+        assert [src["feed_url"] for src in plan.active_rss_sources] == ["https://good.example.com/feed.xml"]
+        assert "https://bad.example.com/article" in plan.skipped_source_urls
+        assert "https://bad.example.com/feed.xml" in plan.skipped_source_urls
+        assert "https://review.example.com/article" in plan.deprioritized_source_urls
+        assert any("bad.example.com/article" in log for log in plan.analysis_log)
+        assert any("bad.example.com/feed.xml" in log for log in plan.analysis_log)
+        assert any("deprioritize URL source" in log for log in plan.analysis_log)
+
     @patch("crawler.source_analysis.is_truly_dead", return_value=False)
     def test_language_weakness_logged(self, _mock):
         sec = _make_section(

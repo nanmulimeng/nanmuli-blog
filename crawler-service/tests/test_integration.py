@@ -462,4 +462,10 @@ class TestScheduler:
         status = get_scheduler_status()
         assert status["running"] is False
         assert "cron" in status
+        assert status["next_run"] is None
+        assert status["source_jobs"] == 0
+        assert status["digest_job_registered"] is False
+        assert isinstance(status["ai_enabled"], bool)
+        assert isinstance(status["ai_configured"], bool)
+        assert status["jobs"] == []
 

@@ -63,6 +63,30 @@ class TestCrawlerAgentResult:
 
 # ============== Heuristic 清洗测试 ==============
 
+class TestCrawlerAgentUrlFeedback:
+    def test_apply_url_feedback_filters_skip_and_moves_deprioritized_to_end(self):
+        section = PlannedSection(name="tech_article", source_type="keyword")
+        plan = SourceCrawlPlan(
+            section_name="tech_article",
+            skipped_source_urls={"https://bad.example.com/article"},
+            deprioritized_source_urls={"https://review.example.com/article"},
+        )
+        agent = CrawlerAgent(section, plan, MagicMock(), {})
+
+        results = [
+            {"url": "https://review.example.com/article", "title": "Review"},
+            {"url": "https://bad.example.com/article", "title": "Bad"},
+            {"url": "https://good.example.com/article", "title": "Good"},
+        ]
+
+        filtered = agent._apply_url_feedback(results)
+
+        assert [item["url"] for item in filtered] == [
+            "https://good.example.com/article",
+            "https://review.example.com/article",
+        ]
+
+
 class TestHeuristicCleanup:
     def _make_result(self, url, title, markdown):
         """构造类 CrawlResult 对象"""
@@ -147,6 +171,7 @@ class TestBuildSectionDocument:
         assert doc.section_name == "test_section"
         assert doc.source_count == 1
 
+
     @pytest.mark.asyncio
     async def test_ai_cleanup_success(self):
         agent = self._make_agent()
@@ -214,6 +239,29 @@ class TestBuildSectionDocument:
 
 
 # ============== finalize_document 测试 ==============
+
+class TestCrawlerAgentFallback:
+    @pytest.mark.asyncio
+    async def test_site_constrained_keyword_fallback_keeps_time_range(self):
+        section = PlannedSection(
+            name="hot_trend",
+            source_type="keyword",
+            keywords=["site:github.blog GitHub Copilot coding agent developer update"],
+            time_range="week",
+        )
+        plan = SourceCrawlPlan(
+            section_name="hot_trend",
+            active_keywords=["site:github.blog GitHub Copilot coding agent developer update"],
+            recommended_engine="bing",
+            adjusted_max_items=4,
+        )
+        agent = CrawlerAgent(section, plan, MagicMock(), {})
+
+        with patch("crawler.search.crawl_by_keyword", new_callable=AsyncMock, return_value=[]) as mock_crawl:
+            await agent._fallback(crawler=MagicMock(), history_engine=None)
+
+        assert mock_crawl.await_args.kwargs["time_range"] == "week"
+
 
 class TestFinalizeDocument:
     def test_aggregates_fields(self):

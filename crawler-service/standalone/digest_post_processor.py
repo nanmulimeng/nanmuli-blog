@@ -54,6 +54,24 @@ class DigestPostProcessor:
 
             # 从已保存的 DB 页面获取 URL → page_id 映射（使用规范化 URL 匹配）
             repository = self._repo()
+            from standalone.digest_quality_gate import (
+                digest_quality_error_message,
+                evaluate_digest_publish_quality,
+                save_digest_publish_quality,
+            )
+            quality, publishable = evaluate_digest_publish_quality(digest)
+            if not publishable:
+                msg = digest_quality_error_message(quality)
+                await save_digest_publish_quality(
+                    repository, task_id, quality, False, "pre_generated",
+                )
+                await repository.save_ai_error(task_id, msg)
+                logger.warning("Task %d pre-generated digest rejected: %s", task_id, msg)
+                return False
+            await save_digest_publish_quality(
+                repository, task_id, quality, True, "pre_generated",
+            )
+
             pages = await repository.get_pages_by_task(task_id)
             url_to_page_id = {}
             for p in pages:

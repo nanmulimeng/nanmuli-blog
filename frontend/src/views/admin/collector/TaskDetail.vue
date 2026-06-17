@@ -48,6 +48,7 @@ const progressColor = computed(() => {
 })
 
 const aiSearchMetadata = computed(() => task.value?.aiSearchMetadata ?? null)
+const taskDiagnostics = computed(() => task.value?.diagnostics ?? aiSearchMetadata.value?.diagnostics ?? null)
 
 const aiSearchVariants = computed(() => {
   const variants = aiSearchMetadata.value?.searchVariants
@@ -55,6 +56,29 @@ const aiSearchVariants = computed(() => {
     ? variants.filter((variant): variant is string => typeof variant === 'string' && variant.trim().length > 0)
     : []
 })
+
+const diagnosticSignals = computed(() => {
+  const signals = taskDiagnostics.value?.signals
+  if (!signals) return []
+  const labels: Record<string, string> = {
+    terminal: '终态任务',
+    active: '执行中',
+    ai_error: 'AI 异常',
+    has_error_message: '有错误信息',
+    no_completed_pages: '无成功页面',
+    partial_pages: '部分成功',
+  }
+  return Object.entries(signals)
+    .filter(([, enabled]) => enabled)
+    .map(([key]) => labels[key] || key)
+})
+
+function diagnosticTagType(severity?: string): 'primary' | 'success' | 'warning' | 'danger' | 'info' {
+  if (severity === 'danger') return 'danger'
+  if (severity === 'warning') return 'warning'
+  if (severity === 'success') return 'success'
+  return 'info'
+}
 
 async function fetchTask(): Promise<void> {
   loading.value = true
@@ -242,6 +266,30 @@ onMounted(async () => {
           <div class="mb-1 text-xs font-medium text-error">错误信息</div>
           <div class="text-sm text-error/80">{{ task.errorMessage }}</div>
         </div>
+
+        <div v-if="taskDiagnostics" class="mt-4 rounded-lg border border-border bg-surface-tertiary/60 p-4">
+          <div class="mb-3 flex flex-wrap items-center gap-2">
+            <span class="text-sm font-medium text-content-primary">任务诊断</span>
+            <el-tag size="small" :type="diagnosticTagType(taskDiagnostics.failure.severity)">
+              {{ taskDiagnostics.failure.label }}
+            </el-tag>
+            <el-tag size="small" effect="plain">{{ taskDiagnostics.stage }}</el-tag>
+          </div>
+
+          <div class="text-sm leading-relaxed text-content-secondary">
+            {{ taskDiagnostics.summary }}
+          </div>
+
+          <div v-if="taskDiagnostics.failure.action_hint" class="mt-2 text-xs leading-relaxed text-content-tertiary">
+            建议：{{ taskDiagnostics.failure.action_hint }}
+          </div>
+
+          <div v-if="diagnosticSignals.length" class="mt-3 flex flex-wrap gap-2">
+            <el-tag v-for="signal in diagnosticSignals" :key="signal" size="small" effect="plain">
+              {{ signal }}
+            </el-tag>
+          </div>
+        </div>
       </div>
 
       <div v-if="task.aiTitle || task.aiSummary" class="mb-6 rounded-2xl p-6 glass-card">
@@ -401,4 +449,3 @@ onMounted(async () => {
     />
   </div>
 </template>
-

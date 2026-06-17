@@ -149,6 +149,27 @@ function categoryLabel(cat: string | null): string {
   return ContentCategoryMap[cat]?.label || cat
 }
 
+function sourceRecommendation(row: Source): { label: string; type: 'success' | 'warning' | 'danger' | 'info'; hint: string } {
+  const runCount = row.runCount || 0
+  const failCount = row.failCount || 0
+  const avgQuality = row.avgQualityScore
+  const failRate = runCount > 0 ? failCount / runCount : 0
+
+  if (!row.isActive) {
+    return { label: '已停用', type: 'info', hint: '当前不会参与日报采集' }
+  }
+  if ((avgQuality != null && avgQuality < 40) || (runCount >= 3 && failRate >= 0.7) || (row.lastRunStatus === 'failed' && row.lastResultCount === 0)) {
+    return { label: '建议停用', type: 'danger', hint: '连续失败或质量偏低，建议人工检查后再启用' }
+  }
+  if ((avgQuality != null && avgQuality < 60) || (runCount >= 3 && failRate >= 0.4) || row.lastError) {
+    return { label: '建议复核', type: 'warning', hint: '来源稳定性或内容质量需要观察' }
+  }
+  if (runCount === 0) {
+    return { label: '待验证', type: 'info', hint: '尚无运行数据，建议先测试一次' }
+  }
+  return { label: '继续使用', type: 'success', hint: '当前来源表现可继续使用' }
+}
+
 onMounted(fetchData)
 </script>
 
@@ -218,6 +239,19 @@ onMounted(fetchData)
             </div>
           </div>
           <span v-else class="text-content-tertiary">-</span>
+        </template>
+      </el-table-column>
+
+      <el-table-column label="质量建议" width="120">
+        <template #default="{ row }">
+          <el-tag
+            :type="sourceRecommendation(row).type"
+            size="small"
+            effect="plain"
+            :title="sourceRecommendation(row).hint"
+          >
+            {{ sourceRecommendation(row).label }}
+          </el-tag>
         </template>
       </el-table-column>
 

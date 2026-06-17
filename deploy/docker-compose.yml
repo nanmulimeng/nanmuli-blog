@@ -87,7 +87,7 @@ services:
     build:
       context: ../crawler-service
       dockerfile: Dockerfile
-    container_name: nanmuli-crawler
+    container_name: crawler-service
     restart: always
     environment:
       PORT: 8500

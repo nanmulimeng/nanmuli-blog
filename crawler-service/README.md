@@ -106,6 +106,37 @@ X-API-Key: <your-api-key>
 
 `API_KEYS` 支持逗号分隔多个 key，方便两个内部服务分别使用不同 key。
 
+## 内部服务接入约定
+
+新内部服务接入时只需要三类信息：
+
+| 项 | 要求 |
+| --- | --- |
+| Base URL | 例如 `http://crawler-service:8500` 或内网地址 |
+| API key | 通过 `X-API-Key` 传入；建议每个内部服务使用独立 key |
+| Client ID | 通过 `X-Client-Id` 传入，建议使用稳定英文标识，例如 `blog`、`ops-tools` |
+
+调用方式：
+
+1. 调用 `/health` 或 `/api/v1/ready` 判断服务可用性。
+2. 通过 `POST /api/v1/tasks` 创建任务。
+3. 通过 `GET /api/v1/tasks/{id}` 轮询结果。
+4. 如需异步通知，可传任务级 `callback_url` 和 `callback_headers`；任务级 callback 优先于全局 `CALLBACK_URL`。
+
+错误定位：
+
+- `401/403`：优先检查 `X-API-Key`。
+- `400`：检查任务参数、URL、callback URL 是否被 SSRF 防护拦截。
+- `5xx`：检查 crawler 日志、外部搜索源、AI provider 或 callback 目标服务。
+- 任务详情中的 `diagnostics` 会标出失败阶段、失败类别和建议处理动作。
+
+安全与稳定边界：
+
+- `callback_url` 不应指向内网元数据地址、localhost 或未知第三方服务。
+- 单个任务应设置合理 `max_pages`、`max_depth`、`timeout`，避免占满 crawler worker。
+- 当前设计只面向少量内部服务，不提供公网 SaaS 级租户隔离、计费和复杂配额。
+- 搜索源变化时应优先调整 source 配置、RSS 和官方 URL，不要依赖单一搜索引擎。
+
 ## 创建任务示例
 
 ```bash
@@ -179,7 +210,7 @@ uvicorn main:app --host 0.0.0.0 --port 8500 --reload
 
 ```bash
 cd crawler-service
-docker build -t nanmuli-crawler:latest .
+docker build -t crawler-service:latest .
 docker run -d -p 8500:8500 \
   -e AUTH_ENABLED=true \
   -e API_KEYS=sk-your-client-key \
@@ -187,7 +218,7 @@ docker run -d -p 8500:8500 \
   -e AI_API_KEY=sk-xxx \
   -e DIGEST_ENABLED=true \
   -v crawler_data:/app/data \
-  nanmuli-crawler:latest
+  crawler-service:latest
 ```
 
 ## 配置重点
