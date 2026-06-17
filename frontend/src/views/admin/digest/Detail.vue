@@ -55,6 +55,12 @@ const searchDiagnostics = computed(() => {
   if (!plan || Array.isArray(plan)) return []
   return plan.search_diagnostics ?? []
 })
+const eventDiagnostics = computed(() => {
+  const plan = digest.value?.orchestrator_plan
+  if (!plan || Array.isArray(plan)) return null
+  return plan.event_diagnostics ?? null
+})
+const eventSamples = computed(() => eventDiagnostics.value?.sample_events ?? [])
 
 async function fetchDigest(): Promise<void> {
   loading.value = true
@@ -161,6 +167,11 @@ function diagnosticTagType(severity: string | undefined): 'success' | 'warning' 
 
 function formatDomains(domains: string[] | undefined): string {
   return (domains ?? []).join(', ')
+}
+
+function formatPercent(value: number | null | undefined): string {
+  if (value === null || value === undefined) return '-'
+  return `${Math.round(value * 100)}%`
 }
 
 function goBack(): void {
@@ -439,6 +450,42 @@ watch(() => route.params, () => {
           </div>
         </el-collapse-item>
       </el-collapse>
+
+      <div v-if="eventDiagnostics" class="mb-6 rounded-2xl p-5 glass-card">
+        <div class="mb-3 flex flex-wrap items-center gap-2">
+          <div class="text-sm font-medium text-content-primary">Event Merge Diagnostics</div>
+          <el-tag size="small" type="info" effect="plain">Events {{ eventDiagnostics.event_count }}</el-tag>
+          <el-tag size="small" type="success" effect="plain">Merged {{ eventDiagnostics.merged_event_count }}</el-tag>
+          <el-tag size="small" type="warning" effect="plain">Duplicate Inputs {{ eventDiagnostics.duplicate_input_count }}</el-tag>
+          <el-tag size="small" type="info" effect="plain">Multi-source {{ eventDiagnostics.multi_source_event_count }}</el-tag>
+          <el-tag size="small" type="info" effect="plain">Max Sources {{ eventDiagnostics.max_sources_per_event }}</el-tag>
+          <el-tag size="small" type="info" effect="plain">Diversity {{ formatPercent(eventDiagnostics.source_diversity) }}</el-tag>
+        </div>
+        <el-table v-if="eventSamples.length" :data="eventSamples" border size="small">
+          <el-table-column prop="category" label="Section" width="120" />
+          <el-table-column prop="event_group_key" label="Event Key" min-width="180" show-overflow-tooltip />
+          <el-table-column label="Primary URL" min-width="240" show-overflow-tooltip>
+            <template #default="{ row }">
+              <a
+                v-if="row.primary_url"
+                :href="row.primary_url"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-primary hover:underline"
+              >
+                {{ row.primary_url }}
+              </a>
+              <span v-else>-</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="item_count" label="Sources" width="90" />
+          <el-table-column label="Related Domains" min-width="180" show-overflow-tooltip>
+            <template #default="{ row }">
+              {{ formatDomains(row.source_domains) }}
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
 
       <div v-if="searchDiagnostics.length" class="mb-6 rounded-2xl p-5 glass-card">
         <div class="mb-3 text-sm font-medium text-content-primary">Search Diagnostics</div>

@@ -1,0 +1,60 @@
+{
+  "title": "AI Daily",
+  "summary": "A digest polluted by irrelevant items.",
+  "highlight": "Several items are not useful for an AI developer digest.",
+  "tags": ["AI"],
+  "full_content": "# AI Daily\n\nLow relevance items should be diagnosed.",
+  "sections": [
+    {
+      "category": "hot_trend",
+      "items": [
+        {
+          "title": "Gaming monitor sale discount coupon",
+          "one_liner": "A gaming monitor sale offers a coupon and discount for gamers this week.",
+          "source_url": "https://example.com/gaming-monitor-sale",
+          "source_name": "Example"
+        },
+        {
+          "title": "SpaceX rocket equity IPO rumor",
+          "one_liner": "A rocket finance rumor discusses equity and IPO expectations for investors.",
+          "source_url": "https://example.com/spacex-rocket-equity-ipo",
+          "source_name": "Example"
+        },
+        {
+          "title": "Keyboard and mouse discount bundle",
+          "one_liner": "A keyboard and mouse sale advertises a discount coupon for office hardware.",
+          "source_url": "https://example.com/keyboard-mouse-discount",
+          "source_name": "Example"
+        }
+      ]
+    },
+    {
+      "category": "open_source",
+      "items": [
+        {
+          "title": "LangGraph improves durable agent execution",
+          "one_liner": "Open source agent graphs add resumable execution for production software workflows.",
+          "source_url": "https://github.com/langchain-ai/langgraph/releases/tag/v1.2.0",
+          "source_name": "GitHub"
+        },
+        {
+          "title": "Kubernetes publishes security policy examples",
+          "one_liner": "Infrastructure teams get practical templates for securing AI service deployments.",
+          "source_url": "https://kubernetes.io/blog/security-policy-examples/",
+          "source_name": "Kubernetes"
+        }
+      ]
+    },
+    {
+      "category": "dev_tool",
+      "items": [
+        {
+          "title": "PostgreSQL extension improves vector search plans",
+          "one_liner": "Database developers get better vector query plans for RAG infrastructure workloads.",
+          "source_url": "https://www.postgresql.org/about/news/vector-search-planner/",
+          "source_name": "PostgreSQL"
+        }
+      ]
+    }
+  ]
+}

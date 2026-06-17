@@ -677,6 +677,53 @@ class TestGetDigestByTaskId:
         assert diagnostic["query"] == "AI coding agent"
         assert diagnostic["kept"] == 3
 
+    @pytest.mark.asyncio
+    async def test_digest_task_returns_event_diagnostics_from_orchestrator_plan(self, app, patched_repo):
+        repo = patched_repo
+
+        task_id = await repo.create_task(
+            task_type="digest",
+            keyword="2026-06-21",
+            ai_template="daily_digest",
+            digest_date="2026-06-21",
+        )
+        await repo.save_ai_search_metadata(task_id, {
+            "orchestrator_plan": {
+                "event_diagnostics": {
+                    "event_count": 4,
+                    "merged_event_count": 1,
+                    "duplicate_input_count": 2,
+                    "multi_source_event_count": 1,
+                    "max_sources_per_event": 3,
+                    "source_diversity": 0.75,
+                    "sample_events": [
+                        {
+                            "event_group_key": "openai responses api",
+                            "category": "hot_trend",
+                            "primary_url": "https://openai.com/index/responses-api/",
+                            "source_domains": ["openai.com", "github.blog"],
+                            "source_urls": [
+                                "https://openai.com/index/responses-api/",
+                                "https://github.blog/changelog/responses-api/",
+                            ],
+                            "item_count": 2,
+                        }
+                    ],
+                }
+            }
+        })
+        await repo.fail_task(task_id, "quality below threshold")
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            resp = await ac.get(f"/digests/task/{task_id}")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        diagnostics = data["orchestrator_plan"]["event_diagnostics"]
+        assert diagnostics["event_count"] == 4
+        assert diagnostics["merged_event_count"] == 1
+        assert diagnostics["sample_events"][0]["source_domains"] == ["openai.com", "github.blog"]
+
 
 # ============== GET /digests/config/sections ==============
 

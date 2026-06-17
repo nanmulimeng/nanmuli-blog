@@ -1,0 +1,66 @@
+{
+  "title": "AI Daily",
+  "summary": "A digest with duplicated event-level coverage.",
+  "highlight": "Responses API updates appear repeatedly.",
+  "tags": ["AI"],
+  "full_content": "# AI Daily\n\nDuplicated same-event items should be diagnosed.",
+  "sections": [
+    {
+      "category": "hot_trend",
+      "items": [
+        {
+          "title": "OpenAI Responses API adds agent tracing",
+          "one_liner": "Agent developers get clearer tracing for API tool calls and workflow debugging.",
+          "source_url": "https://openai.com/index/responses-api-tracing/",
+          "source_name": "OpenAI"
+        },
+        {
+          "title": "GitHub adds Responses API tracing integration",
+          "one_liner": "GitHub integrates OpenAI Responses API tracing for agent developer workflows.",
+          "source_url": "https://github.blog/changelog/responses-api-tracing/",
+          "source_name": "GitHub Blog"
+        },
+        {
+          "title": "Responses API tracing reaches agent SDKs",
+          "one_liner": "The Responses API tracing feature reaches agent SDKs used by software teams.",
+          "source_url": "https://example.com/responses-api-tracing-sdk",
+          "source_name": "Example"
+        }
+      ]
+    },
+    {
+      "category": "open_source",
+      "items": [
+        {
+          "title": "LangGraph improves durable agent execution",
+          "one_liner": "Open source agent graphs add resumable execution for production software workflows.",
+          "source_url": "https://github.com/langchain-ai/langgraph/releases/tag/v1.2.0",
+          "source_name": "GitHub"
+        },
+        {
+          "title": "Kubernetes publishes security policy examples",
+          "one_liner": "Infrastructure teams get practical templates for securing AI service deployments.",
+          "source_url": "https://kubernetes.io/blog/security-policy-examples/",
+          "source_name": "Kubernetes"
+        }
+      ]
+    },
+    {
+      "category": "dev_tool",
+      "items": [
+        {
+          "title": "PostgreSQL extension improves vector search plans",
+          "one_liner": "Database developers get better vector query plans for RAG infrastructure workloads.",
+          "source_url": "https://www.postgresql.org/about/news/vector-search-planner/",
+          "source_name": "PostgreSQL"
+        },
+        {
+          "title": "GitHub Copilot CLI adds model routing",
+          "one_liner": "Developers can route coding tasks to specialized models from terminal workflows.",
+          "source_url": "https://github.blog/changelog/copilot-cli-model-routing/",
+          "source_name": "GitHub Blog"
+        }
+      ]
+    }
+  ]
+}

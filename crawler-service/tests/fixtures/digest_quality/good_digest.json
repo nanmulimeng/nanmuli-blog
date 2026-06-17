@@ -1,0 +1,77 @@
+{
+  "title": "AI Daily",
+  "summary": "A balanced AI developer intelligence digest.",
+  "highlight": "Responses API tooling, vector database updates, and AI paper releases shaped today's developer workflow.",
+  "tags": ["AI", "developer", "open source"],
+  "full_content": "# AI Daily\n\n## Highlights\n\nA balanced digest with concrete source-backed items.",
+  "sections": [
+    {
+      "category": "hot_trend",
+      "items": [
+        {
+          "title": "OpenAI Responses API adds agent tracing",
+          "one_liner": "Agent developers get clearer tracing for API tool calls and workflow debugging.",
+          "source_url": "https://openai.com/index/responses-api-tracing/",
+          "source_name": "OpenAI"
+        },
+        {
+          "title": "Anthropic releases Claude Code workflow controls",
+          "one_liner": "Engineering teams can constrain tool usage and keep agentic coding flows auditable.",
+          "source_url": "https://www.anthropic.com/news/claude-code-controls",
+          "source_name": "Anthropic"
+        }
+      ]
+    },
+    {
+      "category": "open_source",
+      "items": [
+        {
+          "title": "LangGraph improves durable agent execution",
+          "one_liner": "Open source agent graphs add resumable execution for production software workflows.",
+          "source_url": "https://github.com/langchain-ai/langgraph/releases/tag/v1.2.0",
+          "source_name": "GitHub"
+        },
+        {
+          "title": "Kubernetes publishes security policy examples",
+          "one_liner": "Infrastructure teams get practical templates for securing AI service deployments.",
+          "source_url": "https://kubernetes.io/blog/security-policy-examples/",
+          "source_name": "Kubernetes"
+        }
+      ]
+    },
+    {
+      "category": "dev_tool",
+      "items": [
+        {
+          "title": "GitHub Copilot CLI adds model routing",
+          "one_liner": "Developers can route coding tasks to specialized models from terminal workflows.",
+          "source_url": "https://github.blog/changelog/copilot-cli-model-routing/",
+          "source_name": "GitHub Blog"
+        },
+        {
+          "title": "PostgreSQL extension improves vector search plans",
+          "one_liner": "Database developers get better vector query plans for RAG infrastructure workloads.",
+          "source_url": "https://www.postgresql.org/about/news/vector-search-planner/",
+          "source_name": "PostgreSQL"
+        }
+      ]
+    },
+    {
+      "category": "paper",
+      "items": [
+        {
+          "title": "New paper evaluates agent tool-use reliability",
+          "one_liner": "The benchmark measures how reliably LLM agents call APIs across software tasks.",
+          "source_url": "https://arxiv.org/abs/2606.00001",
+          "source_name": "arXiv"
+        },
+        {
+          "title": "RAG study compares retrieval reranking methods",
+          "one_liner": "The paper shows reranking choices affect factuality in developer documentation search.",
+          "source_url": "https://arxiv.org/abs/2606.00002",
+          "source_name": "arXiv"
+        }
+      ]
+    }
+  ]
+}

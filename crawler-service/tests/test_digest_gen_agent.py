@@ -33,6 +33,7 @@ class TestDigestGenAgentResult:
         assert result.error is None
         assert result.tokens_used == 0
         assert result.duration_ms == 0
+        assert result.event_diagnostics == {}
 
     def test_success_with_content(self):
         mock_content = MagicMock()
@@ -803,6 +804,64 @@ class TestDigestGenAgentExecute:
         assert result.duration_ms == 5000
 
     @pytest.mark.asyncio
+    async def test_execute_merges_same_event_pages_before_ai_call(self):
+        from ai.organizer import DigestContent
+
+        agent = self._make_agent()
+        docs = [
+            SectionDocument(
+                section_name="hot_trend",
+                entries=[
+                    SourceEntry(
+                        url="https://openai.com/index/responses-api/",
+                        title="OpenAI Responses API reaches GA",
+                        cleaned_content=("OpenAI Responses API reaches GA for agents and tool use. " * 8),
+                    ),
+                    SourceEntry(
+                        url="https://github.blog/changelog/responses-api-ga/",
+                        title="GitHub adds Responses API GA integration",
+                        cleaned_content=("GitHub adds Responses API GA integration for agent workflows. " * 8),
+                    ),
+                    SourceEntry(
+                        url="https://example.com/postgresql-planner-update",
+                        title="PostgreSQL planner improves join estimates",
+                        cleaned_content=("PostgreSQL planner improves join estimates for analytical workloads. " * 8),
+                    ),
+                ],
+            )
+        ]
+        mock_digest = DigestContent(
+            title="Daily Digest",
+            summary="Digest summary",
+            full_content="Digest full content",
+            tokens_used=1000,
+            duration_ms=5000,
+        )
+
+        with patch.object(agent, "_precheck", return_value=True), \
+             patch("crawler.quality.SourceAuthority") as mock_sa, \
+             patch("standalone.repository.get_recent_highlights", new=AsyncMock(return_value=[])), \
+             patch("ai.organizer.ContentOrganizer") as mock_org_cls:
+            mock_sa.preload_authority_cache = AsyncMock()
+            mock_sa.score.side_effect = lambda url: {
+                "level": "official" if "openai.com" in url else "high"
+            }
+            mock_org = MagicMock()
+            mock_org.generate_digest = AsyncMock(return_value=mock_digest)
+            mock_org.close = AsyncMock()
+            mock_org_cls.return_value = mock_org
+
+            result = await agent.execute(docs, "2026-06-17")
+
+        digest_pages_arg = mock_org.generate_digest.call_args.args[0]
+        assert len(digest_pages_arg) == 2
+        assert any("## Multi-source evidence" in page.markdown for page in digest_pages_arg)
+        assert any("github.blog" in page.markdown for page in digest_pages_arg)
+        assert result.event_diagnostics["event_count"] == 2
+        assert result.event_diagnostics["merged_event_count"] == 1
+        assert result.event_diagnostics["duplicate_input_count"] == 1
+
+    @pytest.mark.asyncio
     async def test_ai_thin_digest_is_supplemented_from_source_pages(self):
         from ai.organizer import DigestContent, DigestItem, DigestSection
 
@@ -882,6 +941,61 @@ class TestDigestGenAgentExecute:
         assert len(item_urls) == len(set(item_urls))
         assert all(url.startswith(("https://news.ycombinator.com/", "https://github.com/example/")) for url in item_urls)
         assert "补充覆盖" in result.digest_content.full_content
+
+    @pytest.mark.asyncio
+    async def test_fallback_organizer_merges_same_event_pages_before_ai_call(self):
+        from ai.organizer import DigestContent
+        from standalone.organizer_helper import organize_digest_and_save
+
+        task_id = 123
+        task = {"digest_date": "2026-06-17", "keyword": "2026-06-17"}
+        pages = [
+            {
+                "id": 1,
+                "url": "https://openai.com/index/responses-api/",
+                "page_title": "OpenAI Responses API reaches GA",
+                "raw_markdown": "OpenAI Responses API reaches GA for agents and tool use. " * 8,
+                "crawl_status": 2,
+            },
+            {
+                "id": 2,
+                "url": "https://github.blog/changelog/responses-api-ga/",
+                "page_title": "GitHub adds Responses API GA integration",
+                "raw_markdown": "GitHub adds Responses API GA integration for agent workflows. " * 8,
+                "crawl_status": 2,
+            },
+        ]
+        organizer = MagicMock()
+        organizer.generate_digest = AsyncMock(return_value=DigestContent(
+            title="Daily Digest",
+            summary="Digest summary",
+            full_content="# Digest",
+            sections=[],
+            tokens_used=100,
+            duration_ms=200,
+        ))
+
+        with patch("standalone.task_executor.infer_category", return_value="hot_trend"), \
+             patch("crawler.quality.SourceAuthority.score", side_effect=lambda url: {
+                 "level": "official" if "openai.com" in url else "high"
+             }), \
+             patch("standalone.organizer_helper.repo.get_task", new=AsyncMock(return_value={
+                 "ai_search_metadata": '{"orchestrator_plan":{"plan_log":["existing"]}}'
+             })), \
+             patch("standalone.organizer_helper.repo.update_task_metadata", new=AsyncMock()) as mock_update_meta, \
+             patch("standalone.organizer_helper.repo.get_recent_highlights", new=AsyncMock(return_value=[])), \
+             patch("standalone.organizer_helper.repo.save_digest_results", new=AsyncMock()), \
+             patch("standalone.digest_quality_gate.evaluate_digest_publish_quality", return_value=({"score": 0.9}, True)), \
+             patch("standalone.digest_quality_gate.save_digest_publish_quality", new=AsyncMock()):
+            await organize_digest_and_save(task_id, task, pages, organizer)
+
+        digest_pages_arg = organizer.generate_digest.call_args.args[0]
+        assert len(digest_pages_arg) == 1
+        assert "## Multi-source evidence" in digest_pages_arg[0].markdown
+        assert "github.blog" in digest_pages_arg[0].markdown
+        metadata_payload = mock_update_meta.call_args.args[1]
+        assert metadata_payload["orchestrator_plan"]["plan_log"] == ["existing"]
+        assert metadata_payload["orchestrator_plan"]["event_diagnostics"]["merged_event_count"] == 1
 
     @pytest.mark.asyncio
     async def test_ai_digest_with_enough_items_still_supplements_missing_category(self):

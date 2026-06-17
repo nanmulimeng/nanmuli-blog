@@ -1,0 +1,50 @@
+{
+  "title": "AI Daily",
+  "summary": "A digest with too few core sections.",
+  "highlight": "Only hot trend items are present.",
+  "tags": ["AI"],
+  "full_content": "# AI Daily\n\nCore section coverage is intentionally incomplete.",
+  "sections": [
+    {
+      "category": "hot_trend",
+      "items": [
+        {
+          "title": "OpenAI Responses API adds agent tracing",
+          "one_liner": "Agent developers get clearer tracing for API tool calls and workflow debugging.",
+          "source_url": "https://openai.com/index/responses-api-tracing/",
+          "source_name": "OpenAI"
+        },
+        {
+          "title": "Anthropic releases Claude Code workflow controls",
+          "one_liner": "Engineering teams can constrain tool usage and keep agentic coding flows auditable.",
+          "source_url": "https://www.anthropic.com/news/claude-code-controls",
+          "source_name": "Anthropic"
+        },
+        {
+          "title": "AI infrastructure monitoring adds agent metrics",
+          "one_liner": "Software teams get new monitoring signals for agent API latency and reliability.",
+          "source_url": "https://example.com/ai-infrastructure-agent-metrics",
+          "source_name": "Example"
+        },
+        {
+          "title": "LLM security guidance updates prompt injection patterns",
+          "one_liner": "Security teams get updated mitigations for prompt injection in AI software systems.",
+          "source_url": "https://example.com/llm-security-prompt-injection",
+          "source_name": "Example"
+        },
+        {
+          "title": "Developer platform adds RAG deployment templates",
+          "one_liner": "Developers can deploy RAG services faster with tested infrastructure templates.",
+          "source_url": "https://example.com/rag-deployment-templates",
+          "source_name": "Example"
+        },
+        {
+          "title": "Cloud API gateway improves AI workload routing",
+          "one_liner": "Infrastructure teams can route AI API workloads with better policy controls.",
+          "source_url": "https://example.com/cloud-api-ai-routing",
+          "source_name": "Example"
+        }
+      ]
+    }
+  ]
+}

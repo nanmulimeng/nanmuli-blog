@@ -277,6 +277,10 @@ async def organize_digest_and_save(
     if not digest_pages:
         raise ValueError("没有成功的页面可整理")
 
+    from crawler.digest_events import merge_digest_event_pages
+    digest_pages, event_diagnostics = merge_digest_event_pages(digest_pages)
+    await _save_digest_event_diagnostics(task_id, event_diagnostics)
+
     date = task.get("digest_date") or task.get("keyword") or datetime.date.today().isoformat()
     input_urls = frozenset(_collect_digest_allowed_urls(digest_pages))
 
@@ -328,6 +332,27 @@ async def organize_digest_and_save(
         sections=sections_data,
     )
     return result
+
+
+async def _save_digest_event_diagnostics(task_id: int, event_diagnostics: dict) -> None:
+    """Persist event merge diagnostics without dropping existing plan data."""
+    try:
+        task = await repo.get_task(task_id)
+        metadata = {}
+        raw = task.get("ai_search_metadata") if task else None
+        if raw:
+            try:
+                metadata = json.loads(raw) if isinstance(raw, str) else raw
+            except Exception:
+                metadata = {}
+        if not isinstance(metadata, dict):
+            metadata = {}
+        plan = metadata.get("orchestrator_plan")
+        plan = dict(plan) if isinstance(plan, dict) else {}
+        plan["event_diagnostics"] = event_diagnostics
+        await repo.update_task_metadata(task_id, {"orchestrator_plan": plan})
+    except Exception:
+        return
 
 
 def _collect_digest_allowed_urls(digest_pages: list[DigestPageContent]) -> set[str]:

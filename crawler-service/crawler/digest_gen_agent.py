@@ -7,7 +7,7 @@
 
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 logger = logging.getLogger(__name__)
@@ -50,6 +50,7 @@ class DigestGenAgentResult:
     error: str | None = None
     tokens_used: int = 0
     duration_ms: int = 0
+    event_diagnostics: dict = field(default_factory=dict)
 
 
 class DigestGenAgent:
@@ -87,6 +88,8 @@ class DigestGenAgent:
             if not digest_pages:
                 return DigestGenAgentResult(success=False, error="no valid pages")
 
+            from crawler.digest_events import merge_digest_event_pages
+            digest_pages, event_diagnostics = merge_digest_event_pages(digest_pages)
             input_urls = frozenset(_collect_allowed_source_urls(digest_pages))
 
             # 获取最近 highlight（AI 多样性检测）
@@ -114,6 +117,7 @@ class DigestGenAgent:
                 digest_content=content,
                 tokens_used=content.tokens_used,
                 duration_ms=content.duration_ms,
+                event_diagnostics=event_diagnostics,
             )
 
         except Exception as e:

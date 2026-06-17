@@ -1,0 +1,60 @@
+{
+  "title": "AI Daily",
+  "summary": "A digest with generic listing source URLs.",
+  "highlight": "Generic listing pages pollute the source set.",
+  "tags": ["AI"],
+  "full_content": "# AI Daily\n\nGeneric listing URLs should be diagnosed.",
+  "sections": [
+    {
+      "category": "hot_trend",
+      "items": [
+        {
+          "title": "OpenAI Responses API adds agent tracing",
+          "one_liner": "Agent developers get clearer tracing for API tool calls and workflow debugging.",
+          "source_url": "https://openai.com/blog",
+          "source_name": "OpenAI"
+        },
+        {
+          "title": "Anthropic releases Claude Code workflow controls",
+          "one_liner": "Engineering teams can constrain tool usage and keep agentic coding flows auditable.",
+          "source_url": "https://www.anthropic.com/news/claude-code-controls",
+          "source_name": "Anthropic"
+        }
+      ]
+    },
+    {
+      "category": "open_source",
+      "items": [
+        {
+          "title": "LangGraph improves durable agent execution",
+          "one_liner": "Open source agent graphs add resumable execution for production software workflows.",
+          "source_url": "https://github.com/langchain-ai/langgraph/releases/tag/v1.2.0",
+          "source_name": "GitHub"
+        },
+        {
+          "title": "Kubernetes publishes security policy examples",
+          "one_liner": "Infrastructure teams get practical templates for securing AI service deployments.",
+          "source_url": "https://kubernetes.io/blog",
+          "source_name": "Kubernetes"
+        }
+      ]
+    },
+    {
+      "category": "dev_tool",
+      "items": [
+        {
+          "title": "GitHub Copilot CLI adds model routing",
+          "one_liner": "Developers can route coding tasks to specialized models from terminal workflows.",
+          "source_url": "https://github.blog/changelog/copilot-cli-model-routing/",
+          "source_name": "GitHub Blog"
+        },
+        {
+          "title": "PostgreSQL extension improves vector search plans",
+          "one_liner": "Database developers get better vector query plans for RAG infrastructure workloads.",
+          "source_url": "https://www.postgresql.org/about/news/",
+          "source_name": "PostgreSQL"
+        }
+      ]
+    }
+  ]
+}

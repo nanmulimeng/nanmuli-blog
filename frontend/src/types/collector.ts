@@ -131,6 +131,26 @@ export interface DigestDetail {
 export interface DigestOrchestratorPlan {
   plan_log?: string[]
   search_diagnostics?: DigestSearchDiagnostic[]
+  event_diagnostics?: DigestEventDiagnostics
+}
+
+export interface DigestEventDiagnostics {
+  event_count: number
+  merged_event_count: number
+  duplicate_input_count: number
+  multi_source_event_count: number
+  max_sources_per_event: number
+  source_diversity: number
+  sample_events?: DigestEventSample[]
+}
+
+export interface DigestEventSample {
+  event_group_key?: string
+  category?: string
+  primary_url?: string
+  source_urls?: string[]
+  source_domains?: string[]
+  item_count?: number
 }
 
 export interface DigestSearchDiagnostic {

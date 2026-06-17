@@ -18,7 +18,7 @@ from urllib.parse import urlparse
 EVENT_STOPWORDS = {
     "the", "and", "for", "with", "from", "into", "gets", "get", "new",
     "adds", "add", "release", "releases", "released", "feature", "features",
-    "update", "updates", "developer", "developers", "api", "tool", "tools",
+    "update", "updates", "developer", "developers", "tool", "tools",
 }
 
 
@@ -41,6 +41,7 @@ def _event_text(item) -> str:
     return " ".join([
         _candidate_field(item, "title"),
         _candidate_field(item, "markdown")[:400],
+        _candidate_field(item, "summary")[:400],
         _candidate_field(item, "snippet")[:400],
         _candidate_field(item, "one_liner")[:400],
     ])
