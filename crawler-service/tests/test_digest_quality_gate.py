@@ -1,5 +1,10 @@
+import pytest
+
 from ai.organizer import DigestContent, DigestItem, DigestSection
-from standalone.digest_quality_gate import evaluate_digest_publish_quality
+from standalone.digest_quality_gate import (
+    evaluate_digest_publish_quality,
+    save_digest_publish_quality,
+)
 
 
 def _section(category: str, count: int) -> DigestSection:
@@ -79,3 +84,42 @@ def test_publish_gate_allows_digest_with_enough_core_sections(monkeypatch):
     assert publishable is True
     assert quality["core_section_count"] == 3
     assert quality["gate_failures"] == []
+
+
+@pytest.mark.asyncio
+async def test_save_digest_publish_quality_merges_existing_metadata():
+    class FakeRepository:
+        def __init__(self):
+            self.metadata = {
+                "orchestrator_plan": {
+                    "event_diagnostics": {
+                        "event_count": 3,
+                        "merged_event_count": 1,
+                    }
+                }
+            }
+            self.overwrite_called = False
+
+        async def update_task_metadata(self, task_id, metadata):
+            assert task_id == 42
+            self.metadata.update(metadata)
+
+        async def save_ai_search_metadata(self, task_id, metadata):
+            self.overwrite_called = True
+            self.metadata = metadata
+
+    repository = FakeRepository()
+
+    await save_digest_publish_quality(
+        repository,
+        42,
+        {"score": 0.92, "gate_failures": []},
+        True,
+        "fallback",
+    )
+
+    assert repository.overwrite_called is False
+    assert repository.metadata["digest_publishable"] is True
+    assert repository.metadata["digest_publish_stage"] == "fallback"
+    assert repository.metadata["digest_publish_quality"]["score"] == 0.92
+    assert repository.metadata["orchestrator_plan"]["event_diagnostics"]["merged_event_count"] == 1

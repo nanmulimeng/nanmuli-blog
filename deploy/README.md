@@ -1,7 +1,7 @@
 # Nanmuli Blog 部署说明
 
 > 当前版本：MVP Beta 试用版
-> 最后复核：2026-06-03
+> 最后复核：2026-06-18
 
 ## 部署结论
 
@@ -9,6 +9,9 @@
 
 - `docker compose --env-file .env.example config` 通过。
 - `docker compose --env-file .env.example build frontend` 通过。
+- `scripts/release/release-gate.ps1` 可一键执行上线前审计、构建、测试、compose、env 和可选 smoke 验收。
+- `scripts/release/check-deploy-env.ps1` 可校验真实 `deploy/.env` 的上线必填项。
+- `scripts/release/digest-smoke.ps1` 可执行上线前真实日报 smoke。
 - 真实 `.env` 已从仓库中移除，仓库仅保留 `.env.example`。
 - 前端 Docker 构建使用 `frontend/package-lock.json` 和 `npm ci`，构建可复现。
 
@@ -119,6 +122,34 @@ curl http://localhost/api/digest/latest
 - Crawler health 返回 `healthy`。
 - 公开日报接口在有日报数据时返回 `200 success`。
 
+## 上线前日报 smoke
+
+在仓库根目录执行：
+
+```powershell
+# 日常快速闸门：审计、前端构建、compose config、报告生成
+.\scripts\release\release-gate.ps1 -Fast
+
+# 上线完整闸门：全量测试 + 真实环境校验 + 真实日报 smoke
+.\scripts\release\release-gate.ps1 -RunSmoke -TriggerDigest -ForceDigest -CrawlerApiKey <key> -TimeoutMinutes 30
+
+# 专项诊断入口
+.\scripts\release\check-deploy-env.ps1 -EnvPath deploy/.env
+.\scripts\release\digest-smoke.ps1 -SelfTest
+.\scripts\release\digest-smoke.ps1 -CrawlerUrl http://localhost:8500 -BackendUrl http://localhost:8081 -CrawlerApiKey <key> -Trigger -Force -TimeoutMinutes 30
+```
+
+验收标准：
+
+- 真实 `deploy/.env` 已设置 `AI_ENABLED=true`、`DIGEST_ENABLED=true`、`AI_API_KEY`、`CRAWLER_API_KEY`、`CRAWLER_CALLBACK_API_KEY`、`BLOG_SECURITY_ENCRYPTION_KEY`。
+- `BLOG_SECURITY_ENCRYPTION_KEY` 不使用默认值或占位符。
+- 触发任务完成后有 `ai_title`、`ai_full_content`、结构化 `sections/items`。
+- 核心板块 `hot_trend/open_source/dev_tool/tech_article/paper` 至少覆盖 3 个。
+- `quality_evaluation.publishable` 不是 `false`。
+- 公开 `/api/digest/latest` 能返回同一条可发布日报。
+- `release-gate` 会同时生成 JSON 和 Markdown 报告，默认位于 `artifacts/release-gate/`。
+- `digest-smoke -SelfTest` 会离线校验日报 smoke 的自动优化 safety 断言；完整 `release-gate` 已默认包含该自检。
+
 ## 上线检查清单
 
 - [ ] 已创建真实 `deploy/.env`，且未提交到 Git。
@@ -128,10 +159,15 @@ curl http://localhost/api/digest/latest
 - [ ] HTTPS 环境已设置 `COOKIE_SECURE=true`。
 - [ ] AI key、base URL、model 已配置并可用。
 - [ ] `DIGEST_ENABLED=true` 仅在确认信息源配置完成后开启。
+- [ ] `.\scripts\release\release-gate.ps1 -Fast` 日常快速闸门通过。
+- [ ] `.\scripts\release\release-gate.ps1 -RunSmoke -TriggerDigest -ForceDigest -CrawlerApiKey <key>` 通过。
+- [ ] `.\scripts\release\check-deploy-env.ps1 -EnvPath deploy/.env` 通过。
+- [ ] `.\scripts\release\digest-smoke.ps1 -SelfTest` 通过。
 - [ ] `docker compose --env-file .env config` 通过。
 - [ ] `docker compose --env-file .env up -d --build` 启动成功。
 - [ ] Backend、Crawler、Frontend 三方健康检查通过。
-- [ ] 管理端可登录，日报可手动触发。
+- [ ] `.\scripts\release\digest-smoke.ps1 -Trigger -Force` 通过。
+- [ ] 管理端可登录，日报可手动触发并能看到失败诊断。
 - [ ] 公开页面可访问最新日报。
 
 ## 已知风险

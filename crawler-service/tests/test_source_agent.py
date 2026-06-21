@@ -352,6 +352,60 @@ class TestSourceActionsFeedback:
         assert any("deprioritize URL source" in log for log in plan.analysis_log)
 
     @patch("crawler.source_analysis.is_truly_dead", return_value=False)
+    def test_low_confidence_next_run_actions_downgrade_skip_to_deprioritize(self, _mock):
+        sec = _make_section(
+            source_type="keyword",
+            keyword_details=[
+                {"value": "possibly bad", "source_id": 301, "effectiveness": {}},
+                {"value": "stable", "source_id": 302, "effectiveness": {}},
+            ],
+        )
+        kb_hint = {
+            "next_run_actions": {
+                "confidence": "low",
+                "source_ids": {"skip": [301], "deprioritize": []},
+                "sources": {
+                    301: {"action": "skip", "reason": "single weak evaluation", "quality_score": 0.2},
+                },
+            }
+        }
+
+        plan = SourceAgent(sec, _make_config(), {}).analyze(kb_hint=kb_hint)
+
+        assert 301 not in plan.skipped_source_ids
+        assert plan.active_keywords == ["stable", "possibly bad"]
+        assert any("low-confidence" in log for log in plan.analysis_log)
+        assert any("deprioritize keyword" in log for log in plan.analysis_log)
+
+    @patch("crawler.source_analysis.is_truly_dead", return_value=False)
+    def test_next_run_actions_cannot_skip_too_many_sources_in_one_section(self, _mock):
+        sec = _make_section(
+            source_type="keyword",
+            keyword_details=[
+                {"value": "worst", "source_id": 401, "effectiveness": {}},
+                {"value": "middle", "source_id": 402, "effectiveness": {}},
+                {"value": "maybe", "source_id": 403, "effectiveness": {}},
+            ],
+        )
+        kb_hint = {
+            "next_run_actions": {
+                "confidence": "medium",
+                "source_ids": {"skip": [401, 402, 403], "deprioritize": []},
+                "sources": {
+                    401: {"action": "skip", "reason": "bad", "quality_score": 0.1},
+                    402: {"action": "skip", "reason": "bad", "quality_score": 0.2},
+                    403: {"action": "skip", "reason": "bad", "quality_score": 0.3},
+                },
+            }
+        }
+
+        plan = SourceAgent(sec, _make_config(), {}).analyze(kb_hint=kb_hint)
+
+        assert plan.skipped_source_ids == {401}
+        assert plan.active_keywords == ["middle", "maybe"]
+        assert any("skip cap" in log for log in plan.analysis_log)
+
+    @patch("crawler.source_analysis.is_truly_dead", return_value=False)
     def test_language_weakness_logged(self, _mock):
         sec = _make_section(
             max_items=5,

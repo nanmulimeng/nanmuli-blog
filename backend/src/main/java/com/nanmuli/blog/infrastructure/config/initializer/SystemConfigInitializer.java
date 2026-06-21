@@ -39,6 +39,16 @@ public class SystemConfigInitializer implements ApplicationRunner {
                 "Crawler callback API key", "password", true, true);
         changed |= seedFromEnvironment("crawler.callback.url", "CRAWLER_CALLBACK_URL",
                 "Crawler callback URL", "text", false, false);
+        changed |= seedFromEnvironment("crawler.ai.enabled", "AI_ENABLED",
+                "Crawler AI feature switch", "switch", false, false);
+        changed |= seedFromEnvironment("crawler.ai.api_key", "AI_API_KEY",
+                "Crawler AI API key", "password", true, true);
+        changed |= seedFromEnvironment("crawler.ai.base_url", "AI_BASE_URL",
+                "Crawler AI API base URL", "text", false, false);
+        changed |= seedFromEnvironment("crawler.ai.model", "AI_MODEL",
+                "Crawler AI model name", "text", false, false);
+        changed |= seedFromEnvironment("crawler.digest.enabled", "DIGEST_ENABLED",
+                "Digest scheduler switch", "switch", false, false);
         if (changed) {
             configService.reload();
             crawlerTaskClient.reloadPool();

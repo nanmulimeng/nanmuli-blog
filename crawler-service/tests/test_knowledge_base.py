@@ -401,13 +401,14 @@ class TestDigestEvaluationFeedback:
         with patch("optimization.knowledge_base.get_db", _mock_get_db(mem_db)):
             actions = await KnowledgeBase().get_digest_source_actions()
 
-        assert actions["source_ids"]["skip"] == [10]
-        assert actions["source_ids"]["deprioritize"] == [11]
+        assert actions["source_ids"]["skip"] == []
+        assert actions["source_ids"]["deprioritize"] == [11, 10]
         assert actions["boost_sections"] == ["source_diversity"]
         assert actions["confidence"] == "medium"
-        assert actions["sources"][10]["action"] == "skip"
+        assert actions["sources"][10]["action"] == "deprioritize"
         assert actions["sources"][11]["action"] == "deprioritize"
         assert 12 not in actions["sources"]
+        assert any("section-skip-cap" in item for item in actions["safety"]["applied"])
 
     def test_digest_source_actions_include_url_actions_without_source_id(self):
         actions = KnowledgeBase.derive_digest_source_actions(
@@ -436,8 +437,88 @@ class TestDigestEvaluationFeedback:
         )
 
         assert actions["source_ids"] == {"skip": [], "deprioritize": []}
-        assert actions["source_urls"]["deprioritize"] == ["https://review.example.com/article"]
-        assert actions["source_urls"]["skip"] == ["https://filter.example.com/post"]
+        assert actions["source_urls"]["deprioritize"] == [
+            "https://review.example.com/article",
+            "https://filter.example.com/post",
+        ]
+        assert actions["source_urls"]["skip"] == []
         assert actions["sources"]["url:https://review.example.com/article"]["quality_score"] == 0.536
-        assert actions["sources"]["url:https://filter.example.com/post"]["action"] == "skip"
+        assert actions["sources"]["url:https://filter.example.com/post"]["action"] == "deprioritize"
         assert actions["confidence"] == "medium"
+        assert any("section-skip-cap" in item for item in actions["safety"]["applied"])
+
+    def test_digest_source_actions_downgrade_single_low_confidence_skip(self):
+        actions = KnowledgeBase.derive_digest_source_actions(
+            diagnostics=[
+                {
+                    "section": "open_source",
+                    "source_id": 501,
+                    "source_name": "Single Weak Source",
+                    "source_url": "https://weak.example.com",
+                    "item_count": 1,
+                    "quality_score": 0.21,
+                    "quality_verdict": "keep",
+                },
+            ],
+            weaknesses=["source_diversity"],
+            suggestions=["review source mix"],
+            digest_date="2026-06-09",
+        )
+
+        assert actions["confidence"] == "low"
+        assert actions["source_ids"]["skip"] == []
+        assert actions["source_ids"]["deprioritize"] == [501]
+        assert actions["sources"][501]["action"] == "deprioritize"
+        assert actions["safety"]["applied"]
+        assert any("low-confidence" in item for item in actions["safety"]["applied"])
+
+    def test_digest_source_actions_cap_section_skip_actions(self):
+        actions = KnowledgeBase.derive_digest_source_actions(
+            diagnostics=[
+                {
+                    "section": "dev_tool",
+                    "source_id": 601,
+                    "source_name": "Worst",
+                    "source_url": "https://worst.example.com",
+                    "item_count": 1,
+                    "quality_score": 0.10,
+                    "quality_verdict": "keep",
+                },
+                {
+                    "section": "dev_tool",
+                    "source_id": 602,
+                    "source_name": "Bad",
+                    "source_url": "https://bad.example.com",
+                    "item_count": 1,
+                    "quality_score": 0.20,
+                    "quality_verdict": "keep",
+                },
+                {
+                    "section": "dev_tool",
+                    "source_id": 603,
+                    "source_name": "Maybe Bad",
+                    "source_url": "https://maybe.example.com",
+                    "item_count": 1,
+                    "quality_score": 0.30,
+                    "quality_verdict": "keep",
+                },
+                {
+                    "section": "dev_tool",
+                    "source_id": 604,
+                    "source_name": "Healthy",
+                    "source_url": "https://healthy.example.com",
+                    "item_count": 3,
+                    "quality_score": 0.82,
+                    "quality_verdict": "keep",
+                },
+            ],
+            weaknesses=[],
+            suggestions=[],
+            digest_date="2026-06-09",
+        )
+
+        assert actions["confidence"] == "medium"
+        assert actions["source_ids"]["skip"] == [601, 602]
+        assert actions["source_ids"]["deprioritize"] == [603]
+        assert actions["sources"][603]["action"] == "deprioritize"
+        assert any("section-skip-cap" in item for item in actions["safety"]["applied"])

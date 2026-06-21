@@ -604,6 +604,12 @@ class TestGetDigestByTaskId:
         assert source_diag["item_count"] == 1
         assert source_diag["quality_score"] == 38
         assert source_diag["quality_verdict"] == "review"
+        next_actions = data["quality_evaluation"]["next_run_actions"]
+        assert next_actions["confidence"] == "low"
+        assert next_actions["source_ids"]["skip"] == []
+        assert next_actions["source_ids"]["deprioritize"] == [42]
+        assert next_actions["sources"]["42"]["action"] == "deprioritize"
+        assert any("low-confidence" in item for item in next_actions["safety"]["applied"])
 
     @pytest.mark.asyncio
     async def test_digest_task_uses_publish_quality_metadata_without_final_eval(self, app, patched_repo):

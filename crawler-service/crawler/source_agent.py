@@ -6,6 +6,7 @@ CrawlerAgent. It does not crawl pages itself.
 """
 
 import logging
+from copy import deepcopy
 from dataclasses import dataclass, field
 
 from crawler.digest_orchestrator import PlannedSection
@@ -104,6 +105,7 @@ class SourceAgent:
             recommended_engine=section.engine,
             adjusted_max_items=min(section.max_items, _MAX_ITEMS_CAP),
         )
+        next_run_actions = self._guard_next_run_actions(next_run_actions, plan)
         self._attach_url_feedback(plan, next_run_actions)
 
         deprioritized_urls: list[dict] = []
@@ -243,6 +245,139 @@ class SourceAgent:
             plan.analysis_log.append(
                 f"Applied next_run_actions boost section -> {plan.adjusted_max_items}"
             )
+
+    def _guard_next_run_actions(self, next_run_actions: dict, plan: SourceCrawlPlan) -> dict:
+        """Keep optimization feedback from starving a section due to one bad judgment."""
+        if not isinstance(next_run_actions, dict) or not next_run_actions:
+            return {}
+
+        guarded = deepcopy(next_run_actions)
+        confidence = str(guarded.get("confidence") or "").lower()
+        if confidence == "low":
+            self._downgrade_all_skip_actions(
+                guarded, "guardrail: low-confidence skip downgraded"
+            )
+            plan.analysis_log.append(
+                "Applied next_run_actions guardrail: low-confidence skip actions downgraded to deprioritize"
+            )
+
+        refs = self._configured_source_refs()
+        if not refs:
+            return guarded
+
+        skip_refs = [
+            ref for ref in refs
+            if (_source_action_for(ref.get("source_id"), guarded, ref.get("value")) or {}).get("action") == "skip"
+        ]
+        if not skip_refs:
+            return guarded
+
+        max_skip = max(0, len(refs) // 2)
+        if len(refs) == 1:
+            max_skip = 0
+        if len(skip_refs) <= max_skip:
+            return guarded
+
+        skip_refs.sort(key=lambda ref: self._source_action_score(ref, guarded))
+        for ref in skip_refs[max_skip:]:
+            self._downgrade_skip_ref(
+                guarded, ref, "guardrail: per-section skip cap downgraded"
+            )
+        plan.analysis_log.append(
+            f"Applied next_run_actions guardrail: skip cap {len(skip_refs)} -> {max_skip}"
+        )
+        return guarded
+
+    def _configured_source_refs(self) -> list[dict]:
+        refs: list[dict] = []
+        for src in self.section.url_sources:
+            refs.append({
+                "source_id": src.get("source_id"),
+                "value": src.get("url"),
+            })
+        for src in self.section.rss_sources:
+            refs.append({
+                "source_id": src.get("source_id"),
+                "value": src.get("feed_url"),
+            })
+        for item in self.section.keyword_details:
+            refs.append({
+                "source_id": item.get("source_id"),
+                "value": item.get("value"),
+            })
+        return [
+            ref for ref in refs
+            if _normalize_source_id(ref.get("source_id")) is not None
+            or _normalize_source_url(ref.get("value")) is not None
+        ]
+
+    @staticmethod
+    def _source_action_score(ref: dict, actions: dict) -> float:
+        action = _source_action_for(ref.get("source_id"), actions, ref.get("value")) or {}
+        score = action.get("quality_score")
+        try:
+            return float(score)
+        except (TypeError, ValueError):
+            return 1.0
+
+    @classmethod
+    def _downgrade_all_skip_actions(cls, actions: dict, reason: str) -> None:
+        source_ids = actions.setdefault("source_ids", {})
+        source_urls = actions.setdefault("source_urls", {})
+        for sid in list(source_ids.get("skip", []) or []):
+            cls._move_unique(source_ids.setdefault("deprioritize", []), sid)
+        source_ids["skip"] = []
+        for url in list(source_urls.get("skip", []) or []):
+            cls._move_unique(source_urls.setdefault("deprioritize", []), url)
+        source_urls["skip"] = []
+        for action in (actions.get("sources") or {}).values():
+            if isinstance(action, dict) and action.get("action") == "skip":
+                action["action"] = "deprioritize"
+                action["reason"] = f"{reason}; {action.get('reason', 'source feedback')}"
+
+    @classmethod
+    def _downgrade_skip_ref(cls, actions: dict, ref: dict, reason: str) -> None:
+        sid = _normalize_source_id(ref.get("source_id"))
+        url = _normalize_source_url(ref.get("value"))
+        source_ids = actions.setdefault("source_ids", {})
+        source_urls = actions.setdefault("source_urls", {})
+
+        if sid is not None:
+            source_ids["skip"] = [
+                item for item in source_ids.get("skip", []) or []
+                if _normalize_source_id(item) != sid
+            ]
+            cls._move_unique(source_ids.setdefault("deprioritize", []), sid)
+
+        if url is not None:
+            source_urls["skip"] = [
+                item for item in source_urls.get("skip", []) or []
+                if _normalize_source_url(item) != url
+            ]
+            cls._move_unique(source_urls.setdefault("deprioritize", []), url)
+
+        sources = actions.get("sources") or {}
+        candidate_keys = []
+        if sid is not None:
+            candidate_keys.extend([sid, str(sid)])
+        if url is not None:
+            candidate_keys.extend([url, f"url:{url}"])
+        for key in candidate_keys:
+            action = sources.get(key)
+            if isinstance(action, dict) and action.get("action") == "skip":
+                action["action"] = "deprioritize"
+                action["reason"] = f"{reason}; {action.get('reason', 'source feedback')}"
+
+    @staticmethod
+    def _move_unique(target: list, value) -> None:
+        normalized_value = _normalize_source_id(value)
+        normalized_url = _normalize_source_url(value)
+        for item in target:
+            if _normalize_source_id(item) == normalized_value:
+                return
+            if normalized_url is not None and _normalize_source_url(item) == normalized_url:
+                return
+        target.append(value)
 
     @staticmethod
     def _attach_url_feedback(plan: SourceCrawlPlan, next_run_actions: dict) -> None:

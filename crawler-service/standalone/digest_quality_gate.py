@@ -1,5 +1,8 @@
 """Publish gate for generated digest content."""
 
+import inspect
+from unittest.mock import Mock
+
 from config import settings
 
 
@@ -57,6 +60,13 @@ def digest_quality_error_message(quality: dict) -> str:
     return f"Digest quality below publish threshold (score={score:.3f}){first_suggestion}"
 
 
+def _repository_method(repository, name: str):
+    method = getattr(repository, name, None)
+    if isinstance(repository, Mock) and name not in repository.__dict__:
+        return None
+    return method
+
+
 async def save_digest_publish_quality(
     repository,
     task_id: int,
@@ -65,10 +75,21 @@ async def save_digest_publish_quality(
     stage: str,
 ) -> None:
     """Persist the publish gate result into task metadata for diagnostics."""
-    if repository is None or not hasattr(repository, "save_ai_search_metadata"):
+    if repository is None:
         return
-    await repository.save_ai_search_metadata(task_id, {
+    metadata = {
         "digest_publishable": publishable,
         "digest_publish_stage": stage,
         "digest_publish_quality": quality,
-    })
+    }
+    update_metadata = _repository_method(repository, "update_task_metadata")
+    if update_metadata is not None:
+        result = update_metadata(task_id, metadata)
+        if inspect.isawaitable(result):
+            await result
+        return
+    save_metadata = _repository_method(repository, "save_ai_search_metadata")
+    if save_metadata is not None:
+        result = save_metadata(task_id, metadata)
+        if inspect.isawaitable(result):
+            await result

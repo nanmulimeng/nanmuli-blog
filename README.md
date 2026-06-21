@@ -5,23 +5,23 @@
 
 ## 当前状态
 
-最后复核日期：2026-06-03
+最后复核日期：2026-06-18
 
 当前版本可以作为个人博客后台和技术日报系统的 MVP Beta 上线试用。它不是最终正式版，但主链路已经通过验证：
 
 | 链路 | 结论 | 最近验证 |
 | --- | --- | --- |
-| Backend | 可用 | `mvn test`：75 passed |
-| Crawler Service | 可用 | `python -m pytest -q --tb=short`：1266 passed，1 warning |
+| Backend | 可用 | `mvn test`：88 passed |
+| Crawler Service | 可用 | `python -m pytest -q --tb=short`：1366 passed |
 | Frontend | 可用 | `npm run build` passed |
-| Frontend prod audit | 可用 | `npm audit --omit=dev`：0 vulnerabilities |
-| Docker Compose | 可用 | `docker compose --env-file .env.example config` passed |
-| Frontend Docker build | 可用 | `docker compose --env-file .env.example build frontend` passed |
+| Frontend prod audit | 可用 | `npm audit --omit=dev --registry=https://registry.npmjs.org`：0 vulnerabilities |
+| Docker Compose | 可用 | `cd deploy; docker compose --env-file .env.example config` passed |
+| Frontend Docker build | 可用 | `cd deploy; docker compose --env-file .env.example build frontend` passed |
 
 剩余非阻断风险：
 
-- 前端 dev/build 工具链仍有 5 个中危 audit 项，修复需要 `vite@8`、`vue-tsc@3` 大版本升级；不进入 Nginx 运行时镜像。
-- Crawler 测试在 Windows + Python 3.13 下有 1 个 event loop 资源释放 warning，不影响测试通过。
+- 前端 dev/build 工具链仍可能存在非生产依赖 audit 项，修复需要单独评估 Vite/vue-tsc 大版本升级；不进入 Nginx 运行时镜像。
+- 真实日报上线前仍需在本地或预发使用真实 AI key 跑 `scripts/release/digest-smoke.ps1 -Trigger -Force`。
 - 试用期仍需要观察日报质量、信息源稳定性、自动优化反馈是否持续改善。
 
 ## 核心能力
@@ -185,6 +185,21 @@ npm audit --omit=dev --registry=https://registry.npmjs.org
 cd deploy
 docker compose --env-file .env.example config
 docker compose --env-file .env.example build frontend
+```
+
+上线前环境和日报 smoke：
+
+```powershell
+# 日常快速闸门：审计、前端构建、compose config、报告生成
+.\scripts\release\release-gate.ps1 -Fast
+
+# 上线完整闸门：全量测试 + 真实环境校验 + 真实日报 smoke
+.\scripts\release\release-gate.ps1 -RunSmoke -TriggerDigest -ForceDigest -CrawlerApiKey <key> -TimeoutMinutes 30
+
+# 专项诊断入口
+.\scripts\release\check-deploy-env.ps1 -EnvPath deploy/.env
+.\scripts\release\digest-smoke.ps1 -SelfTest
+.\scripts\release\digest-smoke.ps1 -CrawlerUrl http://localhost:8500 -BackendUrl http://localhost:8081 -CrawlerApiKey <key> -Trigger -Force -TimeoutMinutes 30
 ```
 
 ## 文档入口

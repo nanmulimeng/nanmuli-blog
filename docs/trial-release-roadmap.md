@@ -1,7 +1,7 @@
 # MVP Beta 试用版上线与优化路线
 
 > 版本：v1.0
-> 日期：2026-06-03
+> 日期：2026-06-18
 > 当前定位：MVP Beta 试用版
 > 覆盖范围：技术日报系统、自动优化系统、Web Collector、独立 crawler-service、部署链路
 
@@ -19,21 +19,24 @@ MVP Beta 的目标不是完全自动化的高质量编辑系统，而是先保�
 
 ## 最近验证基线
 
-验证日期：2026-06-03
+验证日期：2026-06-18
 
 | 项目 | 结果 |
 | --- | --- |
-| Backend 测试 | `mvn test`：75 passed |
-| Crawler 测试 | `python -m pytest -q --tb=short`：1266 passed，1 warning |
+| Backend 测试 | `mvn test`：88 passed |
+| Crawler 测试 | `python -m pytest -q --tb=short`：1366 passed |
 | Frontend 构建 | `npm run build`：passed |
-| Frontend 生产依赖审计 | `npm audit --omit=dev`：0 vulnerabilities |
-| Compose 配置 | `docker compose --env-file .env.example config`：passed |
-| Frontend Docker build | `docker compose --env-file .env.example build frontend`：passed |
+| Frontend 生产依赖审计 | `npm audit --omit=dev --registry=https://registry.npmjs.org`：0 vulnerabilities |
+| Compose 配置 | `cd deploy; docker compose --env-file .env.example config`：passed |
+| Frontend Docker build | `cd deploy; docker compose --env-file .env.example build frontend`：passed |
+| 上线前总 gate | `scripts/release/release-gate.ps1`：available，支持 `-Fast`、digest smoke self-test 和 JSON/Markdown 报告 |
+| 上线前环境校验 | `scripts/release/check-deploy-env.ps1`：available |
+| 真实日报 smoke | `scripts/release/release-gate.ps1 -RunSmoke -TriggerDigest -ForceDigest`：待在本地或预发使用真实 key 执行 |
 
 非阻断项：
 
-- Crawler 测试有 1 个 Windows/Python 3.13 event loop warning。
-- Frontend dev/build 工具链仍有 5 个中危 audit 项，需要后续大版本升级 Vite/vue-tsc。
+- Frontend dev/build 工具链的非生产依赖 audit 项需要后续单独评估 Vite/vue-tsc 大版本升级。
+- 真实日报 smoke 需要运行中的 backend/crawler、真实 AI key 和 crawler key；总 gate 未通过前不建议直接生产首跑。
 
 ## 当前能力边界
 

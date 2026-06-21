@@ -477,12 +477,15 @@ class KnowledgeBase:
         skip_urls: list[str] = []
         deprioritize_urls: list[str] = []
         sources: dict[int | str, dict] = {}
+        section_source_counts: dict[str, int] = {}
 
         for item in diagnostics:
             source_id = _normalize_source_id(item.get("source_id"))
             source_url = _normalize_source_url(item.get("source_url"))
             if source_id is None and source_url is None:
                 continue
+            section = str(item.get("section") or "")
+            section_source_counts[section] = section_source_counts.get(section, 0) + 1
             score = _normalize_source_score(item.get("quality_score"))
             verdict = str(item.get("quality_verdict") or "").lower()
             action = ""
@@ -510,7 +513,7 @@ class KnowledgeBase:
                 "source_id": source_id,
                 "source_name": item.get("source_name") or "",
                 "source_url": source_url or "",
-                "section": item.get("section") or "",
+                "section": section,
                 "item_count": item.get("item_count") or 0,
                 "quality_score": score,
                 "quality_verdict": verdict or None,
@@ -527,13 +530,131 @@ class KnowledgeBase:
             "deprioritize": deprioritize_urls,
         }
         actions["sources"] = sources
+        if skip_ids or deprioritize_ids or skip_urls or deprioritize_urls:
+            actions["confidence"] = "medium" if len(diagnostics) >= 2 else "low"
+        actions["safety"] = cls._apply_digest_source_action_safety(
+            actions, section_source_counts
+        )
         actions["reasons"] = [
             f"{src.get('source_name') or src.get('source_url') or sid}: {src['reason']}"
             for sid, src in sources.items()
         ][:8]
-        if skip_ids or deprioritize_ids or skip_urls or deprioritize_urls:
-            actions["confidence"] = "medium" if len(diagnostics) >= 2 else "low"
         return actions
+
+    @classmethod
+    def _apply_digest_source_action_safety(
+        cls,
+        actions: dict,
+        section_source_counts: dict[str, int] | None = None,
+    ) -> dict:
+        """Attach deterministic guardrails so feedback cannot starve a section."""
+        safety = {
+            "applied": [],
+            "downgraded": [],
+            "section_source_counts": section_source_counts or {},
+        }
+
+        if actions.get("confidence") == "low":
+            downgraded = cls._downgrade_matching_skips(
+                actions,
+                lambda _key, _src: True,
+                "low-confidence",
+            )
+            if downgraded:
+                safety["applied"].append("low-confidence-skip-downgrade")
+                safety["downgraded"].extend(downgraded)
+
+        skips_by_section: dict[str, list[tuple[int | str, dict]]] = {}
+        for source_key, src in (actions.get("sources") or {}).items():
+            if not isinstance(src, dict) or src.get("action") != "skip":
+                continue
+            section = str(src.get("section") or "")
+            skips_by_section.setdefault(section, []).append((source_key, src))
+
+        for section, section_skips in skips_by_section.items():
+            source_count = (section_source_counts or {}).get(section, len(section_skips))
+            max_skip = max(0, int(source_count) // 2)
+            if int(source_count) <= 1:
+                max_skip = 0
+            if len(section_skips) <= max_skip:
+                continue
+            section_skips.sort(key=lambda item: cls._source_action_quality(item[1]))
+            keep_keys = {key for key, _src in section_skips[:max_skip]}
+            downgraded = cls._downgrade_matching_skips(
+                actions,
+                lambda key, _src, keep=keep_keys: key not in keep,
+                f"section-skip-cap:{section}:{len(section_skips)}->{max_skip}",
+            )
+            if downgraded:
+                safety["applied"].append(
+                    f"section-skip-cap:{section}:{len(section_skips)}->{max_skip}"
+                )
+                safety["downgraded"].extend(downgraded)
+
+        return safety
+
+    @classmethod
+    def _downgrade_matching_skips(cls, actions: dict, predicate, reason: str) -> list[dict]:
+        downgraded: list[dict] = []
+        for source_key, src in (actions.get("sources") or {}).items():
+            if not isinstance(src, dict) or src.get("action") != "skip":
+                continue
+            if not predicate(source_key, src):
+                continue
+            cls._downgrade_source_action(actions, source_key, src, reason)
+            downgraded.append({
+                "source_id": src.get("source_id"),
+                "source_url": src.get("source_url") or "",
+                "section": src.get("section") or "",
+                "reason": reason,
+            })
+        return downgraded
+
+    @classmethod
+    def _downgrade_source_action(cls, actions: dict, source_key, src: dict, reason: str) -> None:
+        source_id = _normalize_source_id(src.get("source_id"))
+        source_url = _normalize_source_url(src.get("source_url"))
+        source_ids = actions.setdefault("source_ids", {})
+        source_urls = actions.setdefault("source_urls", {})
+
+        if source_id is not None:
+            source_ids["skip"] = [
+                item for item in source_ids.get("skip", []) or []
+                if _normalize_source_id(item) != source_id
+            ]
+            cls._append_unique_source_id(source_ids.setdefault("deprioritize", []), source_id)
+        elif source_url is not None:
+            source_urls["skip"] = [
+                item for item in source_urls.get("skip", []) or []
+                if _normalize_source_url(item) != source_url
+            ]
+            cls._append_unique_url(source_urls.setdefault("deprioritize", []), source_url)
+
+        src["action"] = "deprioritize"
+        src["reason"] = f"{reason}; {src.get('reason', 'source feedback')}"
+        sources = actions.get("sources") or {}
+        if source_key in sources:
+            sources[source_key] = src
+
+    @staticmethod
+    def _source_action_quality(src: dict) -> float:
+        score = src.get("quality_score")
+        try:
+            return float(score)
+        except (TypeError, ValueError):
+            return 1.0
+
+    @staticmethod
+    def _append_unique_source_id(target: list, source_id) -> None:
+        normalized = _normalize_source_id(source_id)
+        if all(_normalize_source_id(item) != normalized for item in target):
+            target.append(source_id)
+
+    @staticmethod
+    def _append_unique_url(target: list, source_url) -> None:
+        normalized = _normalize_source_url(source_url)
+        if normalized and all(_normalize_source_url(item) != normalized for item in target):
+            target.append(normalized)
 
     @staticmethod
     def _empty_digest_source_actions(
@@ -552,6 +673,7 @@ class KnowledgeBase:
             "reasons": [],
             "suggestions": suggestions or [],
             "confidence": "none",
+            "safety": {"applied": [], "downgraded": [], "section_source_counts": {}},
         }
 
     async def get_recent_dimension_fatigue(self, limit: int = 3) -> dict[str, list[float]]:

@@ -6,6 +6,7 @@ import com.nanmuli.blog.infrastructure.crawler.CrawlerTaskClient;
 import com.nanmuli.blog.infrastructure.config.ConfigService;
 import com.nanmuli.blog.infrastructure.config.security.AesEncryptor;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.mock.env.MockEnvironment;
 
 import java.util.Optional;
@@ -26,7 +27,12 @@ class SystemConfigInitializerTest {
                 .withProperty("CRAWLER_API_KEY", "crawler-secret")
                 .withProperty("CRAWLER_CALLBACK_API_KEY", "callback-secret")
                 .withProperty("CRAWLER_SERVICE_URL", "http://crawler:8500")
-                .withProperty("CRAWLER_CALLBACK_URL", "http://backend:8081/api/internal/collector/callback");
+                .withProperty("CRAWLER_CALLBACK_URL", "http://backend:8081/api/internal/collector/callback")
+                .withProperty("AI_ENABLED", "true")
+                .withProperty("AI_API_KEY", "ai-secret")
+                .withProperty("AI_BASE_URL", "https://api.deepseek.com")
+                .withProperty("AI_MODEL", "deepseek-v4-pro")
+                .withProperty("DIGEST_ENABLED", "true");
 
         when(repository.findByKey(any())).thenReturn(Optional.empty());
 
@@ -34,7 +40,26 @@ class SystemConfigInitializerTest {
                 new SystemConfigInitializer(repository, configService, aesEncryptor, environment, crawlerTaskClient);
         initializer.run(null);
 
-        verify(repository, atLeastOnce()).save(any(Config.class));
+        ArgumentCaptor<Config> captor = ArgumentCaptor.forClass(Config.class);
+        verify(repository, atLeastOnce()).save(captor.capture());
+        assertThat(captor.getAllValues())
+                .extracting(Config::getConfigKey)
+                .contains(
+                        "crawler.service.api-key",
+                        "crawler.callback.api-key",
+                        "crawler.ai.enabled",
+                        "crawler.ai.api_key",
+                        "crawler.ai.base_url",
+                        "crawler.ai.model",
+                        "crawler.digest.enabled"
+                );
+        Config aiKey = captor.getAllValues().stream()
+                .filter(config -> "crawler.ai.api_key".equals(config.getConfigKey()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(aiKey.getConfigValue()).isNotEqualTo("ai-secret");
+        assertThat(aiKey.getIsEncrypted()).isTrue();
+        assertThat(aiKey.getIsSensitive()).isTrue();
         verify(configService).reload();
         verify(crawlerTaskClient).reloadPool();
     }
