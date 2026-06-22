@@ -4,6 +4,7 @@ import { getProjectList } from '@/api/project'
 import SrcImage from '@/components/common/SrcImage.vue'
 import CoverPlaceholder from '@/components/common/CoverPlaceholder.vue'
 import type { Project } from '@/types/project'
+import { isSafeExternalUrl, openSafeExternalUrl, safeExternalUrl } from '@/utils/url'
 import { OfficeBuilding, Link, Document, Calendar } from '@element-plus/icons-vue'
 
 const projects = ref<Project[]>([])
@@ -24,19 +25,6 @@ async function fetchProjects(): Promise<void> {
 onMounted(fetchProjects)
 
 /**
- * 验证URL协议是否安全（只允许http/https）
- */
-function isSafeUrl(url: string | undefined): boolean {
-  if (!url) return false
-  try {
-    const urlObj = new URL(url)
-    return urlObj.protocol === 'http:' || urlObj.protocol === 'https:'
-  } catch {
-    return false
-  }
-}
-
-/**
  * 格式化项目时间线
  */
 function formatProjectDate(startDate?: string, endDate?: string): string {
@@ -51,8 +39,7 @@ function formatProjectDate(startDate?: string, endDate?: string): string {
  * 在新窗口打开截图
  */
 function openScreenshot(url: string): void {
-  if (!isSafeUrl(url)) return
-  window.open(url, "_blank", "noopener,noreferrer")
+  openSafeExternalUrl(url)
 }
 
 /**
@@ -167,8 +154,8 @@ function openProjectDetail(project: Project): void {
               <!-- Links -->
               <div class="flex flex-wrap gap-3">
                 <a
-                  v-if="isSafeUrl(project.demoUrl)"
-                  :href="project.demoUrl"
+                  v-if="isSafeExternalUrl(project.demoUrl)"
+                  :href="safeExternalUrl(project.demoUrl)"
                   target="_blank"
                   rel="noopener noreferrer"
                   class="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-primary text-white text-sm font-medium transition-colors hover:bg-primary/90"
@@ -177,8 +164,8 @@ function openProjectDetail(project: Project): void {
                   <el-icon><Link /></el-icon> 演示
                 </a>
                 <a
-                  v-if="isSafeUrl(project.githubUrl)"
-                  :href="project.githubUrl"
+                  v-if="isSafeExternalUrl(project.githubUrl)"
+                  :href="safeExternalUrl(project.githubUrl)"
                   target="_blank"
                   rel="noopener noreferrer"
                   class="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-surface-secondary text-content-secondary text-sm transition-colors hover:bg-surface-tertiary hover:text-content-primary"
@@ -190,8 +177,8 @@ function openProjectDetail(project: Project): void {
                   源码
                 </a>
                 <a
-                  v-if="isSafeUrl(project.docUrl)"
-                  :href="project.docUrl"
+                  v-if="isSafeExternalUrl(project.docUrl)"
+                  :href="safeExternalUrl(project.docUrl)"
                   target="_blank"
                   rel="noopener noreferrer"
                   class="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border text-content-secondary text-sm transition-colors hover:border-primary hover:text-primary"
@@ -281,8 +268,8 @@ function openProjectDetail(project: Project): void {
         <!-- Links -->
         <div class="flex flex-wrap gap-3 pt-4 border-t border-border">
           <a
-            v-if="isSafeUrl(selectedProject.demoUrl)"
-            :href="selectedProject.demoUrl"
+            v-if="isSafeExternalUrl(selectedProject.demoUrl)"
+            :href="safeExternalUrl(selectedProject.demoUrl)"
             target="_blank"
             rel="noopener noreferrer"
             class="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-white font-medium transition-colors hover:bg-primary/90"
@@ -290,8 +277,8 @@ function openProjectDetail(project: Project): void {
             <el-icon><Link /></el-icon> 在线演示
           </a>
           <a
-            v-if="isSafeUrl(selectedProject.githubUrl)"
-            :href="selectedProject.githubUrl"
+            v-if="isSafeExternalUrl(selectedProject.githubUrl)"
+            :href="safeExternalUrl(selectedProject.githubUrl)"
             target="_blank"
             rel="noopener noreferrer"
             class="flex items-center gap-2 px-4 py-2 rounded-lg bg-surface-secondary text-content-secondary font-medium transition-colors hover:bg-surface-tertiary hover:text-content-primary"
@@ -302,8 +289,8 @@ function openProjectDetail(project: Project): void {
             查看源码
           </a>
           <a
-            v-if="isSafeUrl(selectedProject.docUrl)"
-            :href="selectedProject.docUrl"
+            v-if="isSafeExternalUrl(selectedProject.docUrl)"
+            :href="safeExternalUrl(selectedProject.docUrl)"
             target="_blank"
             rel="noopener noreferrer"
             class="flex items-center gap-2 px-4 py-2 rounded-lg border border-border text-content-secondary font-medium transition-colors hover:border-primary hover:text-primary"

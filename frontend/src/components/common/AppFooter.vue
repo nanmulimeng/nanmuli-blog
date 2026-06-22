@@ -4,6 +4,7 @@ import { Document, Message, StarFilled } from '@element-plus/icons-vue'
 import { useConfigStore } from '@/stores/modules/config'
 import { getFriendLinkList } from '@/api/friendLink'
 import type { FriendLink } from '@/types/friendLink'
+import { safeExternalUrl } from '@/utils/url'
 
 const configStore = useConfigStore()
 const currentYear = new Date().getFullYear()
@@ -54,8 +55,8 @@ onMounted(fetchFriendLinks)
           <!-- Social Links -->
           <div class="mt-6 flex items-center gap-3">
             <a
-              v-if="configStore.siteGithub"
-              :href="configStore.siteGithub"
+              v-if="safeExternalUrl(configStore.siteGithub)"
+              :href="safeExternalUrl(configStore.siteGithub)"
               target="_blank"
               rel="noopener noreferrer"
               class="flex h-10 w-10 items-center justify-center rounded-xl bg-surface-tertiary text-content-secondary transition-all hover:bg-content-primary hover:text-surface-secondary"
@@ -98,7 +99,8 @@ onMounted(fetchFriendLinks)
             <a
               v-for="link in friendLinks"
               :key="link.id"
-              :href="link.url"
+              :href="safeExternalUrl(link.url)"
+              v-show="safeExternalUrl(link.url)"
               target="_blank"
               rel="noopener noreferrer"
               class="truncate text-content-secondary hover:text-primary transition-colors"

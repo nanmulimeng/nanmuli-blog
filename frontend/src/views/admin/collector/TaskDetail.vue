@@ -12,6 +12,7 @@ import type { CollectPage, CollectTask } from '@/types/collector'
 import { formatDateCN } from '@/utils/format'
 import { renderMarkdown } from '@/utils/markdown'
 import { sanitize } from '@/utils/sanitize'
+import { safeExternalUrl } from '@/utils/url'
 import { usePolling } from '@/composables/usePolling'
 import { POLLING_INTERVAL } from '@/constants/api'
 
@@ -206,9 +207,16 @@ onMounted(async () => {
         <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <div v-if="task.sourceUrl">
             <div class="mb-1 text-xs text-content-tertiary">目标 URL</div>
-            <a :href="task.sourceUrl" target="_blank" rel="noopener" class="break-all text-sm text-primary hover:underline">
+            <a
+              v-if="safeExternalUrl(task.sourceUrl)"
+              :href="safeExternalUrl(task.sourceUrl)"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="break-all text-sm text-primary hover:underline"
+            >
               {{ task.sourceUrl }}
             </a>
+            <span v-else class="break-all text-sm text-content-secondary">{{ task.sourceUrl }}</span>
           </div>
           <div v-if="task.keyword">
             <div class="mb-1 text-xs text-content-tertiary">搜索关键词</div>
@@ -380,9 +388,16 @@ onMounted(async () => {
               <div class="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
                 <div>
                   <div class="text-xs text-content-tertiary">URL</div>
-                  <a :href="page.url" target="_blank" rel="noopener" class="break-all text-sm text-primary hover:underline">
+                  <a
+                    v-if="safeExternalUrl(page.url)"
+                    :href="safeExternalUrl(page.url)"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="break-all text-sm text-primary hover:underline"
+                  >
                     {{ page.url }}
                   </a>
+                  <span v-else class="break-all text-sm text-content-secondary">{{ page.url }}</span>
                 </div>
                 <div v-if="page.pageTitle">
                   <div class="text-xs text-content-tertiary">标题</div>

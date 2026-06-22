@@ -5,6 +5,7 @@ import { getPublicDigestByDate, getPublicLatestDigest } from '@/api/collector'
 import type { DigestDetail } from '@/types/collector'
 import { renderMarkdown } from '@/utils/markdown'
 import { sanitize } from '@/utils/sanitize'
+import { safeExternalUrl } from '@/utils/url'
 import { getDigestCategoryColor } from '@/constants/digest'
 
 const route = useRoute()
@@ -139,10 +140,10 @@ watch(dateParam, () => {
                 <div class="flex-1 min-w-0">
                   <div class="flex items-center gap-2">
                     <a
-                      v-if="item.source_url"
-                      :href="item.source_url"
+                      v-if="safeExternalUrl(item.source_url)"
+                      :href="safeExternalUrl(item.source_url)"
                       target="_blank"
-                      rel="noopener"
+                      rel="noopener noreferrer"
                       class="text-sm font-medium text-content-primary hover:text-primary transition-colors"
                     >
                       {{ item.title }}

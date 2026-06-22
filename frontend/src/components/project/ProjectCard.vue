@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Project } from '@/types/project'
 import SrcImage from '@/components/common/SrcImage.vue'
+import { isSafeExternalUrl, safeExternalUrl } from '@/utils/url'
 
 const props = defineProps<{
   project: Project
@@ -14,18 +15,6 @@ function handleClick(): void {
   emit('click', props.project.id)
 }
 
-/**
- * 验证URL协议是否安全（只允许http/https）
- */
-function isSafeUrl(url: string | undefined): boolean {
-  if (!url) return false
-  try {
-    const urlObj = new URL(url)
-    return urlObj.protocol === 'http:' || urlObj.protocol === 'https:'
-  } catch {
-    return false
-  }
-}
 </script>
 
 <template>
@@ -70,8 +59,8 @@ function isSafeUrl(url: string | undefined): boolean {
 
       <div class="flex items-center gap-4">
         <a
-          v-if="isSafeUrl(project.githubUrl)"
-          :href="project.githubUrl"
+          v-if="isSafeExternalUrl(project.githubUrl)"
+          :href="safeExternalUrl(project.githubUrl)"
           target="_blank"
           rel="noopener noreferrer"
           class="text-sm text-content-tertiary hover:text-primary"
@@ -80,8 +69,8 @@ function isSafeUrl(url: string | undefined): boolean {
           GitHub
         </a>
         <a
-          v-if="isSafeUrl(project.demoUrl)"
-          :href="project.demoUrl"
+          v-if="isSafeExternalUrl(project.demoUrl)"
+          :href="safeExternalUrl(project.demoUrl)"
           target="_blank"
           rel="noopener noreferrer"
           class="text-sm text-content-tertiary hover:text-primary"
@@ -90,8 +79,8 @@ function isSafeUrl(url: string | undefined): boolean {
           演示
         </a>
         <a
-          v-if="isSafeUrl(project.docUrl)"
-          :href="project.docUrl"
+          v-if="isSafeExternalUrl(project.docUrl)"
+          :href="safeExternalUrl(project.docUrl)"
           target="_blank"
           rel="noopener noreferrer"
           class="text-sm text-content-tertiary hover:text-primary"

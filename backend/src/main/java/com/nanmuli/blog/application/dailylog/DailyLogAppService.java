@@ -10,6 +10,7 @@ import com.nanmuli.blog.domain.category.CategoryRepository;
 import com.nanmuli.blog.domain.dailylog.DailyLog;
 import com.nanmuli.blog.domain.dailylog.DailyLogRepository;
 import com.nanmuli.blog.shared.exception.BusinessException;
+import com.nanmuli.blog.shared.query.BasePageQuery;
 import com.nanmuli.blog.shared.result.PageResult;
 import com.nanmuli.blog.shared.util.MarkdownUtil;
 import lombok.RequiredArgsConstructor;
@@ -72,7 +73,10 @@ public class DailyLogAppService {
 
     @Transactional(readOnly = true)
     public PageResult<DailyLogDTO> listPage(int current, int size) {
-        IPage<DailyLog> page = new Page<>(current, size);
+        IPage<DailyLog> page = new Page<>(
+                BasePageQuery.normalizeCurrent(current),
+                BasePageQuery.normalizeSize(size)
+        );
         IPage<DailyLog> result = dailyLogRepository.findPage(page);
         List<DailyLogDTO> records = batchConvertToDTO(result.getRecords());
         return new PageResult<>(result.getTotal(), result.getCurrent(), result.getSize(), records);
@@ -80,7 +84,10 @@ public class DailyLogAppService {
 
     @Transactional(readOnly = true)
     public PageResult<DailyLogDTO> listPublicPage(int current, int size) {
-        IPage<DailyLog> page = new Page<>(current, size);
+        IPage<DailyLog> page = new Page<>(
+                BasePageQuery.normalizeCurrent(current),
+                BasePageQuery.normalizeSize(size)
+        );
         IPage<DailyLog> result = dailyLogRepository.findPublicPage(page);
         List<DailyLogDTO> records = batchConvertToDTO(result.getRecords());
         return new PageResult<>(result.getTotal(), result.getCurrent(), result.getSize(), records);

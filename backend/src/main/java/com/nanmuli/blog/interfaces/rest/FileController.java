@@ -7,6 +7,7 @@ import com.nanmuli.blog.application.file.query.FilePageQuery;
 import com.nanmuli.blog.shared.result.PageResult;
 import com.nanmuli.blog.shared.result.Result;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
@@ -37,7 +38,7 @@ public class FileController {
     }
 
     @GetMapping("/admin/file/list")
-    public Result<PageResult<FileDTO>> list(FilePageQuery query) {
+    public Result<PageResult<FileDTO>> list(@Valid FilePageQuery query) {
         return Result.success(fileAppService.list(query));
     }
 

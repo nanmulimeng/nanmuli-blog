@@ -7,6 +7,7 @@ import { CollectTaskStatusMap } from '@/types/collector'
 import { ArrowLeft, Refresh, Calendar } from '@element-plus/icons-vue'
 import { renderMarkdown } from '@/utils/markdown'
 import { sanitize } from '@/utils/sanitize'
+import { safeExternalUrl } from '@/utils/url'
 import { usePolling } from '@/composables/usePolling'
 import { getDigestCategoryColor } from '@/constants/digest'
 import { POLLING_INTERVAL } from '@/constants/api'
@@ -365,10 +366,10 @@ watch(() => route.params, () => {
           >
             <div class="flex items-center justify-between gap-3">
               <a
-                v-if="source.source_url"
-                :href="source.source_url"
+                v-if="safeExternalUrl(source.source_url)"
+                :href="safeExternalUrl(source.source_url)"
                 target="_blank"
-                rel="noopener"
+                rel="noopener noreferrer"
                 class="truncate text-sm font-medium text-content-primary hover:text-primary"
               >
                 {{ source.source_name || source.source_url }}
@@ -484,8 +485,8 @@ watch(() => route.params, () => {
           <el-table-column label="Primary URL" min-width="240" show-overflow-tooltip>
             <template #default="{ row }">
               <a
-                v-if="row.primary_url"
-                :href="row.primary_url"
+                v-if="safeExternalUrl(row.primary_url)"
+                :href="safeExternalUrl(row.primary_url)"
                 target="_blank"
                 rel="noopener noreferrer"
                 class="text-primary hover:underline"
@@ -642,10 +643,10 @@ watch(() => route.params, () => {
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2">
                   <a
-                    v-if="item.source_url"
-                    :href="item.source_url"
+                    v-if="safeExternalUrl(item.source_url)"
+                    :href="safeExternalUrl(item.source_url)"
                     target="_blank"
-                    rel="noopener"
+                    rel="noopener noreferrer"
                     class="text-sm font-medium text-content-primary hover:text-primary transition-colors"
                   >
                     {{ item.title }}

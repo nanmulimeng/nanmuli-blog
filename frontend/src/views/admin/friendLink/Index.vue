@@ -9,6 +9,7 @@ import {
   updateFriendLink,
 } from '@/api/friendLink'
 import type { FriendLink } from '@/types/friendLink'
+import { openSafeExternalUrl, safeExternalUrl } from '@/utils/url'
 
 const loading = ref(false)
 const dialogVisible = ref(false)
@@ -97,7 +98,7 @@ async function handleDelete(row: FriendLink): Promise<void> {
 }
 
 function openLink(url: string): void {
-  window.open(url, '_blank', 'noopener,noreferrer')
+  openSafeExternalUrl(url)
 }
 
 async function handleSubmit(): Promise<void> {
@@ -152,9 +153,16 @@ onMounted(fetchData)
       </el-table-column>
       <el-table-column label="链接" min-width="220">
         <template #default="{ row }">
-          <a :href="row.url" target="_blank" rel="noopener noreferrer" class="text-primary hover:underline">
+          <a
+            v-if="safeExternalUrl(row.url)"
+            :href="safeExternalUrl(row.url)"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-primary hover:underline"
+          >
             {{ row.url }}
           </a>
+          <span v-else class="text-content-secondary">{{ row.url }}</span>
         </template>
       </el-table-column>
       <el-table-column prop="email" label="邮箱" width="180" />
@@ -169,7 +177,13 @@ onMounted(fetchData)
       <el-table-column label="操作" width="160" fixed="right" align="center">
         <template #default="{ row }">
           <el-button-group>
-            <el-button :icon="View" size="small" @click="openLink(row.url)" title="访问" />
+            <el-button
+              :icon="View"
+              size="small"
+              :disabled="!safeExternalUrl(row.url)"
+              @click="openLink(row.url)"
+              title="访问"
+            />
             <el-button type="primary" :icon="Edit" size="small" @click="handleEdit(row)" title="编辑" />
             <el-button type="danger" :icon="Delete" size="small" @click="handleDelete(row)" title="删除" />
           </el-button-group>

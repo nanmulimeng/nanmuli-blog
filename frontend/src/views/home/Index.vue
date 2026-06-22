@@ -18,6 +18,7 @@ import { useConfigStore } from '@/stores/modules/config'
 import { getArticleList } from '@/api/article'
 import { getHomeAggregated } from '@/api/home'
 import { formatDateCN } from '@/utils/format'
+import { safeExternalUrl } from '@/utils/url'
 import type { Article } from '@/types/article'
 import type { Category } from '@/types/category'
 import type { HomeAggregated } from '@/types/home'
@@ -303,9 +304,10 @@ onUnmounted(() => {
             <!-- 社交链接 -->
             <div class="flex items-center gap-4 pt-4">
               <a
-                v-if="configStore.siteGithub"
-                :href="configStore.siteGithub"
+                v-if="safeExternalUrl(configStore.siteGithub)"
+                :href="safeExternalUrl(configStore.siteGithub)"
                 target="_blank"
+                rel="noopener noreferrer"
                 class="flex h-10 w-10 items-center justify-center rounded-xl bg-surface-tertiary text-content-secondary transition-all hover:bg-surface-secondary hover:text-content-primary"
               >
                 <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">

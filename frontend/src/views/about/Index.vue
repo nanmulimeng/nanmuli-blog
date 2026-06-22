@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { useConfigStore } from '@/stores/modules/config'
 import { sanitize } from '@/utils/sanitize'
+import { safeExternalUrl } from '@/utils/url'
 import { getSkillList } from '@/api/skill'
 import type { Skill } from '@/types/skill'
 import { UserFilled, Promotion, Message, Monitor, Collection, DataLine, Ship, Cpu, Lock } from '@element-plus/icons-vue'
@@ -63,8 +64,8 @@ onMounted(() => {
         <!-- Social Links -->
         <div class="mt-6 flex justify-center gap-4">
           <a
-            v-if="configStore.siteGithub"
-            :href="configStore.siteGithub"
+            v-if="safeExternalUrl(configStore.siteGithub)"
+            :href="safeExternalUrl(configStore.siteGithub)"
             target="_blank"
             rel="noopener noreferrer"
             class="w-10 h-10 rounded-full bg-surface-tertiary flex items-center justify-center text-content-secondary hover:bg-surface-tertiary hover:text-content-primary transition-colors"

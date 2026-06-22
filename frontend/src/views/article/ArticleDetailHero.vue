@@ -13,6 +13,7 @@ import {
 import type { Article } from '@/types/article'
 import type { ArticleStats } from '@/api/article'
 import { formatDateCN } from '@/utils/format'
+import { safeExternalUrl } from '@/utils/url'
 
 defineProps<{
   article: Article
@@ -134,10 +135,10 @@ defineProps<{
           {{ article.wordCount }}字
         </span>
         <!-- 非原创文章来源 -->
-        <span v-if="!article.isOriginal && article.originalUrl" class="flex items-center gap-2 text-sm">
+        <span v-if="!article.isOriginal && safeExternalUrl(article.originalUrl)" class="flex items-center gap-2 text-sm">
           <span class="text-content-tertiary">来源：</span>
           <a
-            :href="article.originalUrl"
+            :href="safeExternalUrl(article.originalUrl)"
             target="_blank"
             rel="noopener noreferrer"
             class="text-primary hover:text-primary-light hover:underline truncate max-w-[200px]"
