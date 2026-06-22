@@ -215,6 +215,31 @@ function Get-OptionalDigest([string]$Url, [hashtable]$Headers, [string]$Name) {
     }
 }
 
+function Validate-RuntimeHealth($RuntimeHealth, [bool]$RequireReady) {
+    if ($null -eq $RuntimeHealth) {
+        if ($RequireReady) {
+            throw "Digest runtime health endpoint returned empty response"
+        }
+        return
+    }
+
+    $summary = Get-Field $RuntimeHealth "summary"
+    $optimizationSafety = Get-Field $RuntimeHealth "optimization_safety"
+    $searchFeedback = Get-Field $RuntimeHealth "search_feedback"
+    $blocking = [bool](Get-Field $summary "blocking")
+    $status = Get-Field $RuntimeHealth "status"
+    $safetyStatus = Get-Field $optimizationSafety "status"
+    $keepRate = Get-Field $searchFeedback "latest_keep_rate"
+
+    Write-Host "Digest runtime health: status=$status, blocking=$blocking, optimization_safety=$safetyStatus, keep_rate=$keepRate"
+
+    if ($RequireReady) {
+        Assert-True (-not $blocking) "Digest runtime health has blocking checks"
+        Assert-True ($status -ne "danger") "Digest runtime health status is danger"
+    }
+    Assert-True ($safetyStatus -ne "danger") "Digest optimization safety status is danger"
+}
+
 function Invoke-SelfTest {
     $goodLowConfidence = [pscustomobject]@{
         quality_evaluation = [pscustomobject]@{
@@ -317,6 +342,9 @@ Write-Host "Scheduler running=$($scheduler.running), enabled=$($scheduler.enable
 if ($Trigger -and $scheduler.ai_configured -eq $false) {
     throw "Scheduler reports ai_configured=false; cannot run trigger smoke."
 }
+
+$runtimeHealth = Invoke-Json "GET" (Join-Url $CrawlerUrl "/api/v1/digests/runtime/health") $headers
+Validate-RuntimeHealth $runtimeHealth ([bool]$Trigger)
 
 $digest = $null
 if ($Trigger) {

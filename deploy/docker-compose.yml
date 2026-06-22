@@ -6,6 +6,8 @@ services:
     image: nanmuli-postgres:pgvector-zhparser
     container_name: nanmuli-postgres
     restart: always
+    mem_limit: ${POSTGRES_MEM_LIMIT:-768m}
+    cpus: ${POSTGRES_CPUS:-1.0}
     environment:
       POSTGRES_DB: nanmuli_blog
       POSTGRES_USER: postgres
@@ -29,6 +31,8 @@ services:
     image: redis:7-alpine
     container_name: nanmuli-redis
     restart: always
+    mem_limit: ${REDIS_MEM_LIMIT:-192m}
+    cpus: ${REDIS_CPUS:-0.5}
     command: redis-server --maxmemory 100mb --maxmemory-policy allkeys-lru
     volumes:
       - redis_data:/data
@@ -48,7 +52,10 @@ services:
       dockerfile: Dockerfile
     container_name: nanmuli-backend
     restart: always
+    mem_limit: ${BACKEND_MEM_LIMIT:-1024m}
+    cpus: ${BACKEND_CPUS:-1.5}
     environment:
+      JAVA_TOOL_OPTIONS: ${BACKEND_JAVA_TOOL_OPTIONS:--XX:MaxRAMPercentage=70 -XX:+ExitOnOutOfMemoryError}
       SPRING_PROFILES_ACTIVE: prod
       DB_HOST: postgres
       DB_PORT: 5432
@@ -89,6 +96,8 @@ services:
       dockerfile: Dockerfile
     container_name: crawler-service
     restart: always
+    mem_limit: ${CRAWLER_MEM_LIMIT:-1536m}
+    cpus: ${CRAWLER_CPUS:-1.5}
     environment:
       PORT: 8500
       HOST: 0.0.0.0
@@ -103,6 +112,11 @@ services:
       AI_BASE_URL: ${AI_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
       AI_MODEL: ${AI_MODEL:-qwen-plus}
       DIGEST_ENABLED: ${DIGEST_ENABLED:-false}
+      MAX_CONCURRENT_CRAWLS: ${MAX_CONCURRENT_CRAWLS:-2}
+      DIGEST_PARALLEL_SECTIONS: ${DIGEST_PARALLEL_SECTIONS:-1}
+      DIGEST_GLOBAL_TIMEOUT: ${DIGEST_GLOBAL_TIMEOUT:-420}
+      SEARCH_CRAWL_DEADLINE_SECONDS: ${SEARCH_CRAWL_DEADLINE_SECONDS:-180}
+      AI_DIGEST_TOTAL_BUDGET: ${AI_DIGEST_TOTAL_BUDGET:-60000}
       PROXY_URL: ${PROXY_URL:-}
     volumes:
       - crawler_data:/app/data
@@ -126,6 +140,8 @@ services:
       dockerfile: frontend/Dockerfile
     container_name: nanmuli-frontend
     restart: always
+    mem_limit: ${FRONTEND_MEM_LIMIT:-256m}
+    cpus: ${FRONTEND_CPUS:-0.5}
     ports:
       - "80:80"
     networks:

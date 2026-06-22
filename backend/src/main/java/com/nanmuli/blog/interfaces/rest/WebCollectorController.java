@@ -339,6 +339,17 @@ public class WebCollectorController {
         }
     }
 
+    @Operation(summary = "获取日报上线运行健康状态")
+    @GetMapping("/digest/runtime/health")
+    public Result<Object> getDigestRuntimeHealth() {
+        try {
+            return Result.success(crawlerTaskClient.proxyGet("/api/v1/digests/runtime/health"));
+        } catch (Exception e) {
+            log.warn("[DigestProxy] getDigestRuntimeHealth failed: {}", e.getMessage());
+            throw new BusinessException(503, "Python 爬虫服务不可用: " + e.getMessage());
+        }
+    }
+
     /**
      * 获取日报自动优化趋势
      */

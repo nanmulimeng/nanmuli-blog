@@ -192,7 +192,7 @@ VALUES
     ('crawler.service.connect-timeout', '10000', '10000', '连接超时(毫秒)', 'crawler', FALSE, 'text', FALSE, FALSE),
     ('crawler.service.read-timeout', '30000', '30000', '读取超时(毫秒)', 'crawler', FALSE, 'text', FALSE, FALSE),
     -- AES 加密密钥 (1)
-    ('blog.security.encryption-key', 'nanmuli-blog-key', 'nanmuli-blog-key', 'AES-128加密密钥（16字节）', 'blog', FALSE, 'password', TRUE, TRUE)
+    ('blog.security.encryption-key', '', '', 'AES-128加密密钥（16字节）', 'blog', FALSE, 'password', TRUE, TRUE)
 ON CONFLICT DO NOTHING;
 
 -- 9. 对已存在的配置行补齐新字段（覆盖 description/group_name/is_encrypted 等元数据）
@@ -279,7 +279,7 @@ FROM (VALUES
     ('crawler.service.base-url', 'http://localhost:8500', 'Python爬虫服务地址', 'crawler', FALSE, FALSE, 'text', 'http://localhost:8500'),
     ('crawler.service.connect-timeout', '10000', '连接超时(毫秒)', 'crawler', FALSE, FALSE, 'text', '10000'),
     ('crawler.service.read-timeout', '30000', '读取超时(毫秒)', 'crawler', FALSE, FALSE, 'text', '30000'),
-    ('blog.security.encryption-key', 'nanmuli-blog-key', 'AES-128加密密钥（16字节）', 'blog', TRUE, TRUE, 'password', 'nanmuli-blog-key')
+    ('blog.security.encryption-key', '', 'AES-128加密密钥（16字节）', 'blog', TRUE, TRUE, 'password', '')
 ) AS v(config_key, default_value, description, group_name, is_encrypted, is_sensitive, input_type, dv)
 WHERE sys_config.config_key = v.config_key
   AND sys_config.is_deleted = FALSE

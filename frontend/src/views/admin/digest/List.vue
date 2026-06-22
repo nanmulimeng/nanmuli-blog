@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { getDigestList, getDigestOptimizationTrend, getDigestSchedulerStatus, getDigestSearchFeedback, triggerDigest } from '@/api/collector'
-import type { DigestListItem, DigestOptimizationTrend, DigestSchedulerStatus, DigestSearchFeedbackResult } from '@/types/collector'
+import { getDigestList, getDigestOptimizationTrend, getDigestRuntimeHealth, getDigestSchedulerStatus, getDigestSearchFeedback, triggerDigest } from '@/api/collector'
+import type { DigestListItem, DigestOptimizationTrend, DigestRuntimeHealth, DigestSchedulerStatus, DigestSearchFeedbackResult } from '@/types/collector'
 import { CollectTaskStatusMap } from '@/types/collector'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, Calendar, View, Promotion, Timer, DataAnalysis } from '@element-plus/icons-vue'
@@ -19,6 +19,7 @@ const triggerLoading = ref(false)
 const schedulerStatus = ref<DigestSchedulerStatus | null>(null)
 const qualityOverview = ref<DigestOptimizationTrend | null>(null)
 const searchFeedback = ref<DigestSearchFeedbackResult | null>(null)
+const runtimeHealth = ref<DigestRuntimeHealth | null>(null)
 const loadError = ref<string | null>(null)
 
 const qualitySummary = computed(() => qualityOverview.value?.summary ?? null)
@@ -32,6 +33,9 @@ const latestSearchSummary = computed(() => latestSearchFeedback.value?.summary ?
 const searchSectionSummaries = computed(() => (latestSearchSummary.value?.section_summaries ?? []).slice(0, 5))
 const searchEngineSummaries = computed(() => (latestSearchSummary.value?.engine_summaries ?? []).slice(0, 4))
 const zeroResultQueries = computed(() => (latestSearchSummary.value?.zero_result_queries ?? []).slice(0, 3))
+const runtimeChecks = computed(() => runtimeHealth.value?.checks ?? [])
+const runtimeBlockingChecks = computed(() => runtimeChecks.value.filter(check => check.blocking).slice(0, 4))
+const runtimeRecommendations = computed(() => (runtimeHealth.value?.recommendations ?? []).slice(0, 3))
 
 async function fetchData(): Promise<void> {
   loading.value = true
@@ -71,6 +75,15 @@ async function fetchSearchFeedback(): Promise<void> {
   } catch (error: unknown) {
     searchFeedback.value = null
     loadError.value = error instanceof Error ? error.message : '搜索反馈加载失败'
+  }
+}
+
+async function fetchRuntimeHealth(): Promise<void> {
+  try {
+    runtimeHealth.value = await getDigestRuntimeHealth()
+  } catch (error: unknown) {
+    runtimeHealth.value = null
+    loadError.value = error instanceof Error ? error.message : '日报上线健康状态加载失败'
   }
 }
 
@@ -115,7 +128,7 @@ async function handleTrigger(): Promise<void> {
         router.push(`/admin/digest/task/${res.task_id}`)
         return
       }
-      setTimeout(() => { fetchData(); startPolling() }, DELAY.DIGEST_REFRESH)
+      setTimeout(() => { fetchData(); fetchRuntimeHealth(); startPolling() }, DELAY.DIGEST_REFRESH)
     } else {
       ElMessage.warning(res.message || '日报生成已跳过')
     }
@@ -207,6 +220,13 @@ function diagnosticCheckTagType(status: string | undefined): 'success' | 'warnin
   return 'info'
 }
 
+function runtimeHealthTagType(status: string | undefined): 'success' | 'warning' | 'danger' | 'info' {
+  if (status === 'healthy' || status === 'success') return 'success'
+  if (status === 'warning') return 'warning'
+  if (status === 'danger') return 'danger'
+  return 'info'
+}
+
 function hasActiveTasks(): boolean {
   return digests.value.some(d => d.status === 0 || d.status === 1 || d.status === 2)
 }
@@ -222,6 +242,7 @@ onMounted(() => {
   fetchSchedulerStatus()
   fetchQualityOverview()
   fetchSearchFeedback()
+  fetchRuntimeHealth()
   startPolling()
 })
 </script>
@@ -258,6 +279,61 @@ onMounted(() => {
       title="日报系统接口异常"
       :description="loadError"
     />
+
+    <div
+      v-if="runtimeHealth"
+      class="mb-4 rounded-lg border border-border bg-surface-secondary px-4 py-3 text-sm text-content-secondary"
+    >
+      <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="font-medium text-content-primary">上线健康</span>
+          <el-tag :type="runtimeHealthTagType(runtimeHealth.status)" size="small">
+            {{ runtimeHealth.status === 'healthy' ? '可验证' : runtimeHealth.status }}
+          </el-tag>
+          <span>{{ runtimeHealth.summary.message }}</span>
+        </div>
+        <div class="flex flex-wrap items-center gap-3">
+          <span>核心板块 {{ runtimeHealth.config.configured_core_sections.length }}/{{ runtimeHealth.config.min_core_sections }}</span>
+          <span>优化置信度 {{ runtimeHealth.optimization_safety.confidence }}</span>
+          <span v-if="runtimeHealth.search_feedback.latest_keep_rate != null">
+            搜索保留率 {{ formatPercent(runtimeHealth.search_feedback.latest_keep_rate) }}
+          </span>
+        </div>
+      </div>
+
+      <div class="mb-2 flex flex-wrap gap-2">
+        <el-tag
+          v-for="check in runtimeChecks"
+          :key="check.key"
+          :type="diagnosticCheckTagType(check.status)"
+          size="small"
+          effect="plain"
+          :title="check.message"
+        >
+          {{ check.label }}: {{ check.message }}
+        </el-tag>
+      </div>
+
+      <div v-if="runtimeBlockingChecks.length || runtimeRecommendations.length" class="flex flex-wrap gap-2">
+        <el-tag
+          v-for="check in runtimeBlockingChecks"
+          :key="`blocking-${check.key}`"
+          type="danger"
+          size="small"
+          effect="plain"
+        >
+          阻塞: {{ check.label }}
+        </el-tag>
+        <span
+          v-for="item in runtimeRecommendations"
+          :key="item"
+          class="max-w-[360px] truncate"
+          :title="item"
+        >
+          {{ item }}
+        </span>
+      </div>
+    </div>
 
     <div
       v-if="schedulerDiagnostics"

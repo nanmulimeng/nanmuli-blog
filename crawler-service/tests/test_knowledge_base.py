@@ -522,3 +522,101 @@ class TestDigestEvaluationFeedback:
         assert actions["source_ids"]["deprioritize"] == [603]
         assert actions["sources"][603]["action"] == "deprioritize"
         assert any("section-skip-cap" in item for item in actions["safety"]["applied"])
+
+    def test_negative_optimization_outcome_downgrades_next_source_actions(self):
+        actions = KnowledgeBase.derive_digest_source_actions(
+            diagnostics=[
+                {
+                    "section": "open_source",
+                    "source_id": 701,
+                    "source_name": "Bad Source",
+                    "source_url": "https://bad.example.com",
+                    "item_count": 1,
+                    "quality_score": 0.12,
+                    "quality_verdict": "filter",
+                },
+                {
+                    "section": "open_source",
+                    "source_id": 702,
+                    "source_name": "Review Source",
+                    "source_url": "https://review.example.com",
+                    "item_count": 1,
+                    "quality_score": 0.52,
+                    "quality_verdict": "review",
+                },
+            ],
+            weaknesses=["source_diversity"],
+            suggestions=["boost source diversity"],
+            digest_date="2026-06-10",
+            action_outcomes=[
+                {
+                    "applied": True,
+                    "verdict": "negative",
+                    "result": {"overall_score": 0.41, "section_fill_ratio": 0.52},
+                }
+            ],
+        )
+
+        assert actions["confidence"] == "low"
+        assert actions["boost_sections"] == []
+        assert actions["source_ids"]["skip"] == []
+        assert set(actions["source_ids"]["deprioritize"]) == {701, 702}
+        assert actions["sources"][701]["action"] == "deprioritize"
+        assert any("negative-outcome-circuit-breaker" in item for item in actions["safety"]["applied"])
+        assert actions["safety"]["suppressed_boost_sections"] == ["source_diversity"]
+
+    @pytest.mark.asyncio
+    async def test_get_digest_source_actions_uses_task_metadata_outcome_guard(self, mem_db):
+        json = __import__("json")
+        source_scores = [
+            {
+                "section": "paper",
+                "source_id": 801,
+                "source_name": "Weak Paper Source",
+                "source_url": "https://paper.example.com",
+                "item_count": 1,
+                "quality_score": 0.21,
+                "quality_verdict": "filter",
+            },
+        ]
+        await _insert(
+            mem_db,
+            task_id=801,
+            round_num=0,
+            strategy_type="digest_final_eval",
+            search_keyword="2026-06-10",
+            search_engine="digest",
+            strategy_detail=json.dumps(source_scores, ensure_ascii=False),
+            weaknesses=json.dumps(["source_diversity"], ensure_ascii=False),
+            suggestions=json.dumps(["avoid repeating bad sources"], ensure_ascii=False),
+            overall_score=0.46,
+        )
+
+        async def fake_get_task(_task_id):
+            return {
+                "ai_search_metadata": json.dumps({
+                    "orchestrator_plan": {
+                        "optimization_action_outcome": {
+                            "applied": True,
+                            "verdict": "negative",
+                            "result": {
+                                "overall_score": 0.42,
+                                "section_fill_ratio": 0.5,
+                            },
+                        }
+                    }
+                })
+            }
+
+        async def fake_source_diagnostics(_task_id):
+            return []
+
+        with patch("optimization.knowledge_base.get_db", _mock_get_db(mem_db)), \
+             patch("standalone.repository.get_task", fake_get_task), \
+             patch("standalone.repository.get_digest_source_diagnostics", fake_source_diagnostics):
+            actions = await KnowledgeBase().get_digest_source_actions()
+
+        assert actions["source_ids"]["skip"] == []
+        assert actions["source_ids"]["deprioritize"] == [801]
+        assert actions["confidence"] == "low"
+        assert any("negative-outcome-circuit-breaker" in item for item in actions["safety"]["applied"])

@@ -18,12 +18,25 @@ public class AesEncryptor {
 
     private final String secretKey;
 
-    public AesEncryptor(@Value("${blog.security.encryption-key:nanmuli-blog-key}") String secretKey) {
+    public AesEncryptor(@Value("${blog.security.encryption-key:local-dev-encryption-key}") String secretKey) {
+        if (isUnsafeKey(secretKey)) {
+            throw new IllegalStateException("blog.security.encryption-key must be a non-default secret with at least 16 characters");
+        }
         // 补足/截断为 16 字节 (AES-128)
         byte[] keyBytes = new byte[16];
         byte[] srcBytes = secretKey.getBytes(StandardCharsets.UTF_8);
         System.arraycopy(srcBytes, 0, keyBytes, 0, Math.min(srcBytes.length, 16));
         this.secretKey = new String(keyBytes, StandardCharsets.UTF_8);
+    }
+
+    private boolean isUnsafeKey(String value) {
+        if (value == null || value.isBlank() || value.length() < 16) {
+            return true;
+        }
+        String normalized = value.trim();
+        return "nanmuli-blog-key".equals(normalized)
+                || normalized.startsWith("your_")
+                || normalized.startsWith("sk-your-");
     }
 
     public String encrypt(String plainText) {

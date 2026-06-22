@@ -56,3 +56,4 @@ crawler-service/exports/
 *.log
 logs/
 runtime-logs/
+artifacts/

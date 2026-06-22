@@ -68,7 +68,7 @@ blog:
     upload-path: /opt/nanmuli-blog/uploads
     access-url: /uploads/
   security:
-    encryption-key: ${BLOG_SECURITY_ENCRYPTION_KEY:nanmuli-blog-key}
+    encryption-key: ${BLOG_SECURITY_ENCRYPTION_KEY}
 
 # 爬虫服务配置
 cors:

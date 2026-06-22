@@ -174,6 +174,56 @@ class TestBuildPlan:
         assert plan.kb_hint["next_run_actions"] == actions
         assert any("Source feedback actions" in log for log in plan.plan_log)
 
+    def test_optimization_action_outcome_records_action_counts_and_result(self):
+        actions = {
+            "source_ids": {"skip": [10], "deprioritize": [11, 12]},
+            "source_urls": {"skip": ["https://spam.example/a"], "deprioritize": []},
+            "boost_sections": ["open_source", "paper"],
+            "confidence": "medium",
+            "reasons": ["last run had low quality generic sources"],
+            "safety": {
+                "applied": ["min_section_source_count"],
+                "downgraded": [],
+                "section_source_counts": {"open_source": 4},
+            },
+        }
+        plan = _make_plan(kb_hint={"next_run_actions": actions})
+        orch = DigestOrchestrator()
+
+        outcome = orch._build_optimization_action_outcome(
+            plan,
+            digest_date="2026-06-21",
+            final_score=0.82,
+            section_fill_ratio=0.9,
+            section_result_counts={"open_source": 4, "paper": 3},
+            saved_to_kb=True,
+        )
+
+        assert outcome["applied"] is True
+        assert outcome["digest_date"] == "2026-06-21"
+        assert outcome["verdict"] == "positive"
+        assert outcome["action_snapshot"]["source_id_skip_count"] == 1
+        assert outcome["action_snapshot"]["source_id_deprioritize_count"] == 2
+        assert outcome["action_snapshot"]["source_url_skip_count"] == 1
+        assert outcome["action_snapshot"]["boost_sections"] == ["open_source", "paper"]
+        assert outcome["action_snapshot"]["safety"]["applied"] == ["min_section_source_count"]
+        assert outcome["result"]["overall_score"] == 0.82
+        assert outcome["result"]["section_fill_ratio"] == 0.9
+        assert outcome["result"]["saved_to_kb"] is True
+
+    def test_optimization_action_outcome_is_omitted_without_actions(self):
+        orch = DigestOrchestrator()
+        plan = _make_plan(kb_hint={})
+
+        assert orch._build_optimization_action_outcome(
+            plan,
+            digest_date="2026-06-21",
+            final_score=0.82,
+            section_fill_ratio=0.9,
+            section_result_counts={"open_source": 4},
+            saved_to_kb=True,
+        ) is None
+
     @pytest.mark.asyncio
     async def test_recent_search_feedback_hints_stored_in_config_snapshot(self):
         sections = [{"name": "open_source", "source_type": "keyword", "keyword": "AI tools"}]
@@ -1265,7 +1315,16 @@ class TestPhase4Evaluation:
 
         orch = DigestOrchestrator()
         sections = [_make_section(name="tech", keywords=["AI", "LLM"], result_count=3)]
-        plan = _make_plan(sections=sections)
+        plan = _make_plan(
+            sections=sections,
+            kb_hint={
+                "next_run_actions": {
+                    "source_ids": {"skip": [10], "deprioritize": []},
+                    "boost_sections": ["tech"],
+                    "confidence": "medium",
+                }
+            },
+        )
         task = {"id": 42, "digest_date": "2026-05-25"}
         all_results = [_make_result(url=f"https://x.com/{i}") for i in range(3)]
 
@@ -1342,6 +1401,9 @@ class TestPhase4Evaluation:
             assert isinstance(kb_kwargs["section_scores"], list)
             assert kb_kwargs["section_scores"][0]["name"] == "tech"
             assert kb_kwargs["section_scores"][-1]["name"] == "__digest_output__"
+            assert plan.optimization_action_outcome["applied"] is True
+            assert plan.optimization_action_outcome["action_snapshot"]["source_id_skip_count"] == 1
+            assert plan.optimization_action_outcome["result"]["saved_to_kb"] is True
 
     @pytest.mark.asyncio
     async def test_evaluate_digest_quality_penalizes_underfilled_sections(self):

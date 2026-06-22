@@ -368,6 +368,8 @@ class TaskExecutor:
                         plan_payload["plan_log"] = plan.plan_log
                     if plan.search_diagnostics:
                         plan_payload["search_diagnostics"] = plan.search_diagnostics
+                    if getattr(plan, "optimization_action_outcome", None):
+                        plan_payload["optimization_action_outcome"] = plan.optimization_action_outcome
                 digest_result = _digest_orchestrator.get_digest_result()
                 event_diagnostics = getattr(digest_result, "event_diagnostics", None) if digest_result else None
                 if event_diagnostics:

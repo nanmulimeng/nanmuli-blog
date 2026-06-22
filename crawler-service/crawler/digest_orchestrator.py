@@ -114,6 +114,7 @@ class DigestCrawlPlan:
     # 规划日志（供前端展示）
     plan_log: list[str] = field(default_factory=list)
     search_diagnostics: list[dict] = field(default_factory=list)
+    optimization_action_outcome: dict | None = None
 
 
 def _calculate_digest_output_quality(digest_content) -> dict:
@@ -987,6 +988,83 @@ class DigestOrchestrator:
         """获取预生成的日报结果（如果可用）"""
         return self._digest_result
 
+    @staticmethod
+    def _count_action_values(values) -> int:
+        if not values:
+            return 0
+        if isinstance(values, (list, tuple, set)):
+            return len(values)
+        return 1
+
+    @classmethod
+    def _summarize_optimization_actions(cls, actions: dict) -> dict:
+        source_ids = actions.get("source_ids") or {}
+        source_urls = actions.get("source_urls") or {}
+        return {
+            "confidence": actions.get("confidence") or "unknown",
+            "source_id_skip_count": cls._count_action_values(source_ids.get("skip")),
+            "source_id_deprioritize_count": cls._count_action_values(source_ids.get("deprioritize")),
+            "source_url_skip_count": cls._count_action_values(source_urls.get("skip")),
+            "source_url_deprioritize_count": cls._count_action_values(source_urls.get("deprioritize")),
+            "boost_sections": list(actions.get("boost_sections") or []),
+            "reasons": list(actions.get("reasons") or []),
+            "safety": actions.get("safety") or {},
+        }
+
+    def _build_optimization_action_outcome(
+        self,
+        plan: DigestCrawlPlan | None,
+        *,
+        digest_date: str = "",
+        final_score: float | None = None,
+        section_fill_ratio: float | None = None,
+        section_result_counts: dict | None = None,
+        saved_to_kb: bool = False,
+    ) -> dict | None:
+        """Summarize whether next-run optimization actions helped this digest run."""
+        if not plan:
+            return None
+        actions = (plan.kb_hint or {}).get("next_run_actions")
+        if not isinstance(actions, dict) or not actions:
+            return None
+
+        target_score = 0.75
+        try:
+            target_score = float(
+                (plan.config_snapshot or {}).get(
+                    "digest_optimization_target_score",
+                    settings.digest_optimization_target_score,
+                )
+            )
+        except Exception:
+            target_score = 0.75
+
+        score = float(final_score or 0.0)
+        fill = float(section_fill_ratio or 0.0)
+        if score >= target_score and fill >= 0.8:
+            verdict = "positive"
+            suggestions = ["keep current source feedback guardrails"]
+        elif score >= max(0.5, target_score * 0.8) or fill >= 0.65:
+            verdict = "needs_review"
+            suggestions = ["review source feedback actions before making them stricter"]
+        else:
+            verdict = "negative"
+            suggestions = ["do not strengthen these actions until more runs confirm the signal"]
+
+        return {
+            "applied": True,
+            "digest_date": digest_date or None,
+            "verdict": verdict,
+            "action_snapshot": self._summarize_optimization_actions(actions),
+            "result": {
+                "overall_score": round(score, 3),
+                "section_fill_ratio": round(fill, 3),
+                "section_result_counts": section_result_counts or {},
+                "saved_to_kb": bool(saved_to_kb),
+            },
+            "suggestions": suggestions,
+        }
+
     async def _evaluate_digest_quality(self, digest_result, plan, task, all_results):
         """Phase 4: 日报后评估 — 对最终日报质量评分并写入 KB，形成闭环"""
         from optimization.evaluator import CoverageEvaluator, _get_weights
@@ -1088,6 +1166,7 @@ class DigestOrchestrator:
         # 4. 写入 KB
         digest_date = task.get("digest_date", "")
         task_id = task.get("id", 0)
+        saved_to_kb = False
         try:
             from optimization.knowledge_base import KnowledgeBase
             kb = KnowledgeBase()
@@ -1099,12 +1178,21 @@ class DigestOrchestrator:
                 section_scores=section_scores,
                 suggestions=suggestions,
             )
+            saved_to_kb = True
             logger.info(
                 "[Orchestrator] Phase 4: coverage=%.2f, output=%.2f, final=%.2f, saved to KB (date=%s)",
                 evaluation.overall_score, output_quality["score"], final_score, digest_date,
             )
         except Exception as e:
             logger.warning("[Orchestrator] Phase 4 KB write failed: %s", e)
+        plan.optimization_action_outcome = self._build_optimization_action_outcome(
+            plan,
+            digest_date=digest_date,
+            final_score=final_score,
+            section_fill_ratio=section_fill_ratio,
+            section_result_counts=section_result_counts,
+            saved_to_kb=saved_to_kb,
+        )
 
     @staticmethod
     def _build_digest_eval_results(section_documents: list) -> list[dict]:

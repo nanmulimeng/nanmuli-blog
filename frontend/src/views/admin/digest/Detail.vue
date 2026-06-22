@@ -61,6 +61,16 @@ const eventDiagnostics = computed(() => {
   return plan.event_diagnostics ?? null
 })
 const eventSamples = computed(() => eventDiagnostics.value?.sample_events ?? [])
+const optimizationActionOutcome = computed(() => {
+  const plan = digest.value?.orchestrator_plan
+  if (!plan || Array.isArray(plan)) return null
+  return plan.optimization_action_outcome ?? null
+})
+const optimizationActionSnapshot = computed(() => optimizationActionOutcome.value?.action_snapshot ?? null)
+const optimizationActionResult = computed(() => optimizationActionOutcome.value?.result ?? null)
+const optimizationSectionCounts = computed(() => {
+  return Object.entries(optimizationActionResult.value?.section_result_counts ?? {})
+})
 
 async function fetchDigest(): Promise<void> {
   loading.value = true
@@ -162,6 +172,13 @@ function actionTagType(action: string | null | undefined): 'success' | 'warning'
 
 function diagnosticTagType(severity: string | undefined): 'success' | 'warning' | 'danger' | 'info' {
   if (severity === 'success' || severity === 'warning' || severity === 'danger') return severity
+  return 'info'
+}
+
+function optimizationVerdictTagType(verdict: string | undefined): 'success' | 'warning' | 'danger' | 'info' {
+  if (verdict === 'positive') return 'success'
+  if (verdict === 'needs_review') return 'warning'
+  if (verdict === 'negative') return 'danger'
   return 'info'
 }
 
@@ -485,6 +502,82 @@ watch(() => route.params, () => {
             </template>
           </el-table-column>
         </el-table>
+      </div>
+
+      <div v-if="optimizationActionOutcome" class="mb-6 rounded-2xl p-5 glass-card">
+        <div class="mb-3 flex flex-wrap items-center gap-2">
+          <div class="text-sm font-medium text-content-primary">Optimization Action Outcome</div>
+          <el-tag
+            :type="optimizationVerdictTagType(optimizationActionOutcome.verdict)"
+            size="small"
+          >
+            {{ optimizationActionOutcome.verdict || 'unknown' }}
+          </el-tag>
+          <el-tag v-if="optimizationActionSnapshot?.confidence" type="info" size="small" effect="plain">
+            confidence {{ optimizationActionSnapshot.confidence }}
+          </el-tag>
+          <el-tag v-if="optimizationActionResult?.saved_to_kb" type="success" size="small" effect="plain">
+            saved to KB
+          </el-tag>
+          <el-tag v-else type="warning" size="small" effect="plain">
+            KB not saved
+          </el-tag>
+        </div>
+
+        <div class="grid gap-2 md:grid-cols-4">
+          <div class="rounded-lg border border-border bg-surface-primary px-3 py-2">
+            <div class="text-xs text-content-tertiary">Source ID skip</div>
+            <div class="text-lg font-semibold text-content-primary">
+              {{ optimizationActionSnapshot?.source_id_skip_count ?? 0 }}
+            </div>
+          </div>
+          <div class="rounded-lg border border-border bg-surface-primary px-3 py-2">
+            <div class="text-xs text-content-tertiary">Source ID deprioritize</div>
+            <div class="text-lg font-semibold text-content-primary">
+              {{ optimizationActionSnapshot?.source_id_deprioritize_count ?? 0 }}
+            </div>
+          </div>
+          <div class="rounded-lg border border-border bg-surface-primary px-3 py-2">
+            <div class="text-xs text-content-tertiary">Score</div>
+            <div class="text-lg font-semibold text-content-primary">
+              {{ formatScore(optimizationActionResult?.overall_score) }}
+            </div>
+          </div>
+          <div class="rounded-lg border border-border bg-surface-primary px-3 py-2">
+            <div class="text-xs text-content-tertiary">Section fill</div>
+            <div class="text-lg font-semibold text-content-primary">
+              {{ formatPercent(optimizationActionResult?.section_fill_ratio) }}
+            </div>
+          </div>
+        </div>
+
+        <div v-if="optimizationActionSnapshot?.boost_sections?.length" class="mt-3 flex flex-wrap gap-2">
+          <el-tag
+            v-for="section in optimizationActionSnapshot.boost_sections"
+            :key="section"
+            type="primary"
+            size="small"
+            effect="plain"
+          >
+            boost {{ dimensionLabel(section) }}
+          </el-tag>
+        </div>
+
+        <div v-if="optimizationSectionCounts.length" class="mt-3 flex flex-wrap gap-2 text-xs text-content-secondary">
+          <span
+            v-for="[section, count] in optimizationSectionCounts"
+            :key="section"
+            class="rounded border border-border bg-surface-primary px-2 py-1"
+          >
+            {{ dimensionLabel(section) }}: {{ count }}
+          </span>
+        </div>
+
+        <div v-if="optimizationActionOutcome.suggestions?.length" class="mt-3 space-y-1 text-sm text-content-secondary">
+          <div v-for="suggestion in optimizationActionOutcome.suggestions" :key="suggestion">
+            {{ suggestion }}
+          </div>
+        </div>
       </div>
 
       <div v-if="searchDiagnostics.length" class="mb-6 rounded-2xl p-5 glass-card">

@@ -58,6 +58,13 @@ public class ConfigAppService {
         return toDTO(config);
     }
 
+    @Transactional(readOnly = true)
+    public ConfigDTO getByKeyForAdmin(String key) {
+        Config config = configRepository.findByKey(key)
+                .orElseThrow(() -> new BusinessException("配置不存在"));
+        return toAdminDTO(config);
+    }
+
     @CacheEvict(value = {"config", "config:admin:list"}, allEntries = true)
     @Transactional
     public void update(String key, String value) {

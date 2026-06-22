@@ -1,5 +1,5 @@
 import { get, post, del, put } from '@/utils/request'
-import type { CollectTask, CollectTaskListDTO, CollectPage, CreateCollectTaskCommand, ConvertToArticleCommand, ConvertToDailyLogCommand, CollectTaskQuery, DigestListResult, DigestDetail, DigestSchedulerStatus, DigestSectionConfig, DigestOptimizationTrend, DigestSearchFeedbackResult, Source, SourceTestResult, CreateSourceCommand, UpdateSourceCommand } from '@/types/collector'
+import type { CollectTask, CollectTaskListDTO, CollectPage, CreateCollectTaskCommand, ConvertToArticleCommand, ConvertToDailyLogCommand, CollectTaskQuery, DigestListResult, DigestDetail, DigestSchedulerStatus, DigestSectionConfig, DigestOptimizationTrend, DigestRuntimeHealth, DigestSearchFeedbackResult, Source, SourceTestResult, CreateSourceCommand, UpdateSourceCommand } from '@/types/collector'
 import type { PageResult } from '@/types/api'
 
 // 创建采集任务
@@ -86,6 +86,10 @@ export function getDigestOptimizationTrend(limit = 5): Promise<DigestOptimizatio
 
 export function getDigestSearchFeedback(limit = 10): Promise<DigestSearchFeedbackResult> {
   return get<DigestSearchFeedbackResult>('/admin/collector/optimization/search-feedback', { params: { limit } })
+}
+
+export function getDigestRuntimeHealth(): Promise<DigestRuntimeHealth> {
+  return get<DigestRuntimeHealth>('/admin/collector/digest/runtime/health')
 }
 
 // ============== Public Digest API ==============

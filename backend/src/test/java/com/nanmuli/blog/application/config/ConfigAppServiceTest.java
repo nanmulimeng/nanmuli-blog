@@ -66,4 +66,36 @@ class ConfigAppServiceTest {
         assertThatThrownBy(() -> service.resetToDefault("missing.key"))
                 .isInstanceOf(BusinessException.class);
     }
+
+    @Test
+    void getByKeyForAdmin_masksSensitiveEncryptedValue() {
+        ConfigRepository repository = mock(ConfigRepository.class);
+        AesEncryptor encryptor = new AesEncryptor("test-encryption-key");
+        ConfigAppService service = new ConfigAppService(repository, encryptor);
+        Config config = new Config();
+        config.setConfigKey("crawler.ai.api_key");
+        config.setConfigValue(encryptor.encrypt("plain-ai-key"));
+        config.setIsEncrypted(true);
+        config.setIsSensitive(true);
+
+        when(repository.findByKey("crawler.ai.api_key")).thenReturn(Optional.of(config));
+
+        assertThat(service.getByKeyForAdmin("crawler.ai.api_key").getConfigValue())
+                .isEqualTo("********");
+    }
+
+    @Test
+    void getByKey_keepsRawValueForInternalConsumers() {
+        ConfigRepository repository = mock(ConfigRepository.class);
+        AesEncryptor encryptor = new AesEncryptor("test-encryption-key");
+        ConfigAppService service = new ConfigAppService(repository, encryptor);
+        Config config = new Config();
+        config.setConfigKey("crawler.proxy.enabled");
+        config.setConfigValue("true");
+
+        when(repository.findByKey("crawler.proxy.enabled")).thenReturn(Optional.of(config));
+
+        assertThat(service.getByKey("crawler.proxy.enabled").getConfigValue())
+                .isEqualTo("true");
+    }
 }

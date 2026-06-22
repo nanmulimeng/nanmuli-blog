@@ -443,12 +443,22 @@ class KnowledgeBase:
 
         weaknesses = _parse_json_list(latest.get("weaknesses"))
         suggestions = _parse_json_list(latest.get("suggestions"))
+        action_outcomes = []
+        if task_id is not None:
+            try:
+                from standalone import repository as repo
+                task = await repo.get_task(int(task_id))
+                action_outcomes = self._extract_digest_action_outcomes_from_task(task)
+            except Exception as exc:
+                logger.debug("[KnowledgeBase] action outcome lookup failed: %s", exc)
+                action_outcomes = []
         return self.derive_digest_source_actions(
             diagnostics=diagnostics,
             weaknesses=weaknesses,
             suggestions=suggestions,
             digest_date=latest.get("digest_date"),
             created_at=latest.get("created_at"),
+            action_outcomes=action_outcomes,
         )
 
     @classmethod
@@ -459,6 +469,7 @@ class KnowledgeBase:
         suggestions: list | None = None,
         digest_date=None,
         created_at=None,
+        action_outcomes: list[dict] | None = None,
     ) -> dict:
         """Derive next-run source actions from already loaded source diagnostics."""
         diagnostics = diagnostics or []
@@ -535,11 +546,81 @@ class KnowledgeBase:
         actions["safety"] = cls._apply_digest_source_action_safety(
             actions, section_source_counts
         )
+        cls._apply_digest_action_outcome_safety(actions, action_outcomes)
         actions["reasons"] = [
             f"{src.get('source_name') or src.get('source_url') or sid}: {src['reason']}"
             for sid, src in sources.items()
         ][:8]
         return actions
+
+    @staticmethod
+    def _extract_digest_action_outcomes_from_task(task: dict | None) -> list[dict]:
+        if not task:
+            return []
+        raw_meta = task.get("ai_search_metadata")
+        if not raw_meta:
+            return []
+        try:
+            import json as _json
+            metadata = _json.loads(raw_meta) if isinstance(raw_meta, str) else raw_meta
+        except Exception:
+            return []
+        if not isinstance(metadata, dict):
+            return []
+        plan = metadata.get("orchestrator_plan")
+        if not isinstance(plan, dict):
+            return []
+        outcome = plan.get("optimization_action_outcome")
+        return [outcome] if isinstance(outcome, dict) else []
+
+    @classmethod
+    def _apply_digest_action_outcome_safety(
+        cls,
+        actions: dict,
+        action_outcomes: list[dict] | None = None,
+    ) -> None:
+        negative = cls._latest_negative_action_outcome(action_outcomes)
+        if not negative:
+            return
+
+        safety = actions.setdefault("safety", {})
+        safety.setdefault("applied", [])
+        safety.setdefault("downgraded", [])
+        safety.setdefault("section_source_counts", {})
+        if "negative-outcome-circuit-breaker" not in safety["applied"]:
+            safety["applied"].append("negative-outcome-circuit-breaker")
+
+        suppressed_boosts = list(actions.get("boost_sections") or [])
+        if suppressed_boosts:
+            actions["boost_sections"] = []
+            safety["suppressed_boost_sections"] = suppressed_boosts
+
+        downgraded = cls._downgrade_matching_skips(
+            actions,
+            lambda _key, _src: True,
+            "negative-outcome-circuit-breaker",
+        )
+        if downgraded:
+            safety["downgraded"].extend(downgraded)
+
+        result = negative.get("result") if isinstance(negative.get("result"), dict) else {}
+        safety["last_negative_outcome"] = {
+            "overall_score": result.get("overall_score"),
+            "section_fill_ratio": result.get("section_fill_ratio"),
+            "verdict": negative.get("verdict"),
+        }
+        actions["confidence"] = "low"
+
+    @staticmethod
+    def _latest_negative_action_outcome(action_outcomes: list[dict] | None) -> dict | None:
+        for outcome in action_outcomes or []:
+            if not isinstance(outcome, dict):
+                continue
+            if outcome.get("applied") is not True:
+                continue
+            if str(outcome.get("verdict") or "").lower() == "negative":
+                return outcome
+        return None
 
     @classmethod
     def _apply_digest_source_action_safety(

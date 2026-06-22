@@ -1116,7 +1116,7 @@ VALUES
     ('crawler.service.connect-timeout', '10000', '10000', '连接超时(毫秒)', 'crawler', FALSE, 'text', FALSE, FALSE),
     ('crawler.service.read-timeout', '30000', '30000', '读取超时(毫秒)', 'crawler', FALSE, 'text', FALSE, FALSE),
     -- AES 加密密钥 (1)
-    ('blog.security.encryption-key', 'nanmuli-blog-key', 'nanmuli-blog-key', 'AES-128加密密钥（16字节）', 'blog', FALSE, 'password', TRUE, TRUE)
+    ('blog.security.encryption-key', '', '', 'AES-128加密密钥（16字节）', 'blog', FALSE, 'password', TRUE, TRUE)
 ON CONFLICT DO NOTHING;
 
 -- 插入示例技能

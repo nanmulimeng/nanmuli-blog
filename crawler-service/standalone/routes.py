@@ -223,6 +223,102 @@ def _build_scheduler_diagnostics(status: dict) -> dict:
     }
 
 
+def _runtime_check(
+    key: str,
+    label: str,
+    status: str,
+    message: str,
+    blocking: bool = False,
+) -> dict:
+    return {
+        "key": key,
+        "label": label,
+        "status": status,
+        "message": message,
+        "blocking": blocking,
+    }
+
+
+def _runtime_status(checks: list[dict]) -> str:
+    if any(c.get("status") == "danger" for c in checks):
+        return "danger"
+    if any(c.get("status") == "warning" for c in checks):
+        return "warning"
+    if any(c.get("status") == "info" for c in checks):
+        return "info"
+    return "healthy"
+
+
+def _configured_core_sections() -> list[str]:
+    raw = getattr(settings, "digest_publish_core_sections", None)
+    if isinstance(raw, str):
+        return [item.strip() for item in raw.split(",") if item.strip()]
+    if isinstance(raw, (list, tuple, set)):
+        return [str(item).strip() for item in raw if str(item).strip()]
+    return ["hot_trend", "open_source", "dev_tool", "tech_article", "paper"]
+
+
+def _summarize_runtime_sections(sections: list[dict]) -> dict:
+    names = [str(sec.get("name") or "").strip() for sec in sections if sec.get("name")]
+    core_sections = _configured_core_sections()
+    configured_core = [name for name in core_sections if name in names]
+    min_core = int(getattr(settings, "digest_publish_min_core_sections", 3) or 3)
+    missing_core = [name for name in core_sections if name not in names]
+    return {
+        "sections_count": len(names),
+        "section_names": names,
+        "core_sections": core_sections,
+        "configured_core_sections": configured_core,
+        "missing_core_sections": missing_core,
+        "min_core_sections": min_core,
+        "core_coverage_ok": len(configured_core) >= min_core,
+    }
+
+
+def _summarize_next_run_action_safety(actions: dict | None) -> dict:
+    actions = actions or {}
+    source_ids = actions.get("source_ids") or {}
+    source_urls = actions.get("source_urls") or {}
+    safety = actions.get("safety") or {}
+    skip_count = len(source_ids.get("skip") or []) + len(source_urls.get("skip") or [])
+    deprioritize_count = (
+        len(source_ids.get("deprioritize") or [])
+        + len(source_urls.get("deprioritize") or [])
+    )
+    confidence = actions.get("confidence") or "none"
+    applied = safety.get("applied") or []
+    downgraded = safety.get("downgraded") or []
+    status = "success"
+    if confidence == "low" or downgraded:
+        status = "warning"
+    if skip_count > 0 and not applied and confidence in ("none", "low"):
+        status = "danger"
+    return {
+        "status": status,
+        "confidence": confidence,
+        "skip_count": skip_count,
+        "deprioritize_count": deprioritize_count,
+        "boost_sections": actions.get("boost_sections") or [],
+        "safety_applied": applied,
+        "downgraded_count": len(downgraded),
+        "section_source_counts": safety.get("section_source_counts") or {},
+    }
+
+
+def _summarize_search_feedback(records: list[dict]) -> dict:
+    latest = records[0] if records else None
+    summary = latest.get("summary") if latest else None
+    summary = summary or {}
+    return {
+        "latest_digest_date": latest.get("digest_date") if latest else None,
+        "latest_keep_rate": summary.get("keep_rate"),
+        "zero_result_queries": summary.get("zero_result_queries") or [],
+        "total_queries": summary.get("total_queries"),
+        "total_kept": summary.get("total_kept"),
+        "total_returned": summary.get("total_returned"),
+    }
+
+
 # ============== Endpoints ==============
 
 @router.post("/tasks", status_code=201)
@@ -727,6 +823,180 @@ async def get_scheduler_status():
         status["latest_digest"] = None
     status["diagnostics"] = _build_scheduler_diagnostics(status)
     return status
+
+
+@router.get("/digests/runtime/health")
+async def get_digest_runtime_health():
+    """Aggregate digest launch-readiness signals for admin diagnostics."""
+    checks: list[dict] = []
+    recommendations: list[str] = []
+
+    try:
+        from standalone.scheduler import get_scheduler_status as _get_scheduler_status
+        scheduler_status = _get_scheduler_status()
+    except Exception as exc:
+        scheduler_status = {}
+        checks.append(_runtime_check(
+            "scheduler", "Scheduler", "danger",
+            f"Scheduler status unavailable: {exc}", blocking=True,
+        ))
+
+    if scheduler_status:
+        enabled = bool(scheduler_status.get("enabled"))
+        running = bool(scheduler_status.get("running"))
+        digest_job_registered = bool(scheduler_status.get("digest_job_registered"))
+        ai_enabled = bool(scheduler_status.get("ai_enabled"))
+        ai_configured = bool(scheduler_status.get("ai_configured"))
+
+        checks.append(_runtime_check(
+            "scheduler", "Scheduler",
+            "success" if running else ("warning" if not enabled else "danger"),
+            "Scheduler is running" if running else "Scheduler is not running",
+            blocking=enabled and not running,
+        ))
+        checks.append(_runtime_check(
+            "digest_job", "Digest job",
+            "success" if digest_job_registered else ("info" if not enabled else "danger"),
+            "Digest job is registered" if digest_job_registered else "Digest job is not registered",
+            blocking=enabled and not digest_job_registered,
+        ))
+        checks.append(_runtime_check(
+            "ai", "AI",
+            "success" if (not ai_enabled or ai_configured) else "danger",
+            "AI is configured" if ai_configured else ("AI is disabled" if not ai_enabled else "AI is enabled but not configured"),
+            blocking=ai_enabled and not ai_configured,
+        ))
+        if ai_enabled and not ai_configured:
+            recommendations.append(
+                "AI is enabled but missing usable configuration; set AI_API_KEY/base URL/model and refresh crawler config."
+            )
+
+    try:
+        from standalone.task_executor import get_digest_sections
+        sections = await get_digest_sections()
+        config_summary = _summarize_runtime_sections(sections)
+        checks.append(_runtime_check(
+            "sections", "Digest sections",
+            "success" if config_summary["core_coverage_ok"] else "danger",
+            (
+                f"{len(config_summary['configured_core_sections'])}/"
+                f"{config_summary['min_core_sections']} required core sections configured"
+            ),
+            blocking=not config_summary["core_coverage_ok"],
+        ))
+        if not config_summary["core_coverage_ok"]:
+            recommendations.append(
+                "Digest core sections are insufficient; enable at least "
+                f"{config_summary['min_core_sections']} core sections."
+            )
+    except Exception as exc:
+        config_summary = {
+            "sections_count": 0,
+            "section_names": [],
+            "core_sections": _configured_core_sections(),
+            "configured_core_sections": [],
+            "missing_core_sections": _configured_core_sections(),
+            "min_core_sections": int(getattr(settings, "digest_publish_min_core_sections", 3) or 3),
+            "core_coverage_ok": False,
+        }
+        checks.append(_runtime_check(
+            "sections", "Digest sections", "danger",
+            f"Digest section config unavailable: {exc}", blocking=True,
+        ))
+
+    try:
+        from optimization.knowledge_base import KnowledgeBase
+        kb = KnowledgeBase()
+        quality_overview = await kb.get_digest_quality_overview(limit=10)
+    except Exception as exc:
+        quality_overview = {
+            "summary": {"latest_score": None, "average_score": None, "status": "unknown"},
+            "next_run_actions": None,
+        }
+        checks.append(_runtime_check(
+            "quality", "Quality trend", "warning",
+            f"Quality overview unavailable: {exc}",
+        ))
+
+    quality_summary = quality_overview.get("summary") or {}
+    quality_status = quality_summary.get("status") or "unknown"
+    if quality_status == "danger":
+        checks.append(_runtime_check(
+            "quality", "Quality trend", "warning",
+            "Latest digest quality trend is below target",
+        ))
+        recommendations.append("Review latest quality weaknesses before relying on automatic optimization.")
+    elif quality_summary.get("latest_score") is not None:
+        checks.append(_runtime_check(
+            "quality", "Quality trend",
+            "success" if quality_status == "success" else "warning",
+            f"Latest score: {quality_summary.get('latest_score')}",
+        ))
+    else:
+        checks.append(_runtime_check(
+            "quality", "Quality trend", "info",
+            "No final digest quality evaluation yet",
+        ))
+
+    optimization_safety = _summarize_next_run_action_safety(
+        quality_overview.get("next_run_actions")
+    )
+    checks.append(_runtime_check(
+        "optimization_safety", "Optimization safety",
+        optimization_safety["status"],
+        (
+            f"confidence={optimization_safety['confidence']}, "
+            f"skip={optimization_safety['skip_count']}, "
+            f"deprioritize={optimization_safety['deprioritize_count']}"
+        ),
+        blocking=optimization_safety["status"] == "danger",
+    ))
+    if optimization_safety["status"] != "success":
+        recommendations.append(
+            "Keep automatic optimization in conservative mode until source feedback confidence improves."
+        )
+
+    try:
+        feedback_records = await repo.get_recent_digest_search_feedback(limit=1)
+    except Exception as exc:
+        feedback_records = []
+        checks.append(_runtime_check(
+            "search_feedback", "Search feedback", "warning",
+            f"Search feedback unavailable: {exc}",
+        ))
+    search_feedback = _summarize_search_feedback(feedback_records)
+    if feedback_records:
+        keep_rate = search_feedback.get("latest_keep_rate")
+        checks.append(_runtime_check(
+            "search_feedback", "Search feedback",
+            "success" if keep_rate is not None and keep_rate >= 0.25 else "warning",
+            f"Latest keep rate: {keep_rate}",
+        ))
+    else:
+        checks.append(_runtime_check(
+            "search_feedback", "Search feedback", "info",
+            "No search feedback snapshot yet",
+        ))
+
+    status = _runtime_status(checks)
+    blocking = any(check.get("blocking") for check in checks)
+    if blocking:
+        status = "danger"
+
+    return {
+        "status": status,
+        "summary": {
+            "blocking": blocking,
+            "message": "Digest runtime is ready" if status == "healthy" else "Digest runtime needs attention",
+        },
+        "checks": checks,
+        "recommendations": recommendations[:8],
+        "config": config_summary,
+        "scheduler": scheduler_status,
+        "quality": quality_overview,
+        "optimization_safety": optimization_safety,
+        "search_feedback": search_feedback,
+    }
 
 
 @router.post("/digests/trigger")

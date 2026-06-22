@@ -74,4 +74,42 @@ class InternalCallbackControllerTest {
         assertThat(result.getCode()).isEqualTo(403);
         verify(configRepository, never()).findByGroup("crawler");
     }
+
+    @Test
+    void getCrawlerConfigBlocksBlankKeyInProductionProfile() {
+        when(configService.get("crawler.callback.api-key", "")).thenReturn("");
+        when(configService.get("crawler.service.api-key", "")).thenReturn("");
+        when(environment.getActiveProfiles()).thenReturn(new String[]{"prod"});
+
+        Result<Map<String, String>> result = controller.getCrawlerConfig(null);
+
+        assertThat(result.getCode()).isEqualTo(403);
+        verify(configRepository, never()).findByGroup("crawler");
+    }
+
+    @Test
+    void getCrawlerConfigAllowsBlankKeyOnlyForNonProductionBootstrap() {
+        when(configService.get("crawler.callback.api-key", "")).thenReturn("");
+        when(configService.get("crawler.service.api-key", "")).thenReturn("");
+        when(environment.getActiveProfiles()).thenReturn(new String[]{"dev"});
+        when(configRepository.findByGroup("crawler")).thenReturn(List.of());
+
+        Result<Map<String, String>> result = controller.getCrawlerConfig(null);
+
+        assertThat(result.getCode()).isEqualTo(200);
+        assertThat(result.getData()).isEmpty();
+    }
+
+    @Test
+    void callbackRejectsWrongKeyAndDoesNotCompleteTask() {
+        when(configService.get("crawler.callback.api-key", "")).thenReturn("callback-key");
+
+        Result<Void> result = controller.handleCallback(
+                "wrong-key",
+                Map.of("python_task_id", 42, "status", 3)
+        );
+
+        assertThat(result.getCode()).isEqualTo(403);
+        verify(collectorAppService, never()).handleCallback(42, 3);
+    }
 }

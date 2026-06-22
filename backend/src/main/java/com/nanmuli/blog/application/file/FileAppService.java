@@ -31,6 +31,7 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class FileAppService {
+    private static final int MAX_ORIGINAL_NAME_LENGTH = 255;
 
     private static final Map<String, String> EXTENSION_TO_MIME = Map.ofEntries(
             Map.entry("jpg", "image/jpeg"), Map.entry("jpeg", "image/jpeg"),
@@ -74,7 +75,10 @@ public class FileAppService {
      * 解析配置的允许扩展名为 Set
      */
     private Set<String> getAllowedExtensions() {
-        return Set.of(allowedExtensionsConfig.split(","));
+        return java.util.Arrays.stream(allowedExtensionsConfig.split(","))
+                .map(item -> item.trim().toLowerCase(Locale.ROOT))
+                .filter(item -> !item.isEmpty())
+                .collect(java.util.stream.Collectors.toSet());
     }
 
     @Transactional
@@ -82,6 +86,14 @@ public class FileAppService {
         String originalName = command.getOriginalName();
         if (!StringUtils.hasText(originalName)) {
             throw new BusinessException("文件名不能为空");
+        }
+
+        validateOriginalName(originalName);
+        if (command.getContent() == null || command.getContent().length == 0) {
+            throw new BusinessException("文件内容不能为空");
+        }
+        if (command.getFileSize() == null || command.getFileSize() < 0) {
+            throw new BusinessException("文件大小不合法");
         }
 
         String extension = getExtension(originalName).toLowerCase(Locale.ROOT);
@@ -264,5 +276,19 @@ public class FileAppService {
     private String getExtension(String filename) {
         int dotIndex = filename.lastIndexOf('.');
         return dotIndex == -1 || dotIndex == filename.length() - 1 ? "" : filename.substring(dotIndex + 1);
+    }
+
+    private void validateOriginalName(String originalName) {
+        if (originalName.length() > MAX_ORIGINAL_NAME_LENGTH) {
+            throw new BusinessException("文件名过长");
+        }
+        if (originalName.indexOf('\0') >= 0 || originalName.contains("/") || originalName.contains("\\")) {
+            throw new BusinessException("文件名包含非法字符");
+        }
+        for (int i = 0; i < originalName.length(); i++) {
+            if (Character.isISOControl(originalName.charAt(i))) {
+                throw new BusinessException("文件名包含非法字符");
+            }
+        }
     }
 }

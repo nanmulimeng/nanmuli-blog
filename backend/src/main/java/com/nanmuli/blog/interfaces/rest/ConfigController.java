@@ -44,7 +44,7 @@ public class ConfigController {
 
     @GetMapping("/admin/config/{key}")
     public Result<ConfigDTO> getByKey(@PathVariable String key) {
-        return Result.success(configAppService.getByKey(key));
+        return Result.success(configAppService.getByKeyForAdmin(key));
     }
 
     @PutMapping("/admin/config/{key}")

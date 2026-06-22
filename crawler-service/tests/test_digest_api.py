@@ -730,6 +730,55 @@ class TestGetDigestByTaskId:
         assert diagnostics["merged_event_count"] == 1
         assert diagnostics["sample_events"][0]["source_domains"] == ["openai.com", "github.blog"]
 
+    @pytest.mark.asyncio
+    async def test_digest_task_returns_optimization_action_outcome_from_orchestrator_plan(self, app, patched_repo):
+        repo = patched_repo
+
+        task_id = await repo.create_task(
+            task_type="digest",
+            keyword="2026-06-22",
+            ai_template="daily_digest",
+            digest_date="2026-06-22",
+        )
+        await repo.save_ai_search_metadata(task_id, {
+            "orchestrator_plan": {
+                "optimization_action_outcome": {
+                    "applied": True,
+                    "digest_date": "2026-06-22",
+                    "verdict": "positive",
+                    "action_snapshot": {
+                        "confidence": "medium",
+                        "source_id_skip_count": 1,
+                        "source_id_deprioritize_count": 2,
+                        "source_url_skip_count": 0,
+                        "source_url_deprioritize_count": 1,
+                        "boost_sections": ["open_source"],
+                        "reasons": ["last run low quality"],
+                        "safety": {"applied": ["min_section_source_count"]},
+                    },
+                    "result": {
+                        "overall_score": 0.82,
+                        "section_fill_ratio": 0.9,
+                        "section_result_counts": {"open_source": 4},
+                        "saved_to_kb": True,
+                    },
+                    "suggestions": ["keep current source feedback guardrails"],
+                }
+            }
+        })
+        await repo.fail_task(task_id, "quality below threshold")
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            resp = await ac.get(f"/digests/task/{task_id}")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        outcome = data["orchestrator_plan"]["optimization_action_outcome"]
+        assert outcome["applied"] is True
+        assert outcome["verdict"] == "positive"
+        assert outcome["action_snapshot"]["source_id_skip_count"] == 1
+        assert outcome["result"]["section_fill_ratio"] == 0.9
+
 
 # ============== GET /digests/config/sections ==============
 

@@ -132,6 +132,38 @@ export interface DigestOrchestratorPlan {
   plan_log?: string[]
   search_diagnostics?: DigestSearchDiagnostic[]
   event_diagnostics?: DigestEventDiagnostics
+  optimization_action_outcome?: DigestOptimizationActionOutcome | null
+}
+
+export interface DigestOptimizationActionOutcome {
+  applied: boolean
+  digest_date?: string | null
+  verdict?: 'positive' | 'needs_review' | 'negative' | string
+  action_snapshot?: DigestOptimizationActionSnapshot
+  result?: DigestOptimizationActionResult
+  suggestions?: string[]
+}
+
+export interface DigestOptimizationActionSnapshot {
+  confidence?: string
+  source_id_skip_count?: number
+  source_id_deprioritize_count?: number
+  source_url_skip_count?: number
+  source_url_deprioritize_count?: number
+  boost_sections?: string[]
+  reasons?: string[]
+  safety?: {
+    applied?: string[]
+    downgraded?: unknown[]
+    section_source_counts?: Record<string, number>
+  }
+}
+
+export interface DigestOptimizationActionResult {
+  overall_score?: number | null
+  section_fill_ratio?: number | null
+  section_result_counts?: Record<string, number>
+  saved_to_kb?: boolean
 }
 
 export interface DigestEventDiagnostics {
@@ -270,6 +302,61 @@ export interface DigestSchedulerLatestDigest {
   error_message?: string | null
   created_at?: string | null
   diagnostics?: CollectTaskDiagnostics | null
+}
+
+export interface DigestRuntimeHealth {
+  status: 'healthy' | 'warning' | 'danger' | 'info' | string
+  summary: DigestRuntimeHealthSummary
+  checks: DigestRuntimeHealthCheck[]
+  recommendations: string[]
+  config: DigestRuntimeConfig
+  scheduler: DigestSchedulerStatus
+  quality?: DigestOptimizationTrend | Record<string, any>
+  optimization_safety: DigestRuntimeOptimizationSafety
+  search_feedback: DigestRuntimeSearchFeedback
+}
+
+export interface DigestRuntimeHealthSummary {
+  blocking: boolean
+  message: string
+}
+
+export interface DigestRuntimeHealthCheck {
+  key: string
+  label: string
+  status: 'success' | 'warning' | 'danger' | 'info' | string
+  message: string
+  blocking?: boolean
+}
+
+export interface DigestRuntimeConfig {
+  sections_count: number
+  section_names: string[]
+  core_sections: string[]
+  configured_core_sections: string[]
+  missing_core_sections: string[]
+  min_core_sections: number
+  core_coverage_ok: boolean
+}
+
+export interface DigestRuntimeOptimizationSafety {
+  status: 'success' | 'warning' | 'danger' | 'info' | string
+  confidence: string
+  skip_count: number
+  deprioritize_count: number
+  boost_sections: string[]
+  safety_applied: string[]
+  downgraded_count: number
+  section_source_counts: Record<string, number>
+}
+
+export interface DigestRuntimeSearchFeedback {
+  latest_digest_date?: string | null
+  latest_keep_rate?: number | null
+  zero_result_queries: DigestZeroResultQuery[]
+  total_queries?: number | null
+  total_kept?: number | null
+  total_returned?: number | null
 }
 
 export interface DigestListResult {

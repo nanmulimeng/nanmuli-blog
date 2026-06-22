@@ -142,6 +142,55 @@ function Test-CommandAvailable([string]$Command) {
     return $null -ne (Get-Command $Command -ErrorAction SilentlyContinue)
 }
 
+function Get-ResourceSnapshotText {
+    $lines = New-Object System.Collections.Generic.List[string]
+    $lines.Add("Top processes by working set:") | Out-Null
+    Get-Process |
+        Sort-Object WorkingSet64 -Descending |
+        Select-Object -First 12 ProcessName, Id, CPU, @{Name="WorkingSetMB"; Expression={[math]::Round($_.WorkingSet64 / 1MB, 1)}} |
+        Format-Table -AutoSize |
+        Out-String |
+        ForEach-Object { $lines.Add($_.TrimEnd()) | Out-Null }
+
+    if (Test-CommandAvailable "docker") {
+        $lines.Add("") | Out-Null
+        $lines.Add("Docker stats:") | Out-Null
+        try {
+            $stats = & docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}" 2>&1 | Out-String
+            $lines.Add($stats.TrimEnd()) | Out-Null
+        } catch {
+            $lines.Add("docker stats unavailable: $($_.Exception.Message)") | Out-Null
+        }
+    }
+
+    if (Test-CommandAvailable "wsl") {
+        $lines.Add("") | Out-Null
+        $lines.Add("WSL status:") | Out-Null
+        try {
+            $wslStatus = & wsl --status 2>&1 | Out-String
+            $lines.Add($wslStatus.TrimEnd()) | Out-Null
+        } catch {
+            $lines.Add("wsl status unavailable: $($_.Exception.Message)") | Out-Null
+        }
+    }
+    return ($lines -join "`n")
+}
+
+function Add-ResourceSnapshot([string]$Name) {
+    Write-Host "`n==> $Name" -ForegroundColor Cyan
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    try {
+        $snapshot = Get-ResourceSnapshotText
+        $sw.Stop()
+        Write-Host "PASS ($([math]::Round($sw.Elapsed.TotalSeconds, 1))s)" -ForegroundColor Green
+        Add-Result $Name "passed" 0 $sw.Elapsed.TotalSeconds $snapshot ""
+    } catch {
+        $sw.Stop()
+        Write-Host "FAIL ($($_.Exception.Message))" -ForegroundColor Red
+        Add-Result $Name "failed" 1 $sw.Elapsed.TotalSeconds "" ($_.Exception.Message)
+    }
+}
+
 function Invoke-Preflight {
     Write-Host "`n==> preflight tools" -ForegroundColor Cyan
     $missing = New-Object System.Collections.Generic.List[string]
@@ -214,6 +263,7 @@ function Write-MarkdownReport($Summary, [string]$Path) {
 }
 
 Invoke-Preflight
+Add-ResourceSnapshot "resource snapshot before gate"
 
 if (-not $SkipAudit) {
     Invoke-Step "frontend prod audit" (Join-Path $Root "frontend") "npm.cmd" @("audit", "--omit=dev", "--registry=https://registry.npmjs.org") 180
@@ -273,6 +323,8 @@ if ($shouldRunSmoke) {
 } else {
     Add-Skipped "digest smoke" "Pass -RunSmoke to enable; add -TriggerDigest -ForceDigest for real generation"
 }
+
+Add-ResourceSnapshot "resource snapshot after gate"
 
 $FinishedAt = Get-Date
 $failed = @($Results | Where-Object { $_.status -eq "failed" })

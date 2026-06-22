@@ -16,6 +16,7 @@ from .dependencies import get_async_web_crawler
 from .models import CrawlResult, JS_CHALLENGE_MIN_WORDS
 from .utils import count_words
 from .processor import extract_page_metadata, retry_js_challenge, extract_depth
+from .resource_guard import browser_crawl_slot
 
 logger = logging.getLogger(__name__)
 
@@ -106,10 +107,12 @@ async def crawl_deep_pages(
         if crawler is None:
             async with AsyncWebCrawler(config=browser_config) as c:
                 active_crawler = c
-                results_raw = await c.arun(url=url, config=run_config)
+                async with browser_crawl_slot():
+                    results_raw = await c.arun(url=url, config=run_config)
         else:
             active_crawler = crawler
-            results_raw = await crawler.arun(url=url, config=run_config)
+            async with browser_crawl_slot():
+                results_raw = await crawler.arun(url=url, config=run_config)
 
         # Crawl4AI 0.8.x: arun 返回 list（非 AsyncGenerator）
         if not isinstance(results_raw, list):
@@ -135,7 +138,8 @@ async def crawl_deep_pages(
                         word_count, result.url
                     )
                     try:
-                        retry_results = await retry_js_challenge(active_crawler, result.url, params)
+                        async with browser_crawl_slot():
+                            retry_results = await retry_js_challenge(active_crawler, result.url, params)
                         if retry_results and isinstance(retry_results, list):
                             retry = retry_results[0]
                         else:

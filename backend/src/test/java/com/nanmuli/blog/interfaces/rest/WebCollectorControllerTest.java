@@ -82,6 +82,29 @@ class WebCollectorControllerTest {
     }
 
     @Test
+    void getDigestRuntimeHealthProxiesToCrawler() {
+        Map<String, Object> upstream = Map.of("status", "healthy");
+        when(crawlerTaskClient.proxyGet("/api/v1/digests/runtime/health"))
+                .thenReturn(upstream);
+
+        Result<Object> result = controller.getDigestRuntimeHealth();
+
+        assertThat(result.getCode()).isEqualTo(200);
+        assertThat(result.getData()).isSameAs(upstream);
+        verify(crawlerTaskClient).proxyGet("/api/v1/digests/runtime/health");
+    }
+
+    @Test
+    void getDigestRuntimeHealthWrapsCrawlerFailure() {
+        when(crawlerTaskClient.proxyGet("/api/v1/digests/runtime/health"))
+                .thenThrow(new RuntimeException("crawler down"));
+
+        assertThatThrownBy(() -> controller.getDigestRuntimeHealth())
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("crawler down");
+    }
+
+    @Test
     void testSourceDelegatesToSourceAppService() {
         Map<String, Object> upstream = Map.of("crawlable", true, "success_count", 1);
 
