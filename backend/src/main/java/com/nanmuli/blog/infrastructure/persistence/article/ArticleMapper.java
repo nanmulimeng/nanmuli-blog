@@ -14,6 +14,12 @@ import java.util.Map;
 @Mapper
 public interface ArticleMapper extends BaseMapper<Article> {
 
+    String ARTICLE_LIST_COLUMNS = """
+            id, title, slug, summary, cover, category_id, user_id, view_count, like_count,
+            word_count, reading_time, status, is_top, is_original, original_url,
+            publish_time, created_at, updated_at, version
+            """;
+
     @Update("UPDATE article SET view_count = view_count + 1 WHERE id = #{id}")
     void increaseViewCount(@Param("id") Long id);
 
@@ -43,7 +49,8 @@ public interface ArticleMapper extends BaseMapper<Article> {
      */
     @Select("""
             <script>
-            SELECT * FROM article
+            SELECT """ + ARTICLE_LIST_COLUMNS + """
+            FROM article
             WHERE status = 1 AND is_deleted = false
               AND (
                 to_tsvector('chinese_zh',
@@ -80,7 +87,8 @@ public interface ArticleMapper extends BaseMapper<Article> {
      */
     @Select("""
             <script>
-            SELECT * FROM article
+            SELECT """ + ARTICLE_LIST_COLUMNS + """
+            FROM article
             WHERE is_deleted = false
               AND (
                 to_tsvector('chinese_zh',
@@ -114,7 +122,8 @@ public interface ArticleMapper extends BaseMapper<Article> {
      */
     @Select("""
             <script>
-            SELECT *, word_similarity(#{keyword},
+            SELECT """ + ARTICLE_LIST_COLUMNS + """
+              , word_similarity(#{keyword},
                 coalesce(title, '') || ' ' || coalesce(summary, '') || ' ' || coalesce(content, '')
             ) AS trgm_sim
             FROM article

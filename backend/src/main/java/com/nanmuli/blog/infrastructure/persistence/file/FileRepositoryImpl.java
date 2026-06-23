@@ -41,8 +41,22 @@ public class FileRepositoryImpl implements FileRepository {
     }
 
     @Override
-    public List<BlogFile> findAll() {
-        return blogFileMapper.selectList(Wrappers.emptyWrapper());
+    public List<BlogFile> findImagesMissingThumbnail(int limit) {
+        LambdaQueryWrapper<BlogFile> wrapper = Wrappers.lambdaQuery();
+        wrapper.likeRight(BlogFile::getMimeType, "image/")
+                .and(w -> w.isNull(BlogFile::getThumbnailUrl).or().isNull(BlogFile::getWidth))
+                .orderByAsc(BlogFile::getId)
+                .last("LIMIT " + Math.max(1, limit))
+                .select(
+                        BlogFile::getId,
+                        BlogFile::getFileName,
+                        BlogFile::getFilePath,
+                        BlogFile::getMimeType,
+                        BlogFile::getThumbnailUrl,
+                        BlogFile::getWidth,
+                        BlogFile::getHeight
+                );
+        return blogFileMapper.selectList(wrapper);
     }
 
     @Override

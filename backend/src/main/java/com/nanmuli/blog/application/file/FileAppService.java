@@ -32,6 +32,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class FileAppService {
     private static final int MAX_ORIGINAL_NAME_LENGTH = 255;
+    static final int THUMBNAIL_REGEN_BATCH_SIZE = 100;
 
     private static final Map<String, String> EXTENSION_TO_MIME = Map.ofEntries(
             Map.entry("jpg", "image/jpeg"), Map.entry("jpeg", "image/jpeg"),
@@ -218,13 +219,10 @@ public class FileAppService {
      */
     @Transactional
     public int regenerateMissingThumbnails() {
-        List<BlogFile> allFiles = fileRepository.findAll();
+        List<BlogFile> candidates = fileRepository.findImagesMissingThumbnail(THUMBNAIL_REGEN_BATCH_SIZE);
         int count = 0;
-        for (BlogFile file : allFiles) {
+        for (BlogFile file : candidates) {
             String mimeType = file.getMimeType();
-            if (mimeType == null || !mimeType.startsWith("image/")) continue;
-            if (file.getThumbnailUrl() != null && file.getWidth() != null) continue;
-
             Path filePath = Paths.get(file.getFilePath());
             if (!Files.exists(filePath)) {
                 log.warn("文件不存在, 跳过缩略图生成: {}", file.getFilePath());

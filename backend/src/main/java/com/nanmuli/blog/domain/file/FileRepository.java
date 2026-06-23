@@ -12,7 +12,7 @@ public interface FileRepository {
 
     Optional<BlogFile> findByMd5(String md5);
 
-    List<BlogFile> findAll();
+    List<BlogFile> findImagesMissingThumbnail(int limit);
 
     void deleteById(Long id);
 

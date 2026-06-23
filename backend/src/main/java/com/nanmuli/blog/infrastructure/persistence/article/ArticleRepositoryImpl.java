@@ -70,6 +70,7 @@ public class ArticleRepositoryImpl implements ArticleRepository {
     @Override
     public IPage<Article> findPublishedPage(IPage<Article> page, String sort) {
         LambdaQueryWrapper<Article> wrapper = Wrappers.lambdaQuery();
+        applyListProjection(wrapper);
         wrapper.eq(Article::getStatus, 1)
                .eq(Article::getIsDeleted, false);
 
@@ -92,6 +93,7 @@ public class ArticleRepositoryImpl implements ArticleRepository {
     @Override
     public IPage<Article> findByCategoryId(Long categoryId, IPage<Article> page) {
         LambdaQueryWrapper<Article> wrapper = Wrappers.lambdaQuery();
+        applyListProjection(wrapper);
         wrapper.eq(Article::getCategoryId, categoryId)
                 .eq(Article::getStatus, 1)
                 .eq(Article::getIsDeleted, false)
@@ -102,6 +104,7 @@ public class ArticleRepositoryImpl implements ArticleRepository {
     @Override
     public IPage<Article> findByCategoryIds(List<Long> categoryIds, IPage<Article> page, String sort) {
         LambdaQueryWrapper<Article> wrapper = Wrappers.lambdaQuery();
+        applyListProjection(wrapper);
         wrapper.in(Article::getCategoryId, categoryIds)
                 .eq(Article::getStatus, 1)
                 .eq(Article::getIsDeleted, false);
@@ -125,6 +128,7 @@ public class ArticleRepositoryImpl implements ArticleRepository {
     @Override
     public List<Article> findTopArticles(int limit) {
         LambdaQueryWrapper<Article> wrapper = Wrappers.lambdaQuery();
+        applyListProjection(wrapper);
         wrapper.eq(Article::getStatus, 1)
                 .eq(Article::getIsDeleted, false)
                 .orderByDesc(Article::getIsTop)
@@ -179,6 +183,7 @@ public class ArticleRepositoryImpl implements ArticleRepository {
     @Override
     public List<Article> findLatestArticles(int limit) {
         LambdaQueryWrapper<Article> wrapper = Wrappers.lambdaQuery();
+        applyListProjection(wrapper);
         wrapper.eq(Article::getStatus, 1)
                 .eq(Article::getIsDeleted, false)
                 .orderByDesc(Article::getPublishTime)
@@ -189,6 +194,7 @@ public class ArticleRepositoryImpl implements ArticleRepository {
     @Override
     public List<Article> findHotArticles(int limit) {
         LambdaQueryWrapper<Article> wrapper = Wrappers.lambdaQuery();
+        applyListProjection(wrapper);
         wrapper.eq(Article::getStatus, 1)
                 .eq(Article::getIsDeleted, false)
                 .orderByDesc(Article::getViewCount)
@@ -232,6 +238,7 @@ public class ArticleRepositoryImpl implements ArticleRepository {
     @Override
     public IPage<Article> findAllPage(IPage<Article> page) {
         LambdaQueryWrapper<Article> wrapper = Wrappers.lambdaQuery();
+        applyListProjection(wrapper);
         wrapper.eq(Article::getIsDeleted, false)
                .orderByDesc(Article::getCreatedAt);
         return articleMapper.selectPage(page, wrapper);
@@ -253,5 +260,29 @@ public class ArticleRepositoryImpl implements ArticleRepository {
         }
         ((Page<Article>) page).setOptimizeCountSql(false);
         return articleMapper.searchPublishedByTrigram(page, keyword, categoryIds);
+    }
+
+    private void applyListProjection(LambdaQueryWrapper<Article> wrapper) {
+        wrapper.select(
+                Article::getId,
+                Article::getTitle,
+                Article::getSlug,
+                Article::getSummary,
+                Article::getCover,
+                Article::getCategoryId,
+                Article::getUserId,
+                Article::getViewCount,
+                Article::getLikeCount,
+                Article::getWordCount,
+                Article::getReadingTime,
+                Article::getStatus,
+                Article::getIsTop,
+                Article::getIsOriginal,
+                Article::getOriginalUrl,
+                Article::getPublishTime,
+                Article::getCreatedAt,
+                Article::getUpdatedAt,
+                Article::getVersion
+        );
     }
 }

@@ -7,16 +7,22 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class FileAppServiceTest {
 
+    private FileRepository fileRepository;
     private FileAppService service;
 
     @BeforeEach
     void setUp() {
-        service = new FileAppService(mock(FileRepository.class), mock(ImageThumbnailService.class));
+        fileRepository = mock(FileRepository.class);
+        service = new FileAppService(fileRepository, mock(ImageThumbnailService.class));
         ReflectionTestUtils.setField(service, "maxFileSize", 1024L);
         ReflectionTestUtils.setField(service, "allowedExtensionsConfig", "jpg, png, txt");
     }
@@ -60,6 +66,16 @@ class FileAppServiceTest {
 
         assertThatThrownBy(() -> service.upload(command))
                 .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void regenerateMissingThumbnailsUsesBoundedCandidateQuery() {
+        when(fileRepository.findImagesMissingThumbnail(FileAppService.THUMBNAIL_REGEN_BATCH_SIZE))
+                .thenReturn(List.of());
+
+        service.regenerateMissingThumbnails();
+
+        verify(fileRepository).findImagesMissingThumbnail(FileAppService.THUMBNAIL_REGEN_BATCH_SIZE);
     }
 
     private UploadFileCommand command(String name, String contentType, byte[] content) {
