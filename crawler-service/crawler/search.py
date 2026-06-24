@@ -21,6 +21,7 @@ from .dedup import dedup_results
 from .filters import has_excluded_keywords, is_excluded_domain
 from .single import crawl_single_page
 from .models import CrawlResult
+from .resource_guard import browser_crawl_slot
 from api.ssrf_guard import validate_url_ssrf
 
 logger = logging.getLogger(__name__)
@@ -338,11 +339,13 @@ async def _fetch_search_html(
     try:
         run_config = get_search_run_config(page_timeout=settings.search_browser_fetch_timeout_ms, delay_before_return_html=0.5)
         if crawler is not None:
-            result = await crawler.arun(url=search_url, config=run_config)
+            async with browser_crawl_slot():
+                result = await crawler.arun(url=search_url, config=run_config)
         else:
             browser_config = await get_browser_config(text_mode=True, light_mode=True, proxy=settings.proxy_url)
             async with AsyncWebCrawler(config=browser_config) as c:
-                result = await c.arun(url=search_url, config=run_config)
+                async with browser_crawl_slot():
+                    result = await c.arun(url=search_url, config=run_config)
         if result.success and result.html:
             return result.html
         logger.warning(

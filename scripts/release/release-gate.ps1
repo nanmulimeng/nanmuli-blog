@@ -16,6 +16,10 @@ param(
     [switch]$SkipComposeConfig,
     [switch]$SkipEnvCheck,
     [switch]$SkipSmoke,
+    [switch]$SkipResourcePressureCheck,
+    [int]$MinAvailableMemoryMB = 1024,
+    [int]$MaxPageReadsPerSec = 500,
+    [int]$MaxWslAssignedMemoryMB = 4096,
     [int]$TimeoutMinutes = 30
 )
 
@@ -142,6 +146,112 @@ function Test-CommandAvailable([string]$Command) {
     return $null -ne (Get-Command $Command -ErrorAction SilentlyContinue)
 }
 
+function Get-WindowsResourcePressureText {
+    $lines = New-Object System.Collections.Generic.List[string]
+
+    try {
+        $memory = Get-Counter `
+            '\Memory\Available MBytes',
+            '\Memory\Committed Bytes',
+            '\Memory\Commit Limit',
+            '\Memory\Page Reads/sec',
+            '\Memory\Pages/sec',
+            '\Memory\Pool Nonpaged Bytes',
+            '\Memory\Pool Paged Bytes' |
+            Select-Object -ExpandProperty CounterSamples
+
+        $values = @{}
+        foreach ($sample in $memory) {
+            $values[$sample.Path.ToLowerInvariant()] = $sample.CookedValue
+        }
+
+        $available = [math]::Round(($values.Keys | Where-Object { $_ -like '*\memory\available mbytes' } | ForEach-Object { $values[$_] } | Select-Object -First 1), 0)
+        $committed = ($values.Keys | Where-Object { $_ -like '*\memory\committed bytes' } | ForEach-Object { $values[$_] } | Select-Object -First 1)
+        $commitLimit = ($values.Keys | Where-Object { $_ -like '*\memory\commit limit' } | ForEach-Object { $values[$_] } | Select-Object -First 1)
+        $pageReads = [math]::Round(($values.Keys | Where-Object { $_ -like '*\memory\page reads/sec' } | ForEach-Object { $values[$_] } | Select-Object -First 1), 1)
+        $pagesPerSec = [math]::Round(($values.Keys | Where-Object { $_ -like '*\memory\pages/sec' } | ForEach-Object { $values[$_] } | Select-Object -First 1), 1)
+        $poolNonpaged = ($values.Keys | Where-Object { $_ -like '*\memory\pool nonpaged bytes' } | ForEach-Object { $values[$_] } | Select-Object -First 1)
+        $poolPaged = ($values.Keys | Where-Object { $_ -like '*\memory\pool paged bytes' } | ForEach-Object { $values[$_] } | Select-Object -First 1)
+
+        $lines.Add("Windows memory:") | Out-Null
+        $lines.Add("- AvailableMB=$available") | Out-Null
+        $lines.Add("- CommittedGB=$([math]::Round($committed / 1GB, 2)) / CommitLimitGB=$([math]::Round($commitLimit / 1GB, 2))") | Out-Null
+        $lines.Add("- PageReadsPerSec=$pageReads / PagesPerSec=$pagesPerSec") | Out-Null
+        $lines.Add("- PoolNonpagedMB=$([math]::Round($poolNonpaged / 1MB, 1)) / PoolPagedMB=$([math]::Round($poolPaged / 1MB, 1))") | Out-Null
+
+        if ($available -lt $MinAvailableMemoryMB) {
+            throw "Available memory ${available}MB is below required ${MinAvailableMemoryMB}MB. Close stale apps or run wsl --shutdown before release gate."
+        }
+        if ($pageReads -gt $MaxPageReadsPerSec) {
+            throw "Page reads/sec $pageReads exceeds limit $MaxPageReadsPerSec. Host is paging heavily; release results are unreliable."
+        }
+    } catch {
+        if ($_.Exception.Message -like "Available memory *" -or $_.Exception.Message -like "Page reads/sec *") {
+            throw
+        }
+        $lines.Add("Windows memory counters unavailable: $($_.Exception.Message)") | Out-Null
+    }
+
+    try {
+        $wslCounters = Get-Counter '\Hyper-V VM Vid Partition(*)\Physical Pages Allocated' -ErrorAction Stop |
+            Select-Object -ExpandProperty CounterSamples |
+            Where-Object { $_.InstanceName -ne "_total" }
+        foreach ($sample in $wslCounters) {
+            $assignedMb = [math]::Round(($sample.CookedValue * 4KB) / 1MB, 1)
+            $lines.Add("Hyper-V VM '$($sample.InstanceName)' assigned memory: ${assignedMb}MB") | Out-Null
+            if ($assignedMb -gt $MaxWslAssignedMemoryMB) {
+                throw "Hyper-V/WSL VM '$($sample.InstanceName)' is assigned ${assignedMb}MB, above limit ${MaxWslAssignedMemoryMB}MB. Restart WSL/Docker so .wslconfig can release memory."
+            }
+        }
+    } catch {
+        if ($_.Exception.Message -like "Hyper-V/WSL VM *") {
+            throw
+        }
+        $lines.Add("Hyper-V WSL counters unavailable: $($_.Exception.Message)") | Out-Null
+    }
+
+    if (Test-CommandAvailable "docker") {
+        try {
+            $dockerStats = & docker stats --no-stream --format "{{.Name}}|{{.MemUsage}}|{{.CPUPerc}}" 2>&1
+            if ($LASTEXITCODE -eq 0 -and $dockerStats) {
+                $lines.Add("Docker stats:") | Out-Null
+                foreach ($line in $dockerStats) {
+                    $lines.Add("- $line") | Out-Null
+                }
+            }
+        } catch {
+            $lines.Add("docker stats unavailable: $($_.Exception.Message)") | Out-Null
+        }
+    }
+
+    return ($lines -join "`n")
+}
+
+function Add-ResourcePressureCheck {
+    if ($SkipResourcePressureCheck) {
+        Add-Skipped "resource pressure check" "SkipResourcePressureCheck"
+        return
+    }
+
+    Write-Host "`n==> resource pressure check" -ForegroundColor Cyan
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    try {
+        if (-not $IsWindows -and $PSVersionTable.PSEdition -eq "Core") {
+            $sw.Stop()
+            Add-Skipped "resource pressure check" "Windows-specific host counters unavailable on this platform"
+            return
+        }
+        $text = Get-WindowsResourcePressureText
+        $sw.Stop()
+        Write-Host "PASS ($([math]::Round($sw.Elapsed.TotalSeconds, 1))s)" -ForegroundColor Green
+        Add-Result "resource pressure check" "passed" 0 $sw.Elapsed.TotalSeconds $text ""
+    } catch {
+        $sw.Stop()
+        Write-Host "FAIL: $($_.Exception.Message)" -ForegroundColor Red
+        Add-Result "resource pressure check" "failed" 1 $sw.Elapsed.TotalSeconds "" ($_.Exception.Message)
+    }
+}
+
 function Get-ResourceSnapshotText {
     $lines = New-Object System.Collections.Generic.List[string]
     $lines.Add("Top processes by working set:") | Out-Null
@@ -264,6 +374,7 @@ function Write-MarkdownReport($Summary, [string]$Path) {
 
 Invoke-Preflight
 Add-ResourceSnapshot "resource snapshot before gate"
+Add-ResourcePressureCheck
 
 if (-not $SkipAudit) {
     Invoke-Step "frontend prod audit" (Join-Path $Root "frontend") "npm.cmd" @("audit", "--omit=dev", "--registry=https://registry.npmjs.org") 180

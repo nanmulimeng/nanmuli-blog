@@ -981,7 +981,7 @@ VALUES
     -- ===== 爬虫全量配置 (Phase 3) =====
     -- AI 配置 (18)
     ('crawler.ai.api_key', '', '', 'AI API密钥（DashScope）', 'crawler', FALSE, 'password', TRUE, TRUE),
-    ('crawler.ai.base_url', 'https://api.deepseek.com/v1', '', 'AI API 端点地址', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.ai.base_url', 'https://api.deepseek.com/v1', 'https://api.deepseek.com/v1', 'AI API 端点地址', 'crawler', FALSE, 'text', FALSE, FALSE),
     ('crawler.ai.connect_timeout', '10', '', 'AI API 连接超时(秒)', 'crawler', FALSE, 'text', FALSE, FALSE),
     ('crawler.ai.enabled', 'false', 'false', '爬虫AI功能开关', 'crawler', FALSE, 'switch', FALSE, FALSE),
     ('crawler.ai.max_key_points', '10', '', '最大要点数', 'crawler', FALSE, 'text', TRUE, TRUE),
@@ -990,7 +990,7 @@ VALUES
     ('crawler.ai.max_tokens', '8000', '', 'AI 最大输出 Token', 'crawler', FALSE, 'text', TRUE, TRUE),
     ('crawler.ai.min_full_content_length', '20', '', '全文最小长度(字符)', 'crawler', FALSE, 'text', FALSE, FALSE),
     ('crawler.ai.min_summary_length', '10', '', '摘要最小长度(字符)', 'crawler', FALSE, 'text', FALSE, FALSE),
-    ('crawler.ai.model', 'deepseek-v4-pro', 'qwen-plus', 'AI模型名称', 'crawler', FALSE, 'text', FALSE, FALSE),
+    ('crawler.ai.model', 'deepseek-chat', 'deepseek-chat', 'AI模型名称', 'crawler', FALSE, 'text', FALSE, FALSE),
     ('crawler.ai.multi_page_per_max_chars', '20000', '', '多页每页最大字符数', 'crawler', FALSE, 'text', FALSE, FALSE),
     ('crawler.ai.multi_page_total_budget', '150000', '', '多页总字符预算', 'crawler', FALSE, 'text', FALSE, FALSE),
     ('crawler.ai.rate_limit_backoff_ms', '10000', '', '限流后退等待(毫秒)', 'crawler', FALSE, 'text', FALSE, FALSE),

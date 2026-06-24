@@ -44,6 +44,21 @@ def _mock_get_db(mem_db):
     return _get_db
 
 
+async def _mark_digest_publishable(db, task_id: int, metadata: dict | None = None):
+    import json
+    await db.execute(
+        """UPDATE crawl_task
+           SET task_type = 'digest',
+               status = 3,
+               ai_title = 'Daily Digest',
+               ai_full_content = 'Full digest content',
+               ai_search_metadata = ?
+           WHERE id = ?""",
+        (json.dumps(metadata or {}, ensure_ascii=False), task_id),
+    )
+    await db.commit()
+
+
 # ============== get_strategy_hint ==============
 
 class TestGetStrategyHint:
@@ -250,6 +265,7 @@ class TestDigestEvaluationFeedback:
             "INSERT INTO crawl_task (id, task_type, status) VALUES (101, 'digest', 3)",
         )
         await mem_db.commit()
+        await _mark_digest_publishable(mem_db, 101)
 
         with patch("optimization.knowledge_base.get_db", _mock_get_db(mem_db)):
             kb = KnowledgeBase()
@@ -278,6 +294,8 @@ class TestDigestEvaluationFeedback:
         await mem_db.execute(
             "INSERT INTO crawl_task (id, task_type, status) VALUES (201, 'digest', 3)",
         )
+        await mem_db.commit()
+        await _mark_digest_publishable(mem_db, 201)
         rows = [
             ("2026-05-26 08:00:00", 0.70, 0.70, 0.30),
             ("2026-05-27 08:00:00", 0.50, 0.50, 0.50),
@@ -309,6 +327,8 @@ class TestDigestEvaluationFeedback:
         await mem_db.execute(
             "INSERT INTO crawl_task (id, task_type, status) VALUES (301, 'digest', 3)",
         )
+        await mem_db.commit()
+        await _mark_digest_publishable(mem_db, 301)
         rows = [
             ("2026-05-29", 0.72, 0.70, 0.62, [], [], "2026-05-29 08:00:00"),
             ("2026-05-30", 0.58, 0.48, 0.55, ["source_diversity"], ["增加英文技术源"], "2026-05-30 08:00:00"),
@@ -352,10 +372,66 @@ class TestDigestEvaluationFeedback:
         assert len(overview["trend"]) == 3
 
     @pytest.mark.asyncio
+    async def test_digest_feedback_ignores_latest_unpublishable_eval(self, mem_db):
+        import json
+
+        await mem_db.execute(
+            """INSERT INTO crawl_task
+               (id, task_type, status, ai_title, ai_full_content, ai_search_metadata)
+               VALUES (901, 'digest', 3, 'Rejected Digest', 'Full content', ?)""",
+            (json.dumps({"digest_publishable": False}),),
+        )
+        await mem_db.execute(
+            """INSERT INTO crawl_task
+               (id, task_type, status, ai_title, ai_full_content, ai_search_metadata)
+               VALUES (902, 'digest', 3, 'Good Digest', 'Full content', ?)""",
+            (json.dumps({"digest_publishable": True}),),
+        )
+        await _insert(
+            mem_db,
+            task_id=902,
+            round_num=0,
+            strategy_type="digest_final_eval",
+            search_keyword="2026-06-11",
+            search_engine="digest",
+            weaknesses=json.dumps(["source_diversity"], ensure_ascii=False),
+            suggestions=json.dumps(["trusted suggestion"], ensure_ascii=False),
+            overall_score=0.72,
+            source_diversity=0.4,
+            created_at="2026-06-11 08:00:00",
+        )
+        await _insert(
+            mem_db,
+            task_id=901,
+            round_num=0,
+            strategy_type="digest_final_eval",
+            search_keyword="2026-06-12",
+            search_engine="digest",
+            weaknesses=json.dumps(["depth"], ensure_ascii=False),
+            suggestions=json.dumps(["bad suggestion"], ensure_ascii=False),
+            overall_score=0.30,
+            depth_coverage=0.2,
+            created_at="2026-06-12 08:00:00",
+        )
+
+        with patch("optimization.knowledge_base.get_db", _mock_get_db(mem_db)):
+            kb = KnowledgeBase()
+            weaknesses = await kb.get_last_digest_weaknesses()
+            trend = await kb.get_digest_quality_trend(limit=5)
+            actions = await kb.get_digest_source_actions()
+
+        assert weaknesses["weaknesses"] == ["source_diversity"]
+        assert weaknesses["suggestions"] == ["trusted suggestion"]
+        assert [row["digest_date"] for row in trend] == ["2026-06-11"]
+        assert actions["digest_date"] == "2026-06-11"
+
+    @pytest.mark.asyncio
     async def test_digest_source_actions_derive_skip_and_deprioritize_from_latest_eval(self, mem_db):
         await mem_db.execute(
             "INSERT INTO crawl_task (id, task_type, status) VALUES (401, 'digest', 3)",
         )
+        await mem_db.commit()
+        await _mark_digest_publishable(mem_db, 401)
         source_scores = [
             {
                 "section": "open_source",
@@ -591,6 +667,7 @@ class TestDigestEvaluationFeedback:
             suggestions=json.dumps(["avoid repeating bad sources"], ensure_ascii=False),
             overall_score=0.46,
         )
+        await _mark_digest_publishable(mem_db, 801)
 
         async def fake_get_task(_task_id):
             return {

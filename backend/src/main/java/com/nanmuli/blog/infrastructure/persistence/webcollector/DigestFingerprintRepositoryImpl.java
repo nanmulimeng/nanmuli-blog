@@ -1,6 +1,7 @@
 package com.nanmuli.blog.infrastructure.persistence.webcollector;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.incrementer.IdentifierGenerator;
 import com.nanmuli.blog.domain.webcollector.DigestFingerprint;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
@@ -13,6 +14,7 @@ import java.util.List;
 public class DigestFingerprintRepositoryImpl {
 
     private final DigestFingerprintMapper fingerprintMapper;
+    private final IdentifierGenerator identifierGenerator;
 
     public void save(DigestFingerprint fp) {
         if (fp.isNew()) {
@@ -29,6 +31,12 @@ public class DigestFingerprintRepositoryImpl {
     public void saveAll(List<DigestFingerprint> fingerprints) {
         if (fingerprints == null || fingerprints.isEmpty()) {
             return;
+        }
+        // 手写批量 INSERT 绕过 MyBatis-Plus 的 ASSIGN_ID 自动填充，需预先分配雪花 id（B09-01 修复）
+        for (DigestFingerprint fp : fingerprints) {
+            if (fp.getId() == null) {
+                fp.setId(identifierGenerator.nextId(fp).longValue());
+            }
         }
         int batchSize = 100;
         for (int i = 0; i < fingerprints.size(); i += batchSize) {

@@ -148,7 +148,10 @@ public class ProxyAppService {
 
     @Transactional
     public void updateSubscription(String url) {
-        String targetUrl = url != null ? url : "";
+        String targetUrl = url != null ? url.trim() : "";
+        if (!targetUrl.isBlank()) {
+            validateSubscriptionUrl(targetUrl); // B11-06 SSRF 防护
+        }
         configAppService.update("crawler.proxy.subscription_url", targetUrl);
         configService.reload();
 
@@ -158,6 +161,45 @@ public class ProxyAppService {
             } catch (MihomoUnreachableException e) {
                 log.warn("[Proxy] Mihomo unreachable, subscription URL saved to DB only");
             }
+        }
+    }
+
+    /**
+     * 校验订阅 URL，防止 SSRF（B11-06）。
+     * 仅允许 http/https，且 host 不得为本地/内网字面地址。
+     * 注意：基于字面 host 校验，无法防御 DNS rebinding（与 crawler ssrf_guard 同口径）。
+     */
+    private void validateSubscriptionUrl(String url) {
+        java.net.URI uri;
+        try {
+            uri = java.net.URI.create(url);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("无效的订阅 URL");
+        }
+        String scheme = uri.getScheme();
+        if (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme)) {
+            throw new IllegalArgumentException("订阅 URL 必须是 http 或 https 协议");
+        }
+        String host = uri.getHost();
+        if (host == null || host.isBlank()) {
+            throw new IllegalArgumentException("订阅 URL 缺少 host");
+        }
+        String lower = host.toLowerCase();
+        if ("localhost".equals(lower) || lower.endsWith(".localhost")
+                || "127.0.0.1".equals(lower) || "::1".equals(lower)
+                || lower.startsWith("10.") || lower.startsWith("192.168.")
+                || lower.startsWith("169.254.")
+                || (lower.startsWith("172.") && isPrivate172(lower))) {
+            throw new IllegalArgumentException("订阅 URL 不得指向本地/内网地址");
+        }
+    }
+
+    private boolean isPrivate172(String host) {
+        try {
+            int octet = Integer.parseInt(host.split("\\.")[1]);
+            return octet >= 16 && octet <= 31;
+        } catch (NumberFormatException | ArrayIndexOutOfBoundsException e) {
+            return false;
         }
     }
 

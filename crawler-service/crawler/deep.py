@@ -138,8 +138,15 @@ async def crawl_deep_pages(
                         word_count, result.url
                     )
                     try:
-                        async with browser_crawl_slot():
-                            retry_results = await retry_js_challenge(active_crawler, result.url, params)
+                        # C03-01: crawler=None 时 active_crawler 已随上面 async with 关闭（use-after-close），
+                        # 重试需新建临时 crawler；crawler 传入分支则复用仍存活的 active_crawler
+                        if crawler is None:
+                            async with AsyncWebCrawler(config=browser_config) as retry_c:
+                                async with browser_crawl_slot():
+                                    retry_results = await retry_js_challenge(retry_c, result.url, params)
+                        else:
+                            async with browser_crawl_slot():
+                                retry_results = await retry_js_challenge(active_crawler, result.url, params)
                         if retry_results and isinstance(retry_results, list):
                             retry = retry_results[0]
                         else:

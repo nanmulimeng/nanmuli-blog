@@ -4,6 +4,7 @@ import json as _json
 import logging
 
 from standalone.db import get_db
+from standalone.models import TaskStatus
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +70,36 @@ def _normalize_source_url(source_url) -> str | None:
         return None
     value = str(source_url).strip()
     return value or None
+
+
+def _json_object(value) -> dict:
+    if isinstance(value, dict):
+        return value
+    if not isinstance(value, str) or not value.strip():
+        return {}
+    try:
+        parsed = _json.loads(value)
+    except _json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _is_publishable_digest_eval_record(record: dict) -> bool:
+    """Return whether a final digest evaluation can influence future runs."""
+    try:
+        status = int(record.get("task_status") if "task_status" in record else record.get("status") or 0)
+    except (TypeError, ValueError):
+        return False
+    if status != TaskStatus.COMPLETED:
+        return False
+    if str(record.get("task_type") or "") != "digest":
+        return False
+    if not str(record.get("ai_title") or "").strip():
+        return False
+    if not str(record.get("ai_full_content") or "").strip():
+        return False
+    metadata = _json_object(record.get("ai_search_metadata"))
+    return metadata.get("digest_publishable") is not False
 
 
 class KnowledgeBase:
@@ -261,18 +292,26 @@ class KnowledgeBase:
         """读取最近一次日报优化轮次的弱点/建议（供下次规划参考）"""
         async with get_db() as db:
             cursor = await db.execute(
-                """SELECT weaknesses, suggestions, created_at
-                   FROM optimization_record
-                   WHERE strategy_type = 'digest_final_eval'
-                     AND suggestions IS NOT NULL
-                     AND suggestions != '[]'
-                   ORDER BY created_at DESC
-                   LIMIT 1""",
+                """SELECT r.weaknesses, r.suggestions, r.created_at,
+                          t.task_type, t.status AS task_status,
+                          t.ai_title, t.ai_full_content, t.ai_search_metadata
+                   FROM optimization_record r
+                   INNER JOIN crawl_task t ON t.id = r.task_id
+                   WHERE r.strategy_type = 'digest_final_eval'
+                     AND r.suggestions IS NOT NULL
+                     AND r.suggestions != '[]'
+                   ORDER BY r.created_at DESC
+                   LIMIT 25""",
             )
-            row = await cursor.fetchone()
-        if not row:
+            rows = await cursor.fetchall()
+        publishable_rows = [
+            dict(row) for row in rows
+            if _is_publishable_digest_eval_record(dict(row))
+        ]
+        if not publishable_rows:
             return None
         import json
+        row = publishable_rows[0]
         weaknesses = row["weaknesses"]
         suggestions = row["suggestions"]
         return {
@@ -326,25 +365,32 @@ class KnowledgeBase:
         """查询最近 N 次日报的最终质量评估趋势"""
         async with get_db() as db:
             cursor = await db.execute(
-                """SELECT search_keyword AS digest_date,
-                          overall_score,
-                          angle_coverage, source_diversity, depth_coverage,
-                          temporal_coverage, perspective_balance, language_coverage,
-                          strategy_detail, weaknesses, suggestions, created_at
-                   FROM optimization_record
-                   WHERE strategy_type = 'digest_final_eval'
-                   ORDER BY created_at DESC
+                """SELECT r.search_keyword AS digest_date,
+                          r.overall_score,
+                          r.angle_coverage, r.source_diversity, r.depth_coverage,
+                          r.temporal_coverage, r.perspective_balance, r.language_coverage,
+                          r.strategy_detail, r.weaknesses, r.suggestions, r.created_at,
+                          t.task_type, t.status AS task_status,
+                          t.ai_title, t.ai_full_content, t.ai_search_metadata
+                   FROM optimization_record r
+                   INNER JOIN crawl_task t ON t.id = r.task_id
+                   WHERE r.strategy_type = 'digest_final_eval'
+                   ORDER BY r.created_at DESC
                    LIMIT ?""",
-                (limit,),
+                (max(limit * 3, limit),),
             )
             rows = await cursor.fetchall()
         results = []
         for r in rows:
             d = dict(r)
+            if not _is_publishable_digest_eval_record(d):
+                continue
             d["strategy_detail"] = _parse_json_list(d.get("strategy_detail"))
             d["weaknesses"] = _parse_json_list(d.get("weaknesses"))
             d["suggestions"] = _parse_json_list(d.get("suggestions"))
             results.append(d)
+            if len(results) >= limit:
+                break
         return results
 
     async def get_digest_quality_overview(self, limit: int = 10) -> dict:
@@ -412,18 +458,25 @@ class KnowledgeBase:
         """Derive conservative next-run source actions from the latest digest evaluation."""
         async with get_db() as db:
             cursor = await db.execute(
-                """SELECT task_id, search_keyword AS digest_date, strategy_detail,
-                          weaknesses, suggestions, created_at
-                   FROM optimization_record
-                   WHERE strategy_type = 'digest_final_eval'
-                   ORDER BY created_at DESC
-                   LIMIT 1""",
+                """SELECT r.task_id, r.search_keyword AS digest_date, r.strategy_detail,
+                          r.weaknesses, r.suggestions, r.created_at,
+                          t.task_type, t.status AS task_status,
+                          t.ai_title, t.ai_full_content, t.ai_search_metadata
+                   FROM optimization_record r
+                   INNER JOIN crawl_task t ON t.id = r.task_id
+                   WHERE r.strategy_type = 'digest_final_eval'
+                   ORDER BY r.created_at DESC
+                   LIMIT 25""",
             )
-            row = await cursor.fetchone()
-        if not row:
+            rows = await cursor.fetchall()
+        publishable_rows = [
+            dict(row) for row in rows
+            if _is_publishable_digest_eval_record(dict(row))
+        ]
+        if not publishable_rows:
             return self._empty_digest_source_actions()
 
-        latest = dict(row)
+        latest = publishable_rows[0]
         task_id = latest.get("task_id")
         diagnostics: list[dict] = []
         if task_id is not None:
@@ -764,16 +817,22 @@ class KnowledgeBase:
         """
         async with get_db() as db:
             cursor = await db.execute(
-                """SELECT source_diversity, depth_coverage, angle_coverage,
-                          temporal_coverage, perspective_balance, language_coverage,
-                          created_at
-                   FROM optimization_record
-                   WHERE strategy_type = 'digest_final_eval'
-                   ORDER BY created_at DESC
+                """SELECT r.source_diversity, r.depth_coverage, r.angle_coverage,
+                          r.temporal_coverage, r.perspective_balance, r.language_coverage,
+                          r.created_at,
+                          t.task_type, t.status AS task_status,
+                          t.ai_title, t.ai_full_content, t.ai_search_metadata
+                   FROM optimization_record r
+                   INNER JOIN crawl_task t ON t.id = r.task_id
+                   WHERE r.strategy_type = 'digest_final_eval'
+                   ORDER BY r.created_at DESC
                    LIMIT ?""",
-                (limit,),
+                (max(limit * 3, limit),),
             )
-            rows = await cursor.fetchall()
+            rows = [
+                dict(row) for row in await cursor.fetchall()
+                if _is_publishable_digest_eval_record(dict(row))
+            ][:limit]
         if not rows:
             return {}
 

@@ -463,6 +463,10 @@ def start_scheduler():
                 id="digest_daily",
                 name="Daily Digest Generation",
                 replace_existing=True,
+                # C10-12: misfire 补偿——重启错过 8:00 后 1 小时内仍补跑；coalesce 合并漏触发；max_instances 防并发
+                misfire_grace_time=3600,
+                coalesce=True,
+                max_instances=1,
             )
             logger.info("Digest scheduler: cron='%s'", settings.digest_cron)
         except ValueError as e:

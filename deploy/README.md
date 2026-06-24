@@ -148,6 +148,7 @@ curl http://localhost/api/digest/latest
 - `quality_evaluation.publishable` 不是 `false`。
 - 公开 `/api/digest/latest` 能返回同一条可发布日报。
 - `release-gate` 会同时生成 JSON 和 Markdown 报告，默认位于 `artifacts/release-gate/`。
+- `release-gate` 会在重型步骤前检查 Windows/WSL/Docker 资源压力；如果可用内存过低、换页过高或 WSL/Docker 虚拟机仍占用过多内存，应先执行 `wsl --shutdown` 并重启 Docker Desktop。
 - `digest-smoke -SelfTest` 会离线校验日报 smoke 的自动优化 safety 断言；完整 `release-gate` 已默认包含该自检。
 
 ## 上线检查清单

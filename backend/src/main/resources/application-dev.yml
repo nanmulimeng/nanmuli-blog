@@ -37,6 +37,9 @@ sa-token:
 
 # 缓存 TTL 配置
 blog:
+  security:
+    # 仅 dev 默认；生产必须通过 BLOG_SECURITY_ENCRYPTION_KEY 环境变量提供强密钥（B07-01）
+    encryption-key: ${BLOG_SECURITY_ENCRYPTION_KEY:dev-only-please-override-in-prod-001}
   cache:
     ttl:
       default-duration: 1h

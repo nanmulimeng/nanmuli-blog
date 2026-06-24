@@ -424,16 +424,16 @@ class DigestOrchestrator:
         # Phase 4: 日报后评估 → 写入 KB（闭环）
         # 超时时跳过 KB 写入，避免不完整数据污染知识库推荐
         if self._digest_result and self._digest_result.success:
-            if self._global_timeout_reached:
-                logger.warning("[Orchestrator] Skipping Phase 4 KB write due to global timeout (incomplete data)")
-            else:
-                try:
-                    await self._evaluate_digest_quality(
-                        self._digest_result, self._crawl_plan, task,
-                        all_results,
-                    )
-                except Exception as e:
-                    logger.warning("[Orchestrator] Phase 4 digest evaluation failed (non-critical): %s", e)
+            # C04-01: 超时不再跳过 KB 写入——用已有数据评估并标记 timeout，
+            # 让质量趋势与 circuit-breaker 能感知超时失败（避免只统计顺利完成的日报）
+            try:
+                await self._evaluate_digest_quality(
+                    self._digest_result, self._crawl_plan, task,
+                    all_results,
+                    timed_out=self._global_timeout_reached,
+                )
+            except Exception as e:
+                logger.warning("[Orchestrator] Phase 4 digest evaluation failed (non-critical): %s", e)
 
         return all_results
 
@@ -1065,7 +1065,7 @@ class DigestOrchestrator:
             "suggestions": suggestions,
         }
 
-    async def _evaluate_digest_quality(self, digest_result, plan, task, all_results):
+    async def _evaluate_digest_quality(self, digest_result, plan, task, all_results, timed_out=False):
         """Phase 4: 日报后评估 — 对最终日报质量评分并写入 KB，形成闭环"""
         from optimization.evaluator import CoverageEvaluator, _get_weights
 
@@ -1128,6 +1128,8 @@ class DigestOrchestrator:
 
         # 3. 生成改进建议（基于弱维度）
         suggestions = []
+        if timed_out:
+            suggestions.append("本次日报因 global timeout 中断，数据不完整，评分偏低（C04-01）")
         dims = {
             "angle": evaluation.angle_coverage,
             "source_diversity": evaluation.source_diversity,

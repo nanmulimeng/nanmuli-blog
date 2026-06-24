@@ -18,7 +18,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./db/init-scripts:/docker-entrypoint-initdb.d
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     networks:
       - nanmuli-network
     healthcheck:
@@ -33,15 +33,17 @@ services:
     restart: always
     mem_limit: ${REDIS_MEM_LIMIT:-192m}
     cpus: ${REDIS_CPUS:-0.5}
-    command: redis-server --maxmemory 100mb --maxmemory-policy allkeys-lru
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in deploy/.env}
+    command: redis-server --maxmemory 100mb --maxmemory-policy allkeys-lru --requirepass "$$REDIS_PASSWORD"
     volumes:
       - redis_data:/data
     ports:
-      - "6380:6379"
+      - "127.0.0.1:6380:6379"
     networks:
       - nanmuli-network
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -64,6 +66,7 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in deploy/.env}
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in deploy/.env}
       CRAWLER_SERVICE_URL: http://crawler:8500
       CRAWLER_API_KEY: ${CRAWLER_API_KEY:?set CRAWLER_API_KEY in deploy/.env}
       CRAWLER_CALLBACK_API_KEY: ${CRAWLER_CALLBACK_API_KEY:?set CRAWLER_CALLBACK_API_KEY in deploy/.env}
@@ -75,7 +78,7 @@ services:
       - backend_uploads:/app/uploads
       - backend_logs:/app/logs
     ports:
-      - "8081:8081"
+      - "127.0.0.1:8081:8081"
     networks:
       - nanmuli-network
     depends_on:
@@ -121,7 +124,7 @@ services:
     volumes:
       - crawler_data:/app/data
     ports:
-      - "8500:8500"
+      - "127.0.0.1:8500:8500"
     networks:
       - nanmuli-network
     depends_on:

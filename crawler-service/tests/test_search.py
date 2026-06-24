@@ -2,6 +2,7 @@ import base64
 import datetime
 import re
 import unittest
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from crawler import search
@@ -484,6 +485,26 @@ class _FakeCrawlResult:
 
 class TestFetchSearchHtml(unittest.IsolatedAsyncioTestCase):
     """_fetch_search_html 浏览器抓取 + httpx 降级"""
+
+    async def test_browser_fetch_uses_global_crawl_slot(self):
+        mock_crawler = AsyncMock()
+        mock_crawler.arun.return_value = _FakeCrawlResult(success=True, html="<html>guarded</html>")
+        events = []
+
+        @asynccontextmanager
+        async def fake_slot():
+            events.append("enter")
+            yield
+            events.append("exit")
+
+        with patch.object(search, "get_search_run_config", return_value=MagicMock()), \
+             patch.object(search, "browser_crawl_slot", fake_slot):
+            result = await search._fetch_search_html(
+                "https://example.com/search", engine="google", crawler=mock_crawler
+            )
+
+        self.assertEqual(result, "<html>guarded</html>")
+        self.assertEqual(events, ["enter", "exit"])
 
     async def test_browser_success_returns_html(self):
         mock_crawler = AsyncMock()

@@ -49,7 +49,9 @@ public class ConfigRepositoryImpl implements ConfigRepository {
 
     @Override
     public List<Config> findAll() {
-        return configMapper.selectList(null);
+        LambdaQueryWrapper<Config> wrapper = Wrappers.lambdaQuery();
+        wrapper.orderByAsc(Config::getConfigKey);
+        return configMapper.selectList(wrapper);
     }
 
     @Override

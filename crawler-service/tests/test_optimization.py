@@ -761,6 +761,9 @@ CREATE TABLE IF NOT EXISTS crawl_task (
     max_depth       INTEGER DEFAULT 1,
     max_pages       INTEGER DEFAULT 10,
     status          INTEGER NOT NULL DEFAULT 0,
+    ai_title        TEXT,
+    ai_full_content TEXT,
+    ai_search_metadata TEXT,
     time_range      TEXT DEFAULT 'week',
     created_at      TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
@@ -814,7 +817,9 @@ class TestKnowledgeBaseDigestEval:
         """Insert a minimal crawl_task row and return its id."""
         import aiosqlite
         cursor = await db.execute(
-            "INSERT INTO crawl_task (task_type, status) VALUES ('digest', 3)"
+            """INSERT INTO crawl_task
+               (task_type, status, ai_title, ai_full_content, ai_search_metadata)
+               VALUES ('digest', 3, 'Daily Digest', 'Full digest content', '{}')"""
         )
         await db.commit()
         return cursor.lastrowid

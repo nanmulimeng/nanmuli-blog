@@ -3,6 +3,7 @@
 Migrated from Java OpenAiCompatibleOrganizer with identical prompts and logic.
 """
 
+import asyncio
 import json
 import logging
 import re
@@ -700,13 +701,27 @@ class ContentOrganizer:
         start = time.monotonic()
         user_prompt = self._build_digest_prompt(pages, date, recent_highlights=recent_highlights)
         digest_max_tokens = max_tokens_override or self._settings.ai_digest_max_tokens
-        response = await self._call_ai(DIGEST_SYSTEM_PROMPT, user_prompt, max_tokens=digest_max_tokens)
-        result = self._parse_digest_content(response["content"], input_urls=input_urls)
-        result.duration_ms = int((time.monotonic() - start) * 1000)
-        result.tokens_used = response.get("total_tokens", 0)
-        logger.info("[AiOrganizer] Digest generated: title=%s, sections=%d, duration=%dms",
-                     result.title, len(result.sections), result.duration_ms)
-        return result
+        # C05-01: 对可恢复错误（server error/rate limit/输出格式错）重试 + 指数退避；
+        # UnrecoverableError（model 无效/400）直接抛，不重试
+        max_retries = 2
+        for attempt in range(max_retries + 1):
+            try:
+                response = await self._call_ai(DIGEST_SYSTEM_PROMPT, user_prompt, max_tokens=digest_max_tokens)
+                result = self._parse_digest_content(response["content"], input_urls=input_urls)
+                result.duration_ms = int((time.monotonic() - start) * 1000)
+                result.tokens_used = response.get("total_tokens", 0)
+                logger.info("[AiOrganizer] Digest generated: title=%s, sections=%d, duration=%dms",
+                             result.title, len(result.sections), result.duration_ms)
+                return result
+            except UnrecoverableError:
+                raise
+            except (RateLimitError, RuntimeError, InvalidOutputError) as e:
+                if attempt < max_retries:
+                    await asyncio.sleep(2 ** attempt)
+                    logger.warning("[AiOrganizer] Digest retry %d/%d after %s: %s",
+                                   attempt + 1, max_retries, type(e).__name__, e)
+                    continue
+                raise
 
     # --- Section cleanup ---
 

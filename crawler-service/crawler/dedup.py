@@ -215,6 +215,9 @@ class ContentFingerprint:
         for i in range(64):
             if vector[i] > 0:
                 result |= (1 << i)
+        # C08-01: 归一化到 signed 64 位 [-2^63, 2^63)，避免写入 Java signed BIGINT/Long 时 >2^63-1 溢出回绕
+        if result >= (1 << 63):
+            result -= (1 << 64)
         return result
 
     @staticmethod
@@ -252,8 +255,11 @@ class ContentFingerprint:
 
 
 def hamming_distance(hash1: int, hash2: int) -> int:
-    """计算两个64位整数的汉明距离"""
-    return bin(hash1 ^ hash2).count('1')
+    """计算两个64位整数的汉明距离。
+    C08-01: 掩码到 64 位无符号再统计，兼容历史溢出回绕的 signed 负值（Java longValue 回读）。
+    """
+    xor = (hash1 ^ hash2) & ((1 << 64) - 1)
+    return bin(xor).count('1')
 
 
 class DedupEngine:
@@ -384,10 +390,13 @@ class DedupEngine:
         return candidates if candidates else set(range(len(self._fingerprint_seen)))
 
     def _extract_bucket(self, hash_val: int, bucket_idx: int) -> int:
-        """提取 64 位哈希的第 bucket_idx 个 16 位桶"""
+        """提取 64 位哈希的第 bucket_idx 个 16 位桶。
+        C08-01: 先掩码到无符号 64 位，兼容 signed 负值（归一化或历史回绕）。
+        """
         shift = bucket_idx * self._BUCKET_BITS
         mask = (1 << self._BUCKET_BITS) - 1
-        return (hash_val >> shift) & mask
+        unsigned = hash_val & ((1 << 64) - 1)
+        return (unsigned >> shift) & mask
 
     @staticmethod
     def _normalize_url(url: str) -> str:

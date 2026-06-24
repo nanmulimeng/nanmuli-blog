@@ -15,12 +15,18 @@ declare module 'axios' {
 // 请求取消控制器映射
 const pendingControllers = new Map<string, AbortController>()
 
+// F02-02: FormData 检测（多文件上传 data 为 FormData，JSON.stringify 为 '{}'）
+function isFormData(data: unknown): boolean {
+  return typeof FormData !== 'undefined' && data instanceof FormData
+}
+
 // 生成请求唯一标识
 function generateRequestKey(config: AxiosRequestConfig): string {
   const method = config.method?.toUpperCase() || 'GET'
   const url = config.url || ''
   const params = config.params ? JSON.stringify(config.params) : ''
-  const data = config.data ? JSON.stringify(config.data) : ''
+  // F02-02: FormData 不计入 key（拦截器侧跳过 FormData 的重复取消，允许并发上传）
+  const data = isFormData(config.data) ? '' : (config.data ? JSON.stringify(config.data) : '')
   return `${method}_${url}_${params}_${data}`
 }
 
@@ -50,16 +56,20 @@ request.interceptors.request.use(
     if (!config.signal) {
       const controller = new AbortController()
       config.signal = controller.signal
-      const key = generateRequestKey(config)
 
-      // 取消重复请求
-      if (pendingControllers.has(key)) {
-        pendingControllers.get(key)?.abort('重复请求被取消')
+      // F02-02: FormData（多文件上传）不参与"重复请求取消"，允许并发上传
+      if (isFormData(config.data)) {
+        config.__cleanup = () => {}
+      } else {
+        const key = generateRequestKey(config)
+        // 取消重复请求
+        if (pendingControllers.has(key)) {
+          pendingControllers.get(key)?.abort('重复请求被取消')
+        }
+        pendingControllers.set(key, controller)
+        // 请求完成后清理
+        config.__cleanup = () => pendingControllers.delete(key)
       }
-      pendingControllers.set(key, controller)
-
-      // 请求完成后清理
-      config.__cleanup = () => pendingControllers.delete(key)
     }
 
     return config
@@ -119,9 +129,12 @@ request.interceptors.response.use(
       config.__retryCount = 0
     }
 
-    // 重试逻辑：仅对 5xx 错误和网络错误进行重试
+    // 重试逻辑：仅对幂等的 GET 重试；POST/PUT/DELETE 不重试，避免写操作重复执行（F02-01）
+    const method = config?.method?.toLowerCase()
+    const isIdempotent = method === 'get'
     const shouldRetry =
       config &&
+      isIdempotent &&
       config.__retryCount !== undefined &&
       config.__retryCount < MAX_RETRIES &&
       (!error.response || (error.response.status >= 500 && error.response.status < 600))

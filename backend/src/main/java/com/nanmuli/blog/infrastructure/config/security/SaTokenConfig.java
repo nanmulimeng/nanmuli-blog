@@ -29,6 +29,9 @@ public class SaTokenConfig implements WebMvcConfigurer {
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
+        // B06-05: 当前仅校验登录（单 admin 场景，sys_user 均为 admin）。
+        // 未来引入多角色时，需在 login 时存角色（StpUtil.getSession().set("role", user.getRole())），
+        // 并在此处或 @SaCheckRole 注解追加角色校验，同时统一 role 种子值大小写（B06-11）。
         registry.addInterceptor(new SaInterceptor(handle -> StpUtil.checkLogin()))
                 .addPathPatterns("/api/admin/**")
                 .excludePathPatterns("/api/auth/login", "/api/internal/**");
