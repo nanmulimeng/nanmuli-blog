@@ -137,7 +137,8 @@ public class GlobalExceptionHandler {
         }
         String desensitizedMessage = desensitize(e.getMessage());
         log.error("[traceId={}] 系统异常, uri={}, method={}, error={}", traceId, request.getRequestURI(), request.getMethod(), desensitizedMessage, e);
-        return Result.error(500, "系统繁忙，请稍后再试");
+        // B16-13: 响应回传 traceId，用户报错时可提供用于关联服务端日志（可观测性闭环）
+        return Result.error(500, "系统繁忙，请稍后再试（traceId: " + traceId + "）");
     }
 
     /**
