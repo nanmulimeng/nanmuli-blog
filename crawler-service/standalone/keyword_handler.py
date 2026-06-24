@@ -101,24 +101,19 @@ class KeywordTaskHandler:
             except Exception as e:
                 logger.warning("Keyword search failed for '%s': %s", kw, e)
 
-        # === 自动优化循环 ===
-        if settings.optimization_enabled and settings.optimization_mode in ("keyword", "both"):
-            all_results = await self._run_optimization_loop(
-                task=task,
-                initial_results=all_results,
-                keyword=keywords[0],
-                engine=engine,
-                time_range=time_range,
-                config=config,
-            )
-
+        # C06-07: 已废弃 keyword 自动优化循环（与 digest OptimizationAgent 双轨漂移；
+        # optimization 默认关 + keyword 为辅助能力，废弃消除漂移，回退为单次搜索采集）
         return all_results[:max_pages]
 
     async def _run_optimization_loop(
         self, task: dict, initial_results: list,
         keyword: str, engine: str, time_range: str, config,
     ) -> list:
-        """先广后深优化：广度扩展 → 深度优化"""
+        """[已废弃 C06-07] 先广后深优化：广度扩展 → 深度优化。
+        execute 已不再调用（keyword 优化循环废弃，消除与 digest OptimizationAgent 的双轨漂移）。
+        保留方法体供 test_optimization 等单测覆盖 FeedbackLoop/BreadthExpander 组件；
+        后续可随 FeedbackLoop/BreadthExpander 死代码清理一并删除（C06-08）。
+        """
         from ai import content_organizer as organizer
         from optimization.evaluator import CoverageEvaluator
         from optimization.strategy import DepthStrategyGen, BreadthStrategyGen
