@@ -4,6 +4,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.aop.interceptor.AsyncUncaughtExceptionHandler;
 import org.springframework.scheduling.annotation.AsyncConfigurer;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -65,5 +66,14 @@ public class AsyncConfig implements AsyncConfigurer {
     @Override
     public Executor getAsyncExecutor() {
         return taskExecutor();
+    }
+
+    @Override
+    public AsyncUncaughtExceptionHandler getAsyncUncaughtExceptionHandler() {
+        // B17-01: void async 方法异常默认只走 SimpleAsyncUncaughtExceptionHandler（仅 warn 日志）；
+        // 显式配置确保异常被结构化 error 记录，避免静默吞掉（多模块可观测性共识）
+        return (ex, method, params) -> log.error(
+                "[Async] Uncaught exception in async method {} (params={}): {}",
+                method.getName(), params.length, ex.getMessage(), ex);
     }
 }
