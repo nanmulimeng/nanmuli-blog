@@ -13,6 +13,14 @@ spring:
     init:
       mode: always
       data-locations: classpath:data.sql
+  flyway:
+    # B15-04: Flyway 接入就绪，默认关闭（避免影响现有 Docker schema.sql 建库）。
+    # 启用需真实 PG 预发验证 baseline 行为后 flip 为 true，步骤见 docs/flyway-migration-plan.md
+    enabled: false
+    baseline-on-migrate: true
+    baseline-version: 1.0.23
+    validate-on-migrate: false  # 容忍 V1_1~V1_23 与 schema.sql 的历史漂移（baseline 不执行它们）
+    locations: classpath:db/migration
   jackson:
     time-zone: Asia/Shanghai
     date-format: yyyy-MM-dd HH:mm:ss

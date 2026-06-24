@@ -50,6 +50,15 @@
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
         </dependency>
+        <!-- B15-04: Flyway 接入（spring.flyway.enabled=false 默认不启用，启用步骤见 docs/flyway-migration-plan.md） -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+        </dependency>
         <dependency>
             <groupId>com.pgvector</groupId>
             <artifactId>pgvector</artifactId>
