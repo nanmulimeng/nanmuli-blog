@@ -5,7 +5,6 @@
 
 import asyncio
 import logging
-import time
 
 from config import settings
 from standalone import repository as repo
@@ -105,84 +104,5 @@ class KeywordTaskHandler:
         # optimization 默认关 + keyword 为辅助能力，废弃消除漂移，回退为单次搜索采集）
         return all_results[:max_pages]
 
-    async def _run_optimization_loop(
-        self, task: dict, initial_results: list,
-        keyword: str, engine: str, time_range: str, config,
-    ) -> list:
-        """[已废弃 C06-07] 先广后深优化：广度扩展 → 深度优化。
-        execute 已不再调用（keyword 优化循环废弃，消除与 digest OptimizationAgent 的双轨漂移）。
-        保留方法体供 test_optimization 等单测覆盖 FeedbackLoop/BreadthExpander 组件；
-        后续可随 FeedbackLoop/BreadthExpander 死代码清理一并删除（C06-08）。
-        """
-        from ai import content_organizer as organizer
-        from optimization.evaluator import CoverageEvaluator
-        from optimization.strategy import DepthStrategyGen, BreadthStrategyGen
-        from optimization.feedback import FeedbackLoop
-        from optimization.bubble_breaker import BreadthExpander, BubbleBreaker
-        from optimization.knowledge_base import KnowledgeBase
-        from crawler.search import crawl_by_keyword
-        from crawler.config import get_browser_config
-        from crawler.dependencies import get_async_web_crawler
-
-        evaluator = CoverageEvaluator(organizer if organizer.is_available else None)
-        depth_gen = DepthStrategyGen()
-        breadth_gen = BreadthStrategyGen()
-        kb = KnowledgeBase()
-        breaker = BubbleBreaker(organizer if organizer.is_available else None)
-
-        browser_config = await get_browser_config(
-            text_mode=True, light_mode=True, proxy=settings.proxy_url,
-        )
-        AsyncWebCrawler = get_async_web_crawler()
-        async with AsyncWebCrawler(config=browser_config) as shared_crawler:
-            ctx = {"engine": engine, "time_range": time_range, "config": config, "crawler": shared_crawler}
-            deadline = time.monotonic() + settings.optimization_total_budget_seconds
-
-            # Phase 1: 广度扩展（先广）
-            breadth_expander = BreadthExpander(
-                evaluator=evaluator,
-                strategy_gen=breadth_gen,
-                knowledge_base=kb,
-                bubble_breaker=breaker,
-            )
-            results, breadth_rounds = await breadth_expander.execute(
-                keyword=keyword,
-                initial_results=initial_results,
-                crawl_fn=crawl_by_keyword,
-                task_id=task["id"],
-                context=ctx,
-                deadline=deadline,
-            )
-            if breadth_rounds:
-                last = breadth_rounds[-1]
-                logger.info(
-                    "[Optimization] Breadth: %d rounds, breadth_score=%.2f, total URLs=%d",
-                    len(breadth_rounds), BreadthExpander._breadth_score(last.evaluation), last.urls_after,
-                )
-
-            # Phase 2: 深度优化（后深）
-            last_breadth_eval = breadth_rounds[-1].evaluation if breadth_rounds else None
-
-            depth_loop = FeedbackLoop(
-                evaluator=evaluator,
-                strategy_gen=depth_gen,
-                knowledge_base=kb,
-            )
-            final_results, depth_rounds = await depth_loop.execute(
-                keyword=keyword,
-                initial_results=results,
-                crawl_fn=crawl_by_keyword,
-                task_id=task["id"],
-                context=ctx,
-                initial_evaluation=last_breadth_eval,
-                deadline=deadline,
-            )
-
-            if depth_rounds:
-                last = depth_rounds[-1]
-                logger.info(
-                    "[Optimization] Depth: %d rounds, final score=%.2f, total URLs=%d",
-                    len(depth_rounds), last.evaluation.overall_score, last.urls_after,
-                )
-
-            return final_results
+    # C06-08: _run_optimization_loop 已删除（keyword 优化循环 C06-07 废弃，
+    # FeedbackLoop 死代码清理；digest 的 OptimizationAgent 保留独立编排）

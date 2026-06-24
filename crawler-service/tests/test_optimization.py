@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from optimization.evaluator import CoverageEvaluator, CoverageEvaluation
 from optimization.strategy import StrategyGenerator, DepthStrategyGen, BreadthStrategyGen, SearchStrategy
-from optimization.feedback import FeedbackLoop, OptimizationRound
 from optimization.knowledge_base import KnowledgeBase
 
 
@@ -427,113 +426,6 @@ class TestStrategyGenerator:
         section = {"name": "test", "max_items": 5}
         result = _apply_overrides(section, None)
         assert result == section
-
-
-# ============== Feedback Loop Tests ==============
-
-class TestFeedbackLoop:
-    @pytest.fixture
-    def mock_evaluator(self):
-        evaluator = MagicMock(spec=CoverageEvaluator)
-        evaluator.is_available = True
-        evaluator.evaluate = AsyncMock()
-        return evaluator
-
-    @pytest.fixture
-    def mock_strategy_gen(self):
-        return MagicMock(spec=StrategyGenerator)
-
-    @pytest.fixture
-    def mock_kb(self):
-        kb = MagicMock(spec=KnowledgeBase)
-        kb.get_strategy_hint = AsyncMock(return_value=None)
-        return kb
-
-    @pytest.mark.asyncio
-    async def test_target_reached_round1(self, mock_evaluator, mock_strategy_gen, mock_kb):
-        mock_evaluator.evaluate.return_value = CoverageEvaluation(
-            angle_coverage=0.8, source_diversity=0.8, depth_coverage=0.8,
-            temporal_coverage=0.8, perspective_balance=0.8, language_coverage=0.8,
-            overall_score=0.85,
-        )
-
-        loop = FeedbackLoop(mock_evaluator, mock_strategy_gen, mock_kb)
-        results, rounds = await loop.execute(
-            keyword="test",
-            initial_results=[],
-            crawl_fn=AsyncMock(return_value=[]),
-            context={"engine": "bing", "time_range": "week"},
-        )
-        assert len(rounds) == 1
-        assert rounds[0].evaluation.overall_score >= 0.7
-
-    @pytest.mark.asyncio
-    async def test_improvement_loop(self, mock_evaluator, mock_strategy_gen, mock_kb):
-        # Round 1: low depth score, Round 2: depth score reaches target
-        mock_evaluator.evaluate.side_effect = [
-            CoverageEvaluation(overall_score=0.3, source_diversity=0.1,
-                               depth_coverage=0.2, angle_coverage=0.2, temporal_coverage=0.2),
-            CoverageEvaluation(overall_score=0.75, source_diversity=0.6,
-                               depth_coverage=0.8, angle_coverage=0.8, temporal_coverage=0.8),
-        ]
-        mock_strategy_gen.generate.return_value = SearchStrategy(
-            keyword="test", engine="baidu", time_range="week",
-            strategy_type="engine_switch", reason="test",
-        )
-
-        crawl_fn = AsyncMock(return_value=[
-            type("R", (), {"url": "http://new.com", "success": True})(),
-        ])
-
-        loop = FeedbackLoop(mock_evaluator, mock_strategy_gen, mock_kb)
-        results, rounds = await loop.execute(
-            keyword="test",
-            initial_results=[],
-            crawl_fn=crawl_fn,
-            context={"engine": "bing", "time_range": "week"},
-        )
-        assert len(rounds) == 2
-        assert rounds[1].evaluation.overall_score >= 0.7
-
-    @pytest.mark.asyncio
-    async def test_diminishing_returns(self, mock_evaluator, mock_strategy_gen, mock_kb):
-        mock_evaluator.evaluate.side_effect = [
-            CoverageEvaluation(overall_score=0.3),
-            CoverageEvaluation(overall_score=0.32),
-            CoverageEvaluation(overall_score=0.33),  # +0.01 < 0.03 threshold
-        ]
-        mock_strategy_gen.generate.return_value = SearchStrategy(
-            keyword="test", engine="baidu", time_range="week",
-            strategy_type="engine_switch", reason="test",
-        )
-
-        crawl_fn = AsyncMock(return_value=[])
-
-        loop = FeedbackLoop(
-            mock_evaluator, mock_strategy_gen, mock_kb,
-            min_improvement=0.03,
-        )
-        results, rounds = await loop.execute(
-            keyword="test",
-            initial_results=[],
-            crawl_fn=crawl_fn,
-            context={"engine": "bing", "time_range": "week"},
-        )
-        assert len(rounds) == 3
-
-    @pytest.mark.asyncio
-    async def test_no_strategy_stops(self, mock_evaluator, mock_strategy_gen, mock_kb):
-        mock_evaluator.evaluate.return_value = CoverageEvaluation(overall_score=0.3)
-        mock_strategy_gen.generate.return_value = None
-
-        loop = FeedbackLoop(mock_evaluator, mock_strategy_gen, mock_kb)
-        results, rounds = await loop.execute(
-            keyword="test",
-            initial_results=[],
-            crawl_fn=AsyncMock(return_value=[]),
-            context={"engine": "bing", "time_range": "week"},
-        )
-        assert len(rounds) == 1
 
 
 # ============== CoverageEvaluation Tests ==============
