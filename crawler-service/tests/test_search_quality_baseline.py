@@ -27,7 +27,7 @@ def test_normalize_search_result_preserves_engine_keyword_rank():
 
 def test_fixture_low_value_domains_are_rejected():
     cases = json.loads(
-        Path("crawler-service/tests/fixtures/search_quality_cases.json")
+        (Path(__file__).parent / "fixtures" / "search_quality_cases.json")
         .read_text(encoding="utf-8")
     )
     rejected = [case for case in cases if not case["expected_keep"]]

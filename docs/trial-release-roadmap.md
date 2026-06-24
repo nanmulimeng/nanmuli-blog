@@ -47,7 +47,7 @@ MVP Beta 的目标不是完全自动化的高质量编辑系统，而是先保�
 | 日报触发 | 可用 | 管理端手动触发、强制重新生成 |
 | 日报调度 | 可用 | 工作日 8:00 定时生成，受配置开关控制 |
 | 信息源采集 | 可用 | keyword/url/rss/mixed section |
-| AI 整理 | 可用 | OpenAI-compatible endpoint，试用模型 `deepseek-v4-pro` |
+| AI 整理 | 可用 | OpenAI-compatible endpoint，试用模型 `deepseek-chat` |
 | 结构化保存 | 可用 | `digest_section`、`digest_item`、任务元数据 |
 | 公开展示 | 可用 | `/api/digest`、`/api/digest/latest`、`/api/digest/{date}` |
 | 管理展示 | 可用 | `/admin/digest`、任务详情、信息源管理 |
@@ -77,7 +77,7 @@ MVP Beta 的目标不是完全自动化的高质量编辑系统，而是先保�
 | `BLOG_SECURITY_ENCRYPTION_KEY` | 至少 16 字符强随机值 |
 | `AI_API_KEY` | 使用可控试用额度 |
 | `AI_BASE_URL` | OpenAI-compatible endpoint |
-| `AI_MODEL` | 试用环境当前为 `deepseek-v4-pro` |
+| `AI_MODEL` | 试用环境当前为 `deepseek-chat` |
 | `DIGEST_ENABLED` | 信息源确认后再设为 `true` |
 | `CORS_ALLOWED_ORIGINS` | 明确生产域名 |
 | `COOKIE_SECURE` | HTTPS 环境设为 `true` |

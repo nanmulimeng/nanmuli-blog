@@ -78,7 +78,7 @@ docker compose --env-file .env up -d --build
 | `AI_ENABLED` | 视需求 | 是否启用 AI |
 | `AI_API_KEY` | AI 启用时必填 | AI provider key |
 | `AI_BASE_URL` | AI 启用时必填 | OpenAI-compatible endpoint |
-| `AI_MODEL` | AI 启用时必填 | 试用环境使用 `deepseek-v4-pro` |
+| `AI_MODEL` | AI 启用时必填 | 试用环境使用 `deepseek-chat` |
 | `DIGEST_ENABLED` | 视需求 | 是否启用定时日报 |
 
 ## 常用命令

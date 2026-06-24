@@ -11,8 +11,8 @@
 
 | 链路 | 结论 | 最近验证 |
 | --- | --- | --- |
-| Backend | 可用 | `mvn test`：88 passed |
-| Crawler Service | 可用 | `python -m pytest -q --tb=short`：1366 passed |
+| Backend | 可用 | `mvn test`：111 passed |
+| Crawler Service | 可用 | `python -m pytest -q --tb=short`：1377 passed |
 | Frontend | 可用 | `npm run build` passed |
 | Frontend prod audit | 可用 | `npm audit --omit=dev --registry=https://registry.npmjs.org`：0 vulnerabilities |
 | Docker Compose | 可用 | `cd deploy; docker compose --env-file .env.example config` passed |
@@ -88,7 +88,7 @@ flowchart LR
 | FastAPI | 0.100+ |
 | Crawl4AI | 0.8.x |
 | SQLite | 本地任务/日报存储 |
-| OpenAI-compatible AI | 试用环境使用 `deepseek-v4-pro` |
+| OpenAI-compatible AI | 试用环境使用 `deepseek-chat` |
 
 ### Frontend
 

@@ -229,7 +229,7 @@ docker run -d -p 8500:8500 \
 | `API_KEYS` | 允许访问的 API key，逗号分隔 |
 | `AI_ENABLED` | 是否启用 AI |
 | `AI_BASE_URL` | OpenAI-compatible endpoint |
-| `AI_MODEL` | AI model，试用环境使用 `deepseek-v4-pro` |
+| `AI_MODEL` | AI model，试用环境使用 `deepseek-chat` |
 | `AI_API_KEY` | AI key |
 | `DIGEST_ENABLED` | 是否启用定时日报 |
 | `DIGEST_CRON` | 默认 `0 8 * * 1-5` |
