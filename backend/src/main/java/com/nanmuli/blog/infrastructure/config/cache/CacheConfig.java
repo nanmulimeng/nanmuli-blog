@@ -38,6 +38,7 @@ public class CacheConfig {
         private Duration config = Duration.ofDays(1);
         private Duration articleArchive = Duration.ofHours(1);
         private Duration articleStats = Duration.ofMinutes(5);
+        private Duration dashboardStats = Duration.ofMinutes(5);
     }
 
     @Bean
@@ -54,6 +55,7 @@ public class CacheConfig {
         cacheConfigurations.put("config", buildConfig(ttlProps.getConfig(), jdkSerializer));
         cacheConfigurations.put("article:archive", buildConfig(ttlProps.getArticleArchive(), jdkSerializer));
         cacheConfigurations.put("article:stats", buildConfig(ttlProps.getArticleStats(), jdkSerializer));
+        cacheConfigurations.put("dashboard:stats", buildConfig(ttlProps.getDashboardStats(), jdkSerializer));
 
         return RedisCacheManager.builder(connectionFactory)
                 .cacheDefaults(defaultConfig)

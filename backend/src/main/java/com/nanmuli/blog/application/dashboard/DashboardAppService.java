@@ -9,6 +9,7 @@ import com.nanmuli.blog.domain.article.ArticleVisitLogRepository;
 import com.nanmuli.blog.domain.project.ProjectRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,6 +24,7 @@ public class DashboardAppService {
     private final ArticleVisitLogRepository articleVisitLogRepository;
     private final ProjectRepository projectRepository;
 
+    @Cacheable(cacheNames = "dashboard:stats", key = "'stats'")
     @Transactional(readOnly = true)
     public DashboardStatsDTO getStats() {
         DashboardStatsDTO stats = new DashboardStatsDTO();
@@ -42,6 +44,7 @@ public class DashboardAppService {
         return stats;
     }
 
+    @Cacheable(cacheNames = "dashboard:stats", key = "'recent-' + #limit")
     @Transactional(readOnly = true)
     public List<ArticleDTO> getRecentArticles(int limit) {
         return articleRepository.findLatestArticles(limit).stream()
