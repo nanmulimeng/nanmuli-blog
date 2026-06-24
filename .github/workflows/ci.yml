@@ -44,7 +44,7 @@ jobs:
   crawler:
     name: Crawler (pytest)
     runs-on: ubuntu-latest
-    continue-on-error: true  # 待 X03 修复 4 个 503 既有失败 + CI crawl4ai 环境后转必须
+    continue-on-error: true  # 4 个 organize/keyword 503 既有失败已修（mock is_available，本地 82 passed）；CI crawl4ai/playwright 环境待验证，暂 continue-on-error
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

@@ -34,11 +34,15 @@ def client(app):
 class TestOrganizeEndpoint:
     def test_organize_returns_503_when_ai_not_configured(self, client):
         """AI 未配置时应返回 503"""
-        resp = client.post("/organize", json={
-            "pages": [{"url": "http://a.com", "title": "A", "markdown": "content", "word_count": 10}],
-            "template": "tech_summary",
-        })
-        assert resp.status_code == 503
+        import ai
+        mock_org = MagicMock()
+        mock_org.is_available = False
+        with patch.object(ai, "content_organizer", mock_org):
+            resp = client.post("/organize", json={
+                "pages": [{"url": "http://a.com", "title": "A", "markdown": "content", "word_count": 10}],
+                "template": "tech_summary",
+            })
+            assert resp.status_code == 503
 
     def test_organize_returns_400_for_empty_pages(self, client):
         """空页面列表应返回 400"""
@@ -69,11 +73,15 @@ class TestOrganizeEndpoint:
 
 class TestKeywordEndpoint:
     def test_keyword_returns_503_when_ai_not_configured(self, client):
-        resp = client.post("/keyword", json={
-            "keyword": "docker",
-            "action": "optimize",
-        })
-        assert resp.status_code == 503
+        import ai
+        mock_org = MagicMock()
+        mock_org.is_available = False
+        with patch.object(ai, "content_organizer", mock_org):
+            resp = client.post("/keyword", json={
+                "keyword": "docker",
+                "action": "optimize",
+            })
+            assert resp.status_code == 503
 
     def test_keyword_invalid_action_rejected(self, client):
         resp = client.post("/keyword", json={

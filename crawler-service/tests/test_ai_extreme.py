@@ -578,11 +578,15 @@ class TestApiOrganizeEndpoint:
         mock_org.organize_multiple.assert_called_once()
 
     def test_ai_not_configured_returns_503(self, client):
-        resp = client.post("/organize", json={
-            "pages": [{"url": "http://a.com", "title": "A", "markdown": "content", "word_count": 10}],
-            "template": "tech_summary",
-        })
-        assert resp.status_code == 503
+        import ai
+        mock_org = MagicMock()
+        mock_org.is_available = False
+        with patch.object(ai, "content_organizer", mock_org):
+            resp = client.post("/organize", json={
+                "pages": [{"url": "http://a.com", "title": "A", "markdown": "content", "word_count": 10}],
+                "template": "tech_summary",
+            })
+            assert resp.status_code == 503
 
     def test_empty_pages_returns_400(self, client):
         import ai
@@ -675,8 +679,12 @@ class TestApiKeywordEndpoint:
         assert len(data["variants"]) == 3
 
     def test_ai_not_configured_returns_503(self, client):
-        resp = client.post("/keyword", json={"keyword": "docker", "action": "optimize"})
-        assert resp.status_code == 503
+        import ai
+        mock_org = MagicMock()
+        mock_org.is_available = False
+        with patch.object(ai, "content_organizer", mock_org):
+            resp = client.post("/keyword", json={"keyword": "docker", "action": "optimize"})
+            assert resp.status_code == 503
 
     def test_keyword_validation_422(self, client):
         resp = client.post("/keyword", json={"keyword": "", "action": "optimize"})
