@@ -18,7 +18,6 @@ import com.nanmuli.blog.domain.article.ArticleViewRecordRepository;
 import com.nanmuli.blog.domain.article.ArticleVisitLog;
 import com.nanmuli.blog.domain.article.ArticleVisitLogRepository;
 import com.nanmuli.blog.application.article.command.RecordArticleViewCommand;
-import com.nanmuli.blog.domain.article.event.ArticleCreatedEvent;
 import com.nanmuli.blog.domain.article.event.ArticlePublishedEvent;
 import com.nanmuli.blog.domain.category.Category;
 import com.nanmuli.blog.domain.category.CategoryRepository;
@@ -119,9 +118,6 @@ public class ArticleAppService {
         if (article.getCategoryId() != null) {
             refreshCategoryArticleCount(article.getCategoryId());
         }
-
-        // 发布文章创建事件
-        eventPublisher.publishEvent(new ArticleCreatedEvent(article.getId(), article.getTitle()));
 
         // 如果是已发布状态，触发AI生成
         if (article.isPublished()) {
